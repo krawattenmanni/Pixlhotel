@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+@layer base {
+  html,
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #bce0fd;
+    color: #1e293b;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.font-pixel {
+  font-family: 'Silkscreen', monospace;
+}
+
+.font-mono-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.pixelated {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* Classic Habbo glossy green 3D button */
+.habbo-btn-green {
+  background: linear-gradient(180deg, #43c900 0%, #2ca100 45%, #008a00 50%, #007200 100%);
+  border: 2px solid #004f00;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), 0 3px 0 rgba(0, 0, 0, 0.28);
+  color: #ffffff;
+  text-shadow: 0 1px 1px rgba(0, 40, 0, 0.85);
+}
+.habbo-btn-green:hover {
+  background: linear-gradient(180deg, #52de0a 0%, #33b600 45%, #009c00 50%, #008400 100%);
+}
+.habbo-btn-green:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 1px 0 rgba(0, 0, 0, 0.28);
+}
+
+.habbo-btn-blue {
+  background: linear-gradient(180deg, #4ba3e3 0%, #2c81c7 48%, #1e6aad 52%, #175791 100%);
+  border: 2px solid #0e3a63;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 2px 0 rgba(0, 0, 0, 0.22);
+  color: #ffffff;
+  text-shadow: 0 1px 1px rgba(0, 20, 45, 0.75);
+}
+.habbo-btn-blue:hover {
+  background: linear-gradient(180deg, #5db3f0 0%, #368fd8 48%, #2576bd 52%, #1d64a5 100%);
+}
+
+.habbo-btn-gold {
+  background: linear-gradient(180deg, #ffd84d 0%, #f5b301 48%, #dc9400 52%, #be7800 100%);
+  border: 2px solid #784800;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 2px 0 rgba(0, 0, 0, 0.22);
+  color: #2c1a00;
+}
+
+/* Classic 2009 Habbo CMS Box with crisp white body, 1px #c8d6e5 border & colored title strip */
+.habbo-box {
+  background: #ffffff;
+  border: 1px solid #c8d6e5;
+  border-radius: 8px;
+  box-shadow: 0 3px 8px rgba(15, 52, 84, 0.10);
+  overflow: hidden;
+}
+
+.habbo-box-header {
+  padding: 8px 14px;
+  font-weight: 700;
+  font-size: 13px;
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.32);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+/* Classic Hotel Client HUD bevel */
+.client-window {
+  background: #eceae4;
+  border: 2px solid #2b2927;
+  box-shadow: inset 0 2px 0 #ffffff, 0 8px 24px rgba(0, 0, 0, 0.55);
+  border-radius: 6px;
+}
+
+.client-window-bar {
+  background: linear-gradient(180deg, #4b708f 0%, #365672 100%);
+  border-bottom: 2px solid #20364a;
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+
+@keyframes habboPulse {
+  0%, 100% {
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), 0 3px 0 rgba(0, 0, 0, 0.28), 0 0 0 0 rgba(67, 201, 0, 0.45);
+  }
+  50% {
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), 0 3px 0 rgba(0, 0, 0, 0.28), 0 0 0 6px rgba(67, 201, 0, 0);
+  }
+}
+
+.habbo-pulse {
+  animation: habboPulse 2.2s infinite;
+}
