@@ -172,6 +172,13 @@ class PixlHotelSoundEngine {
     });
   }
 
+  playSplash() {
+    this.playFilteredNoise(0.38, 780, 0.14, 0);
+    this.playFilteredNoise(0.26, 1450, 0.09, 0.06);
+    this.playTone(320, 0.18, 'sine', 0.08, 0, 130);
+    this.playTone(540, 0.12, 'triangle', 0.04, 0.08, 920);
+  }
+
   startTrax(trackIndex: number) {
     this.stopTrax();
     if (!this.inGame || this.muted) return;

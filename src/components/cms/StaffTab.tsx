@@ -10,22 +10,22 @@ interface StaffTabProps {
 const DEPARTMENTS: {
   key: StaffMember['department'];
   title: string;
-  headerBg: string;
+  headerClass: string;
 }[] = [
-  { key: 'Hotel Managers', title: 'Hotel Management', headerBg: 'bg-[#9e1b1b]' },
-  { key: 'Moderators', title: 'Moderators', headerBg: 'bg-[#1d4ed8]' },
-  { key: 'Event Team', title: 'Event Team', headerBg: 'bg-[#7c3aed]' },
+  { key: 'Hotel Managers', title: 'Hotel Management', headerClass: 'habbo-header-red' },
+  { key: 'Moderators', title: 'Moderators', headerClass: 'habbo-header-blue' },
+  { key: 'Event Team', title: 'Event Team', headerClass: 'habbo-header-orange' },
 ];
 
 export function StaffTab({ staff, onFollowStaff }: StaffTabProps) {
   return (
-    <div className="space-y-6">
-      <div className="habbo-box p-4 flex flex-col justify-between gap-2 sm:flex-row sm:items-center bg-[#f0f9ff]">
+    <div className="space-y-5">
+      <div className="habbo-box p-3.5 flex flex-col justify-between gap-2 sm:flex-row sm:items-center bg-[#f4f8fc]">
         <div className="flex items-center gap-3">
-          <ShieldCheck className="h-6 w-6 text-[#235c8a]" />
+          <ShieldCheck className="h-5 w-5 text-[#1d4e78]" />
           <div>
-            <h1 className="text-lg font-extrabold text-slate-900">PIXL Hotel Staff Team</h1>
-            <p className="text-xs text-slate-600">
+            <h1 className="text-[15px] font-bold text-[#111827]">PIXL Hotel Staff Team</h1>
+            <p className="text-[11px] text-[#475569]">
               Official PIXL Hotel Management, Safety Moderators, and Event Team hosts — synced live from the PIXL Account Database.
             </p>
           </div>
@@ -37,42 +37,42 @@ export function StaffTab({ staff, onFollowStaff }: StaffTabProps) {
 
         return (
           <section key={dept.key} className="habbo-box" data-testid={`staff-section-${dept.key}`}>
-            <div className={`habbo-box-header flex items-center justify-between ${dept.headerBg}`}>
+            <div className={`habbo-box-header flex items-center justify-between ${dept.headerClass}`}>
               <span>{dept.title}</span>
-              <span className="font-mono-num text-xs text-white/90">{members.length} members</span>
+              <span className="font-mono-num text-[11px] text-white/95">{members.length} members</span>
             </div>
             {members.length === 0 ? (
-              <div className="p-6 text-center text-xs font-semibold text-slate-500">
+              <div className="p-5 text-center text-[11px] font-bold text-[#64748b]">
                 No staff members currently assigned to {dept.title}.
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3.5 p-3.5 md:grid-cols-2">
                 {members.map((member) => (
                   <div
                     key={member.id}
                     data-testid={`staff-card-${member.name}`}
-                    className="flex items-center justify-between gap-4 rounded-md border border-slate-200 bg-slate-50/70 p-3.5"
+                    className="flex items-center justify-between gap-3.5 rounded-[3px] border border-[#000000] bg-[#f8fafc] p-3"
                   >
-                    <div className="flex items-center gap-3.5 min-w-0">
-                      <div className="flex h-24 w-20 items-end justify-center rounded border border-[#9ec5e6] bg-gradient-to-b from-[#cfe7fa] to-[#eef7ff] pb-1 shrink-0">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-24 w-20 items-end justify-center rounded-[2px] border border-[#000000] bg-gradient-to-b from-[#cfe7fa] to-[#eef7ff] pb-1 shrink-0">
                         <PixelAvatarCanvas look={member.look} dir={0} pose="stand" scale={1} />
                       </div>
                       <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-base font-extrabold text-slate-900 truncate">{member.name}</h3>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <h3 className="text-[14px] font-bold text-[#111827] truncate">{member.name}</h3>
                           <PixelBadge code={member.badgeCode} label={member.badgeLabel} />
                         </div>
-                        <p className="text-xs font-bold text-[#235c8a]">{member.role}</p>
-                        <p className="mt-1 text-xs italic text-slate-600 truncate">&ldquo;{member.motto}&rdquo;</p>
-                        <div className="mt-2 flex items-center gap-1.5 text-xs font-bold">
+                        <p className="text-[11px] font-bold text-[#1d4e78]">{member.role}</p>
+                        <p className="mt-1 text-[11px] italic text-[#475569] truncate">&ldquo;{member.motto}&rdquo;</p>
+                        <div className="mt-1.5 flex items-center gap-1.5 text-[11px] font-bold">
                           <span
-                            className={`inline-block h-2.5 w-2.5 rounded-sm border ${
+                            className={`inline-block h-2.5 w-2.5 rounded-[1px] border ${
                               member.online
                                 ? 'bg-[#22c55e] border-[#14532d]'
                                 : 'bg-[#ef4444] border-[#7f1d1d]'
                             }`}
                           />
-                          <span className={member.online ? 'text-emerald-700' : 'text-rose-700'}>
+                          <span className={member.online ? 'text-[#15803d]' : 'text-[#b91c1c]'}>
                             {member.online ? 'Online in Hotel' : 'Offline'}
                           </span>
                         </div>
@@ -83,7 +83,7 @@ export function StaffTab({ staff, onFollowStaff }: StaffTabProps) {
                       <button
                         type="button"
                         onClick={() => onFollowStaff(member.roomId)}
-                        className="habbo-btn-green rounded px-3 py-1.5 text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer"
+                        className="habbo-btn-green px-3 py-1.5 text-[11px] font-bold whitespace-nowrap shrink-0 cursor-pointer"
                       >
                         Visit
                       </button>

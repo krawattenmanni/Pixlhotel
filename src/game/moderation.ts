@@ -30,6 +30,12 @@ export function isRoomOwnerOrAdmin(room: RoomDef, player: PlayerState): boolean 
   return room.owner.toLowerCase() === player.username.toLowerCase();
 }
 
+const ROOM_NPC_ALIAS: Record<string, string> = {
+  '1': 'welcome_lounge',
+  '2': 'club_mammoth',
+  '3': 'battle_banzai',
+};
+
 export function getActiveRoomNpcs(
   npcs: HabboNPC[],
   roomId: string,
@@ -37,7 +43,13 @@ export function getActiveRoomNpcs(
 ): HabboNPC[] {
   const kicked = new Set(modState.kickedByRoom[roomId] ?? []);
   const banned = new Set(modState.bannedByRoom[roomId] ?? []);
-  return npcs.filter((n) => n.roomId === roomId && !kicked.has(n.id) && !banned.has(n.id));
+  const aliasRoomId = ROOM_NPC_ALIAS[roomId];
+  return npcs.filter(
+    (n) =>
+      (n.roomId === roomId || (aliasRoomId && n.roomId === aliasRoomId)) &&
+      !kicked.has(n.id) &&
+      !banned.has(n.id)
+  );
 }
 
 export function kickUserFromRoom(

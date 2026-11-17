@@ -9,24 +9,25 @@ import {
   ShoppingBag,
   Sparkles,
 } from 'lucide-react';
-import { FURNI_CATALOGUE } from '../../game/data';
-import type { FurniCategory, PlayerState } from '../../game/types';
-import { PixelFurniCanvas } from '../PixelSpriteCanvas';
+import {
+  CATALOG_ITEMS_SEED,
+  CATALOG_PAGES_SEED,
+  findFurniDef,
+} from '../../game/data';
+import type {
+  CatalogItemRow,
+  CatalogPageRow,
+  PlayerState,
+} from '../../game/types';
+import { FurniPreviewImg } from '../PixelSpriteCanvas';
 
 interface ShopVouchersTabProps {
   player: PlayerState;
+  catalogPages?: CatalogPageRow[];
+  catalogItems?: CatalogItemRow[];
   onBuyItem: (furniId: string, quantity?: number) => { ok: boolean; message: string };
   onRedeemVoucher: (code: string) => { ok: boolean; message: string };
 }
-
-const SHOP_CATEGORIES: { id: FurniCategory | 'all'; label: string }[] = [
-  { id: 'all', label: `All Furni (${FURNI_CATALOGUE.length})` },
-  { id: 'rares', label: 'Rares' },
-  { id: 'seating', label: 'Seating' },
-  { id: 'tables', label: 'Tables & Bars' },
-  { id: 'lighting', label: 'Lighting & Tech' },
-  { id: 'decor', label: 'Garden & Decor' },
-];
 
 type ShopSortMode = 'featured' | 'price-asc' | 'price-desc' | 'rares-first';
 
@@ -37,17 +38,50 @@ const PROMO_CHIPS: { code: string; reward: string }[] = [
   { code: 'DUCKETS', reward: '+300 Duckets' },
 ];
 
-export function ShopVouchersTab({ player, onBuyItem, onRedeemVoucher }: ShopVouchersTabProps) {
+export function ShopVouchersTab({
+  player,
+  catalogPages,
+  catalogItems,
+  onBuyItem,
+  onRedeemVoucher,
+}: ShopVouchersTabProps) {
   const [voucherCode, setVoucherCode] = useState('');
-  const [category, setCategory] = useState<FurniCategory | 'all'>('all');
+  const [selectedPageId, setSelectedPageId] = useState<number | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortMode, setSortMode] = useState<ShopSortMode>('featured');
   const [statusMsg, setStatusMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
+  const visiblePages = useMemo(() => {
+    const pages = catalogPages && catalogPages.length > 0 ? catalogPages : CATALOG_PAGES_SEED;
+    return pages.filter((p) => p.visible && p.min_rank <= player.rank);
+  }, [catalogPages, player.rank]);
+
+  const mergedItems = useMemo(() => {
+    const rawItems = catalogItems && catalogItems.length > 0 ? catalogItems : CATALOG_ITEMS_SEED;
+    const allowedPageIds = new Set(visiblePages.map((p) => p.id));
+    return rawItems
+      .filter((it) => allowedPageIds.has(it.page_id) || visiblePages.length === 0)
+      .map((it) => {
+        const def = findFurniDef(it.item_type);
+        return {
+          key: `${it.id}-${it.item_type}`,
+          pageId: it.page_id,
+          furniId: it.item_type,
+          name: it.catalog_name || def.name,
+          description: def.description,
+          category: def.category,
+          costCredits: it.cost_credits,
+          costDuckets: it.cost_duckets,
+          isRare: def.isRare,
+          isLtd: def.isLtd,
+        };
+      });
+  }, [catalogItems, visiblePages]);
+
   const visibleItems = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    const filtered = FURNI_CATALOGUE.filter((item) => {
-      if (category !== 'all' && item.category !== category) return false;
+    const filtered = mergedItems.filter((item) => {
+      if (selectedPageId !== 'all' && item.pageId !== selectedPageId) return false;
       if (q) {
         return (
           item.name.toLowerCase().includes(q) ||
@@ -70,7 +104,7 @@ export function ShopVouchersTab({ player, onBuyItem, onRedeemVoucher }: ShopVouc
       );
     }
     return filtered;
-  }, [category, searchQuery, sortMode]);
+  }, [mergedItems, selectedPageId, searchQuery, sortMode]);
 
   const handleBuy = (id: string) => {
     const res = onBuyItem(id, 1);
@@ -85,44 +119,43 @@ export function ShopVouchersTab({ player, onBuyItem, onRedeemVoucher }: ShopVouc
   };
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-      <div className="space-y-6 lg:col-span-8">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+      <div className="space-y-5 lg:col-span-8">
         <section className="habbo-box">
-          <div className="habbo-box-header flex flex-wrap items-center justify-between gap-2 bg-[#0d9488]">
+          <div className="habbo-box-header habbo-header-blue flex flex-wrap items-center justify-between gap-2">
             <span className="inline-flex items-center gap-2">
-              <ShoppingBag className="h-4 w-4" />
-              PIXL Web Furni Catalogue
+              <ShoppingBag className="h-3.5 w-3.5 text-[#fef08a]" />
+              PIXL Web Furni Catalogue ({mergedItems.length} items)
             </span>
-            <div className="flex items-center gap-3 text-xs">
+            <div className="flex items-center gap-3 text-[11px]">
               <span className="inline-flex items-center gap-1 font-mono-num">
-                <Coins className="h-3.5 w-3.5 text-[#ffd400]" /> {player.credits} Credits
+                <Coins className="h-3.5 w-3.5 text-[#ffd400]" /> {player.credits}c
               </span>
               <span className="inline-flex items-center gap-1 font-mono-num">
-                <Sparkles className="h-3.5 w-3.5 text-[#e9d5ff]" /> {player.duckets} Duckets
+                <Sparkles className="h-3.5 w-3.5 text-[#e9d5ff]" /> {player.duckets}d
               </span>
             </div>
           </div>
 
-          {/* Search & Sort Controls */}
-          <div className="border-b border-slate-200 bg-[#f4f8fc] px-4 py-3 space-y-2.5">
-            <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="border-b border-[#cbd5e1] bg-[#f4f8fc] px-3.5 py-3 space-y-2.5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#64748b]" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search furniture by name or style..."
-                  className="w-full rounded border border-[#c8d6e5] bg-white py-1.5 pl-8 pr-3 text-xs font-semibold text-slate-900 focus:border-[#0d9488] focus:outline-none"
+                  className="w-full rounded-[2px] border border-[#000000] bg-white py-1 pl-8 pr-2.5 text-[11px] font-semibold text-[#111827] focus:border-[#2b6ca3] focus:outline-none"
                 />
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
-                <ArrowUpDown className="h-3.5 w-3.5 text-slate-500" />
+                <ArrowUpDown className="h-3.5 w-3.5 text-[#475569]" />
                 <select
                   aria-label="Sort furniture"
                   value={sortMode}
                   onChange={(e) => setSortMode(e.target.value as ShopSortMode)}
-                  className="rounded border border-[#c8d6e5] bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:border-[#0d9488] focus:outline-none"
+                  className="rounded-[2px] border border-[#000000] bg-white px-2 py-1 text-[11px] font-bold text-[#1f2937] focus:border-[#2b6ca3] focus:outline-none"
                 >
                   <option value="featured">Sort: Featured</option>
                   <option value="price-asc">Price: Low to High</option>
@@ -133,18 +166,29 @@ export function ShopVouchersTab({ player, onBuyItem, onRedeemVoucher }: ShopVouc
             </div>
 
             <div className="flex flex-wrap gap-1.5">
-              {SHOP_CATEGORIES.map((c) => (
+              <button
+                type="button"
+                onClick={() => setSelectedPageId('all')}
+                className={`rounded-[2px] border px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
+                  selectedPageId === 'all'
+                    ? 'border-[#000000] bg-[#2b6ca3] text-white'
+                    : 'border-[#94a3b8] bg-white text-[#1f2937] hover:bg-[#e2e8f0]'
+                }`}
+              >
+                All Sections ({mergedItems.length})
+              </button>
+              {visiblePages.map((pg) => (
                 <button
-                  key={c.id}
+                  key={pg.id}
                   type="button"
-                  onClick={() => setCategory(c.id)}
-                  className={`rounded px-3 py-1 text-xs font-bold cursor-pointer ${
-                    category === c.id
-                      ? 'bg-[#235c8a] text-white'
-                      : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'
+                  onClick={() => setSelectedPageId(pg.id)}
+                  className={`rounded-[2px] border px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
+                    selectedPageId === pg.id
+                      ? 'border-[#000000] bg-[#2b6ca3] text-white'
+                      : 'border-[#94a3b8] bg-white text-[#1f2937] hover:bg-[#e2e8f0]'
                   }`}
                 >
-                  {c.label}
+                  {pg.caption}
                 </button>
               ))}
             </div>
@@ -153,10 +197,10 @@ export function ShopVouchersTab({ player, onBuyItem, onRedeemVoucher }: ShopVouc
           {statusMsg && (
             <div
               role="status"
-              className={`mx-4 mt-4 rounded border px-3 py-2 text-xs font-bold ${
+              className={`mx-3.5 mt-3 rounded-[2px] border px-3 py-1.5 text-[11px] font-bold ${
                 statusMsg.ok
-                  ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                  : 'border-rose-300 bg-rose-50 text-rose-800'
+                  ? 'border-[#1f4f09] bg-[#ecfdf5] text-[#14532d]'
+                  : 'border-[#7f1d1d] bg-[#fef2f2] text-[#991b1b]'
               }`}
             >
               {statusMsg.text}
@@ -164,37 +208,42 @@ export function ShopVouchersTab({ player, onBuyItem, onRedeemVoucher }: ShopVouc
           )}
 
           {visibleItems.length === 0 ? (
-            <div className="p-8 text-center text-xs font-semibold text-slate-500">
+            <div className="p-8 text-center text-[11px] font-bold text-[#64748b]">
               No furniture items match your search filter.
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 p-3.5 sm:grid-cols-2">
               {visibleItems.map((item) => (
                 <div
-                  key={item.id}
-                  className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-[#f9f7f2] p-3"
+                  key={item.key}
+                  className="flex items-center justify-between gap-2.5 rounded-[2px] border border-[#000000] bg-[#f8fafc] p-2.5"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="relative flex h-16 w-16 items-center justify-center rounded border border-[#8eb5d3] bg-gradient-to-b from-[#d8ebfc] to-[#eef7ff] shrink-0">
-                      <PixelFurniCanvas furniId={item.id} size={50} />
-                      {item.isRare && (
-                        <span className="absolute -top-1.5 -left-1.5 rounded bg-[#dc2626] px-1 py-0.5 font-pixel text-[7px] text-white">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="relative flex h-14 w-14 items-center justify-center rounded-[2px] border border-[#000000] bg-gradient-to-b from-[#d8ebfc] to-[#eef7ff] shrink-0">
+                      <FurniPreviewImg itemType={item.furniId} alt={item.name} size={46} />
+                      {item.isLtd && (
+                        <span className="absolute -top-1.5 -left-1.5 rounded-[2px] border border-[#000000] bg-[#b91c1c] px-1 py-0.2 font-pixel text-[7px] text-[#fef08a]">
+                          LTD
+                        </span>
+                      )}
+                      {!item.isLtd && item.isRare && (
+                        <span className="absolute -top-1.5 -left-1.5 rounded-[2px] border border-[#000000] bg-[#d9660b] px-1 py-0.2 font-pixel text-[7px] text-white">
                           RARE
                         </span>
                       )}
                     </div>
                     <div className="min-w-0">
-                      <h3 className="text-sm font-extrabold text-slate-900 truncate">{item.name}</h3>
-                      <p className="mt-0.5 text-xs text-slate-500 line-clamp-2">{item.description}</p>
-                      <div className="mt-1.5 flex items-center gap-2 text-xs font-bold">
+                      <h3 className="text-[12px] font-bold text-[#111827] truncate">{item.name}</h3>
+                      <p className="mt-0.5 text-[10px] text-[#475569] line-clamp-2">{item.description}</p>
+                      <div className="mt-1 flex items-center gap-2 text-[11px] font-bold">
                         {item.costCredits > 0 && (
-                          <span className="inline-flex items-center gap-1 text-amber-700 font-mono-num">
-                            <Coins className="h-3.5 w-3.5" /> {item.costCredits}
+                          <span className="inline-flex items-center gap-1 text-[#92400e] font-mono-num">
+                            <Coins className="h-3 w-3 text-[#d97706]" /> {item.costCredits}c
                           </span>
                         )}
                         {item.costDuckets > 0 && (
-                          <span className="inline-flex items-center gap-1 text-violet-700 font-mono-num">
-                            <Sparkles className="h-3.5 w-3.5" /> {item.costDuckets}
+                          <span className="inline-flex items-center gap-1 text-[#6d28d9] font-mono-num">
+                            <Sparkles className="h-3 w-3 text-[#7c3aed]" /> {item.costDuckets}d
                           </span>
                         )}
                       </div>
@@ -203,8 +252,8 @@ export function ShopVouchersTab({ player, onBuyItem, onRedeemVoucher }: ShopVouc
 
                   <button
                     type="button"
-                    onClick={() => handleBuy(item.id)}
-                    className="habbo-btn-green rounded px-3 py-1.5 text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer"
+                    onClick={() => handleBuy(item.furniId)}
+                    className="habbo-btn-green px-3 py-1 text-[11px] font-bold whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     Buy
                   </button>
@@ -215,14 +264,14 @@ export function ShopVouchersTab({ player, onBuyItem, onRedeemVoucher }: ShopVouc
         </section>
       </div>
 
-      <aside className="space-y-6 lg:col-span-4">
+      <aside className="space-y-5 lg:col-span-4">
         <section className="habbo-box">
-          <div className="habbo-box-header flex items-center gap-2 bg-[#e06d1b]">
-            <Gift className="h-4 w-4" />
+          <div className="habbo-box-header habbo-header-orange flex items-center gap-2">
+            <Gift className="h-3.5 w-3.5" />
             Redeem PIXL Voucher
           </div>
-          <div className="p-4 space-y-3">
-            <p className="text-xs text-slate-600">
+          <div className="p-3.5 space-y-2.5">
+            <p className="text-[11px] text-[#475569]">
               Tap a promo chip below or enter a voucher code manually:
             </p>
             <div className="grid grid-cols-2 gap-1.5">
@@ -239,34 +288,34 @@ export function ShopVouchersTab({ player, onBuyItem, onRedeemVoucher }: ShopVouc
                       const res = onRedeemVoucher(v.code);
                       setStatusMsg({ ok: res.ok, text: res.message });
                     }}
-                    className={`flex flex-col items-start rounded border px-2.5 py-1.5 text-left transition-colors ${
+                    className={`flex flex-col items-start rounded-[2px] border px-2 py-1 text-left ${
                       claimed
-                        ? 'border-emerald-200 bg-emerald-50/70 text-emerald-800 cursor-default'
-                        : 'border-[#c8d6e5] bg-[#f8fbfe] hover:border-[#e06d1b] hover:bg-amber-50/50 cursor-pointer'
+                        ? 'border-[#cbd5e1] bg-[#ecfdf5] text-[#15803d] cursor-default'
+                        : 'border-[#000000] bg-[#f8fafc] hover:bg-[#fffbeb] cursor-pointer'
                     }`}
                   >
-                    <span className="inline-flex items-center gap-1 font-mono-num text-[11px] font-extrabold text-slate-900">
+                    <span className="inline-flex items-center gap-1 font-mono-num text-[11px] font-bold text-[#111827]">
                       {v.code}
-                      {claimed && <Check className="h-3 w-3 text-emerald-600" />}
+                      {claimed && <Check className="h-3 w-3 text-[#15803d]" />}
                     </span>
-                    <span className="text-[10px] font-semibold text-slate-500">
+                    <span className="text-[10px] font-semibold text-[#475569]">
                       {claimed ? 'Claimed' : v.reward}
                     </span>
                   </button>
                 );
               })}
             </div>
-            <form onSubmit={handleRedeem} className="flex gap-2">
+            <form onSubmit={handleRedeem} className="flex gap-1.5">
               <input
                 type="text"
                 value={voucherCode}
                 onChange={(e) => setVoucherCode(e.target.value)}
                 placeholder="Voucher code..."
-                className="w-full rounded border border-slate-300 px-3 py-1.5 text-sm font-semibold uppercase text-slate-900 focus:border-[#e06d1b] focus:outline-none"
+                className="w-full rounded-[2px] border border-[#000000] bg-white px-2.5 py-1 text-[12px] font-bold uppercase text-[#111827] focus:border-[#d9660b] focus:outline-none"
               />
               <button
                 type="submit"
-                className="habbo-btn-green rounded px-3.5 py-1.5 text-xs font-bold shrink-0 cursor-pointer"
+                className="habbo-btn-green px-3 py-1 text-[11px] font-bold shrink-0 cursor-pointer"
               >
                 Redeem
               </button>
@@ -275,24 +324,25 @@ export function ShopVouchersTab({ player, onBuyItem, onRedeemVoucher }: ShopVouc
         </section>
 
         <section className="habbo-box">
-          <div className="habbo-box-header flex items-center gap-2 bg-[#235c8a]">
-            <Package className="h-4 w-4" />
+          <div className="habbo-box-header habbo-header-blue flex items-center gap-2">
+            <Package className="h-3.5 w-3.5" />
             My Furniture Inventory
           </div>
-          <div className="divide-y divide-slate-200 max-h-96 overflow-y-auto">
+          <div className="divide-y divide-[#cbd5e1] max-h-96 overflow-y-auto">
             {player.inventory.length === 0 ? (
-              <p className="p-4 text-xs text-slate-500">Your inventory is empty. Buy furni or redeem DRAGON!</p>
+              <p className="p-3.5 text-[11px] text-[#64748b]">
+                Your inventory is empty. Buy furni or redeem DRAGON!
+              </p>
             ) : (
               player.inventory.map((entry) => {
-                const def = FURNI_CATALOGUE.find((f) => f.id === entry.furniId);
-                if (!def) return null;
+                const def = findFurniDef(entry.furniId);
                 return (
-                  <div key={entry.furniId} className="flex items-center justify-between gap-3 p-3">
-                    <div className="flex items-center gap-2.5">
-                      <PixelFurniCanvas furniId={entry.furniId} size={36} />
-                      <span className="text-xs font-bold text-slate-900">{def.name}</span>
+                  <div key={entry.furniId} className="flex items-center justify-between gap-2.5 p-2.5">
+                    <div className="flex items-center gap-2">
+                      <FurniPreviewImg itemType={entry.furniId} alt={def.name} size={34} />
+                      <span className="text-[11px] font-bold text-[#111827]">{def.name}</span>
                     </div>
-                    <span className="font-mono-num text-xs font-extrabold text-[#235c8a]">
+                    <span className="font-mono-num text-[11px] font-bold text-[#1d4e78]">
                       x{entry.quantity}
                     </span>
                   </div>

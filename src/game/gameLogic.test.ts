@@ -95,21 +95,21 @@ test('A* pathfinding routes around obstacles and reaches sittable chairs', () =>
   assert.equal(blockedPath.length, 0);
 });
 
-test('admin login succeeds with KrawattenManni / Manni123 and rejects wrong password', () => {
+test('admin login succeeds with Krawattenmanni / Manni123 and rejects wrong password', () => {
   const accounts = getInitialAccounts();
-  const bad = authenticateUser(accounts, 'KrawattenManni', 'wrong');
+  const bad = authenticateUser(accounts, 'Krawattenmanni', 'wrong');
   assert.equal(bad.ok, false);
 
-  const ok = authenticateUser(accounts, 'KrawattenManni', 'Manni123');
+  const ok = authenticateUser(accounts, 'Krawattenmanni', 'Manni123');
   assert.equal(ok.ok, true);
   assert.equal(ok.account?.role, 'admin');
-  assert.equal(ok.account?.playerState.username, 'KrawattenManni');
+  assert.equal(ok.account?.playerState.username, 'Krawattenmanni');
   assert.ok(ok.account?.playerState.unlockedBadges.includes('badge_admin'));
 });
 
 test('registration validates inputs, rejects duplicates, and creates a new player account', () => {
   const accounts = getInitialAccounts();
-  const dup = registerUser(accounts, 'KrawattenManni', 'secret12', 'secret12');
+  const dup = registerUser(accounts, 'Krawattenmanni', 'secret12', 'secret12');
   assert.equal(dup.ok, false);
 
   const mismatch = registerUser(accounts, 'RetroHero', 'pass123', 'pass999');
@@ -225,11 +225,11 @@ function createMemoryStorage(): StorageLike {
   };
 }
 
-test('accountsDB seeds KrawattenManni + 10 realistic users and persists registrations across reloads', () => {
+test('accountsDB seeds Krawattenmanni + 10 realistic users and persists registrations across reloads', () => {
   const storage = createMemoryStorage();
   const seeded = loadAccountsDB(storage);
   assert.equal(seeded.length, 11);
-  assert.equal(seeded[0].username, 'KrawattenManni');
+  assert.equal(seeded[0].username, 'Krawattenmanni');
   assert.equal(seeded[0].rank, 5);
   assert.equal(seeded[0].playerState.credits, 5000);
   assert.ok(storage.getItem(ACCOUNTS_DB_STORAGE_KEY));
@@ -460,3 +460,190 @@ test('PIXL Hotel client commands (:moonwalk, :sit, :cola, :furni, :roll, o/) par
   assert.equal(pixlVoucher.ok, true);
   assert.equal(pixlVoucher.player.credits, INITIAL_PLAYER_STATE.credits + 250);
 });
+
+import {
+  groupInventoryFromItemRows,
+  groupPlacedItemsByRoom,
+  mapAccountToUserDbUpdate,
+  mapBanRow,
+  mapCmsNewsRowToNewsArticle,
+  mapItemRowToPlacedFurni,
+  mapRankRow,
+  mapRoomRowToRoomDef,
+  mapUserPetRowToOwnedPet,
+  mapUserRowToUserAccount,
+  mapVoucherRow,
+  serializeItemExtraData,
+} from './supabaseSync';
+
+test('PhoenixEmu / HoloCMS relational row mappers hydrate users, bans, rooms, items (room_id=0 inventory rule), pets, news, and vouchers', () => {
+  const rank = mapRankRow({ id: 5, name: 'Hotel Manager', badge_code: 'ADM' });
+  assert.equal(rank.id, 5);
+  assert.equal(rank.badgeCode, 'ADM');
+
+  const ban = mapBanRow({
+    id: 1,
+    bantype: 'user',
+    value: 'BannedTester',
+    reason: 'Flooding the lounge',
+    expire: '0',
+    added_by: 'Krawattenmanni',
+    added_date: '2026-11-16T10:00:00Z',
+  });
+  assert.equal(ban.value, 'BannedTester');
+  assert.equal(ban.reason, 'Flooding the lounge');
+
+  const room = mapRoomRowToRoomDef({
+    id: 3,
+    caption: 'Battle Banzai Arena',
+    owner: 'Krawattenmanni',
+    description: 'Neon arena',
+    model_name: 'model_banzai',
+    state: 'open',
+    users_now: 2,
+    users_max: 25,
+    category: 2,
+  });
+  assert.equal(room.id, '3');
+  assert.equal(room.numericId, 3);
+  assert.equal(room.floorTheme, 'banzai');
+
+  const itemRows = [
+    {
+      id: 101,
+      user_id: 1,
+      room_id: 0, // Inventory rule: room_id = 0
+      item_type: 'gold_trophy',
+      extra_data: serializeItemExtraData(1, {
+        inscription: 'Phoenix Champion',
+        engravedBy: 'Krawattenmanni',
+        engravedAt: '2026-11-16',
+      }),
+      x: 0,
+      y: 0,
+      z: 0,
+      rot: 0,
+    },
+    {
+      id: 102,
+      user_id: 1,
+      room_id: 3, // Placed in room #3
+      item_type: 'fire_dragon',
+      extra_data: '1',
+      x: 4,
+      y: 2,
+      z: 0,
+      rot: 2,
+    },
+  ];
+
+  const invGrouped = groupInventoryFromItemRows(itemRows, 1);
+  assert.equal(invGrouped.inventory.length, 1);
+  assert.equal(invGrouped.inventory[0].furniId, 'gold_trophy');
+  assert.deepEqual(invGrouped.inventory[0].itemIds, [101]);
+  assert.equal(invGrouped.pendingEngravings['gold_trophy']?.[0]?.inscription, 'Phoenix Champion');
+
+  const placedGrouped = groupPlacedItemsByRoom(itemRows, [room], new Map([[1, 'Krawattenmanni']]));
+  assert.equal(placedGrouped['3'].length, 1);
+  assert.equal(placedGrouped['3'][0].itemId, 102);
+  assert.equal(placedGrouped['3'][0].state, 1);
+  assert.equal(placedGrouped['3'][0].dir, 2);
+
+  const singlePlaced = mapItemRowToPlacedFurni(itemRows[0], new Map([[1, 'Krawattenmanni']]));
+  assert.equal(singlePlaced.customData?.inscription, 'Phoenix Champion');
+
+  const pet = mapUserPetRowToOwnedPet(
+    {
+      id: 7,
+      user_id: 1,
+      room_id: 3,
+      name: 'Ignis',
+      type: 'baby_dragon',
+      color: 'Red',
+      nutrition: 90,
+      happiness: 95,
+      x: 5,
+      y: 5,
+    },
+    'Krawattenmanni'
+  );
+  assert.equal(pet.id, 'pet-7');
+  assert.equal(pet.species, 'baby_dragon');
+
+  const userAcc = mapUserRowToUserAccount({
+    row: {
+      id: 1,
+      username: 'Krawattenmanni',
+      password: 'admin123',
+      mail: 'habbo@pixlhotel.ch',
+      motto: 'Founder of Pixlhotel',
+      look: null,
+      gender: 'M',
+      rank: 5,
+      credits: 5000,
+      duckets: 2500,
+      hc_days: 365,
+      online: true,
+      account_created: '2026-11-16T09:00:00Z',
+      last_online: '2026-11-16T09:00:00Z',
+    },
+    bans: [ban],
+    itemRows,
+    badgeRows: [
+      { id: 1, user_id: 1, badge_id: 'ADM', badge_slot: 1, pixel_data: null },
+    ],
+    petRows: [
+      {
+        id: 7,
+        user_id: 1,
+        room_id: 3,
+        name: 'Ignis',
+        type: 'baby_dragon',
+        color: 'Red',
+        nutrition: 90,
+        happiness: 95,
+        x: 5,
+        y: 5,
+      },
+    ],
+    friendshipRows: [{ id: 1, user_one_id: 1, user_two_id: 2 }],
+    defaultRoomId: '1',
+  });
+
+  assert.equal(userAcc.id, '1');
+  assert.equal(userAcc.displayId, '#1');
+  assert.equal(userAcc.numericId, 1);
+  assert.equal(userAcc.banned, false);
+  assert.ok(userAcc.playerState.friendIds.includes('acc-2'));
+  assert.equal(userAcc.playerState.pets.length, 1);
+  assert.equal(userAcc.playerState.inventory[0].furniId, 'gold_trophy');
+
+  const dbUpdate = mapAccountToUserDbUpdate(userAcc);
+  assert.equal(dbUpdate.credits, 5000);
+  assert.equal(dbUpdate.hc_days, 365);
+
+  const news = mapCmsNewsRowToNewsArticle({
+    id: 1,
+    title: 'Welcome!',
+    shortstory: 'Short intro',
+    longstory: 'Paragraph 1\nParagraph 2',
+    image: 'teal',
+    author: 'Krawattenmanni',
+    published: '2026-11-16T12:00:00Z',
+  });
+  assert.equal(news.bannerPalette, 'teal');
+  assert.equal(news.body.length, 2);
+
+  const voucher = mapVoucherRow({
+    id: 1,
+    code: 'habbo2026',
+    credits: 500,
+    duckets: 250,
+    hc_days: 0,
+    badge_id: '',
+    uses: 999,
+  });
+  assert.equal(voucher.code, 'HABBO2026');
+  assert.equal(voucher.credits, 500);
+});
+

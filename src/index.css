@@ -3,11 +3,12 @@
 @layer base {
   html,
   body {
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    font-family: Tahoma, Verdana, Geneva, sans-serif;
+    font-size: 12px;
     margin: 0;
     padding: 0;
     background-color: #bce0fd;
-    color: #1e293b;
+    color: #111827;
     max-width: 100%;
     overflow-x: hidden;
   }
@@ -26,7 +27,7 @@
 }
 
 .font-mono-num {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: Tahoma, Verdana, monospace;
   font-variant-numeric: tabular-nums;
 }
 
@@ -35,79 +36,173 @@
   image-rendering: crisp-edges;
 }
 
-/* Classic Habbo glossy green 3D button */
+/* Classic 2008-2010 Habbo Sky + Tile Grid + Skyline Background */
+.habbo-bg-sky {
+  background-color: #bce0fd;
+  background-image:
+    linear-gradient(180deg, #9dd3fb 0%, #bce0fd 260px, #bce0fd 100%);
+}
+
+/* Classic Habbo Glossy Buttons with 1px black outer border + 1px inner bevel */
 .habbo-btn-green {
-  background: linear-gradient(180deg, #43c900 0%, #2ca100 45%, #008a00 50%, #007200 100%);
-  border: 2px solid #004f00;
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), 0 3px 0 rgba(0, 0, 0, 0.28);
+  background: linear-gradient(180deg, #6bd233 0%, #5bb52c 48%, #479c1d 52%, #3d8b18 100%);
+  border: 1px solid #000000;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 2px 0 #1f4f09;
   color: #ffffff;
-  text-shadow: 0 1px 1px rgba(0, 40, 0, 0.85);
+  text-shadow: 0 -1px 0 rgba(0, 45, 0, 0.75);
 }
 .habbo-btn-green:hover {
-  background: linear-gradient(180deg, #52de0a 0%, #33b600 45%, #009c00 50%, #008400 100%);
+  background: linear-gradient(180deg, #79de42 0%, #65c234 48%, #4fa822 52%, #44981c 100%);
 }
 .habbo-btn-green:active {
   transform: translateY(1px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 1px 0 rgba(0, 0, 0, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 1px 0 #1f4f09;
 }
 
 .habbo-btn-blue {
-  background: linear-gradient(180deg, #4ba3e3 0%, #2c81c7 48%, #1e6aad 52%, #175791 100%);
-  border: 2px solid #0e3a63;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 2px 0 rgba(0, 0, 0, 0.22);
+  background: linear-gradient(180deg, #4b8ec7 0%, #2b6ca3 48%, #22598a 52%, #1d4e78 100%);
+  border: 1px solid #000000;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 #8ec2ef, 0 2px 0 #0d2b45;
   color: #ffffff;
-  text-shadow: 0 1px 1px rgba(0, 20, 45, 0.75);
+  text-shadow: 0 -1px 0 rgba(0, 20, 45, 0.75);
 }
 .habbo-btn-blue:hover {
-  background: linear-gradient(180deg, #5db3f0 0%, #368fd8 48%, #2576bd 52%, #1d64a5 100%);
+  background: linear-gradient(180deg, #5a9ed8 0%, #3379b5 48%, #28659b 52%, #225a8a 100%);
+}
+
+.habbo-btn-orange {
+  background: linear-gradient(180deg, #f99e4c 0%, #f58220 48%, #e47112 52%, #d9660b 100%);
+  border: 1px solid #000000;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 #ffd1a3, 0 2px 0 #7c3803;
+  color: #ffffff;
+  text-shadow: 0 -1px 0 rgba(80, 30, 0, 0.75);
 }
 
 .habbo-btn-gold {
-  background: linear-gradient(180deg, #ffd84d 0%, #f5b301 48%, #dc9400 52%, #be7800 100%);
-  border: 2px solid #784800;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 2px 0 rgba(0, 0, 0, 0.22);
-  color: #2c1a00;
+  background: linear-gradient(180deg, #ffe26a 0%, #f5b301 48%, #e09800 52%, #c97f00 100%);
+  border: 1px solid #000000;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 #fff7c2, 0 2px 0 #663c00;
+  color: #1c1200;
 }
 
-/* Classic 2009 Habbo CMS Box with crisp white body, 1px #c8d6e5 border & colored title strip */
+.habbo-btn-silver {
+  background: linear-gradient(180deg, #ffffff 0%, #eaeaea 50%, #d4d4d4 100%);
+  border: 1px solid #000000;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 #ffffff, 0 1px 0 rgba(0, 0, 0, 0.35);
+  color: #111827;
+}
+.habbo-btn-silver:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #f3f3f3 50%, #dedede 100%);
+}
+
+/* Classic 2009 HoloCMS Content Box: 1px #000 outer border, 1px #fff inner bevel, 3px pixel-step corners */
 .habbo-box {
   background: #ffffff;
-  border: 1px solid #c8d6e5;
-  border-radius: 8px;
-  box-shadow: 0 3px 8px rgba(15, 52, 84, 0.10);
+  border: 1px solid #000000;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px #ffffff, 0 2px 0 rgba(0, 36, 70, 0.22);
   overflow: hidden;
 }
 
 .habbo-box-header {
-  padding: 8px 14px;
+  padding: 6px 10px;
+  font-family: Tahoma, Verdana, sans-serif;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 12px;
   color: #ffffff;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.32);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+  border-bottom: 1px solid #000000;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
-/* Classic Hotel Client HUD bevel */
+.habbo-header-blue {
+  background: linear-gradient(180deg, #2b6ca3 0%, #1d4e78 100%);
+}
+.habbo-header-orange {
+  background: linear-gradient(180deg, #f58220 0%, #d9660b 100%);
+}
+.habbo-header-green {
+  background: linear-gradient(180deg, #5bb52c 0%, #3d8b18 100%);
+}
+.habbo-header-dark {
+  background: linear-gradient(180deg, #4b708f 0%, #365672 100%);
+}
+.habbo-header-red {
+  background: linear-gradient(180deg, #b91c1c 0%, #7f1d1d 100%);
+}
+
+/* Classic Shockwave / Flash Habbo Client Window HUD */
 .client-window {
-  background: #eceae4;
-  border: 2px solid #2b2927;
-  box-shadow: inset 0 2px 0 #ffffff, 0 8px 24px rgba(0, 0, 0, 0.55);
-  border-radius: 6px;
+  background: #ececec;
+  border: 1px solid #000000;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px #ffffff, 3px 3px 0 rgba(0, 0, 0, 0.55);
 }
 
 .client-window-bar {
   background: linear-gradient(180deg, #4b708f 0%, #365672 100%);
-  border-bottom: 2px solid #20364a;
+  border-bottom: 1px solid #000000;
+  box-shadow: inset 0 1px 0 #7ea5c6;
   color: #ffffff;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.65);
+}
+
+.client-close-btn {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #e5e5e5 0%, #bdbdbd 100%);
+  border: 1px solid #000000;
+  border-radius: 2px;
+  box-shadow: inset 0 1px 0 #ffffff;
+  color: #111827;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.client-close-btn:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #d4d4d4 100%);
+}
+
+/* Bottom #222222 Dock Bar */
+.habbo-dock {
+  background: #222222;
+  border-top: 1px solid #444444;
+  box-shadow: inset 0 1px 0 #333333;
+}
+
+.habbo-dock-btn {
+  background: linear-gradient(180deg, #3c3c3c 0%, #2a2a2a 100%);
+  border: 1px solid #000000;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 #5a5a5a;
+  color: #ffffff;
+}
+.habbo-dock-btn:hover {
+  background: linear-gradient(180deg, #4a4a4a 0%, #333333 100%);
+}
+.habbo-dock-btn-active {
+  background: linear-gradient(180deg, #4b708f 0%, #365672 100%);
+  border: 1px solid #000000;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 #8ec2ef;
+  color: #ffffff;
 }
 
 @keyframes habboPulse {
   0%, 100% {
-    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), 0 3px 0 rgba(0, 0, 0, 0.28), 0 0 0 0 rgba(67, 201, 0, 0.45);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 2px 0 #1f4f09;
   }
   50% {
-    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), 0 3px 0 rgba(0, 0, 0, 0.28), 0 0 0 6px rgba(67, 201, 0, 0);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 2px 0 #1f4f09, 0 0 0 3px rgba(91, 181, 44, 0.35);
   }
 }
 

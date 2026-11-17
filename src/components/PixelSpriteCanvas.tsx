@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   getAvatarHeadSprite,
   getAvatarSprite,
   getBadgeSprite,
   getFurniSprite,
+  getItemPreviewImage,
   getPetSprite,
 } from '../game/pixelSprites';
 import type {
@@ -21,6 +22,8 @@ interface AvatarCanvasProps {
   pose?: AvatarPose;
   frame?: number;
   scale?: number;
+  swimming?: boolean;
+  swimwearColor?: string;
   className?: string;
 }
 
@@ -30,6 +33,8 @@ export function PixelAvatarCanvas({
   pose = 'stand',
   frame = 0,
   scale = 2,
+  swimming = false,
+  swimwearColor = '#0ea5e9',
   className = '',
 }: AvatarCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -43,9 +48,9 @@ export function PixelAvatarCanvas({
     if (!ctx) return;
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, w, h);
-    const sprite = getAvatarSprite(look, dir, pose, frame);
+    const sprite = getAvatarSprite(look, dir, pose, frame, swimming, swimwearColor);
     ctx.drawImage(sprite, 0, 0, w, h);
-  }, [look, dir, pose, frame, scale, w, h]);
+  }, [look, dir, pose, frame, scale, swimming, swimwearColor, w, h]);
 
   return (
     <canvas
@@ -129,6 +134,34 @@ export function PixelFurniCanvas({
   );
 }
 
+/**
+ * Memoized PNG <img> preview powered by getItemPreviewImage for Catalogue, Inventory, Trading & Housekeeping.
+ */
+export function FurniPreviewImg({
+  itemType,
+  alt,
+  state = '1',
+  size = 56,
+  className = '',
+}: {
+  itemType: string;
+  alt?: string;
+  state?: string;
+  size?: number;
+  className?: string;
+}) {
+  const src = useMemo(() => getItemPreviewImage(itemType, state), [itemType, state]);
+  return (
+    <img
+      src={src}
+      alt={alt ?? itemType}
+      className={`pixelated object-contain select-none ${className}`}
+      style={{ width: size, height: size }}
+      draggable={false}
+    />
+  );
+}
+
 export function PixelPetCanvas({
   species,
   dir = 0,
@@ -175,21 +208,21 @@ export function PixelBadge({
 }) {
   const colors =
     code === 'ADM'
-      ? { bg: '#9e1b1b', border: '#5c0a0a', text: '#fef08a' }
+      ? { bg: '#9e1b1b', border: '#000000', text: '#fef08a' }
       : code === 'MOD'
-      ? { bg: '#1d4ed8', border: '#1e3a8a', text: '#ffffff' }
+      ? { bg: '#1d4ed8', border: '#000000', text: '#ffffff' }
       : code === 'EVT'
-      ? { bg: '#7c3aed', border: '#4c1d95', text: '#fde047' }
+      ? { bg: '#7c3aed', border: '#000000', text: '#fde047' }
       : code === 'VIP'
-      ? { bg: '#0d9488', border: '#115e59', text: '#ffffff' }
+      ? { bg: '#0d9488', border: '#000000', text: '#ffffff' }
       : code === 'USR'
-      ? { bg: '#64748b', border: '#334155', text: '#ffffff' }
-      : { bg: '#eab308', border: '#854d0e', text: '#1c1917' };
+      ? { bg: '#64748b', border: '#000000', text: '#ffffff' }
+      : { bg: '#eab308', border: '#000000', text: '#1c1917' };
 
   return (
     <span
       title={label ?? code}
-      className="inline-flex items-center justify-center px-1.5 py-0.5 font-pixel text-[10px] leading-none rounded border-2 shadow-sm select-none whitespace-nowrap"
+      className="inline-flex items-center justify-center px-1.5 py-0.5 font-pixel text-[9px] leading-none rounded-[2px] border select-none whitespace-nowrap"
       style={{
         backgroundColor: colors.bg,
         borderColor: colors.border,

@@ -79,6 +79,7 @@ import {
   getPetSprite,
 } from '../../game/pixelSprites';
 import { soundEngine } from '../../game/soundEngine';
+import { supabase } from '../../lib/supabase';
 import type {
   AvatarPose,
   BanzaiTeam,
@@ -93,6 +94,7 @@ import type {
   PlacedFurni,
   PlayerProfileRecord,
   PlayerState,
+  RemotePlayerState,
   RoomDef,
   RoomFloorTheme,
   RoomWallTheme,
@@ -129,6 +131,11 @@ interface HotelClientProps {
   onToggleMute: () => void;
   onBackToCms: () => void;
   onSwitchRoom: (roomId: string) => void;
+  onCreateRoom?: (params: {
+    caption: string;
+    description: string;
+    modelName: string;
+  }) => Promise<{ ok: boolean; message: string }>;
   onBuyCatalogueItem: (
     furniId: string,
     quantity?: number,
@@ -153,7 +160,9 @@ interface HotelClientProps {
   ) => { ok: boolean; message: string };
   onRotateFurni: (roomId: string, uid: string) => void;
   onPickupFurni: (roomId: string, uid: string) => void;
+  onPickupAllFurni?: (roomId: string) => number;
   onToggleFurniState: (roomId: string, uid: string, nextState: number) => void;
+  onRefreshRoomFurni?: (roomId?: string) => void;
   onUnlockBadge?: (badgeId: string) => void;
   moderationState: RoomModerationState;
   onKickUser: (roomId: string, npc: HabboNPC) => void;
@@ -178,12 +187,18 @@ interface SimParticle {
 interface SelectedProfile {
   id: string;
   isSelf?: boolean;
+  isRemotePlayer?: boolean;
   npc?: HabboNPC;
   name: string;
   motto: string;
   look: LookConfig;
   badge?: string;
   badges: string[];
+}
+
+interface RemotePlayerSim extends RemotePlayerState {
+  path: Point2D[];
+  targetPose: AvatarPose;
 }
 
 interface PetSimState {
@@ -271,6 +286,7 @@ export function HotelClient({
   onToggleMute,
   onBackToCms,
   onSwitchRoom,
+  onCreateRoom,
   onBuyCatalogueItem,
   onBuyPet,
   onSummonPetsToRoom,
@@ -280,7 +296,9 @@ export function HotelClient({
   onPlaceFurni,
   onRotateFurni,
   onPickupFurni,
+  onPickupAllFurni,
   onToggleFurniState,
+  onRefreshRoomFurni,
   onUnlockBadge,
   moderationState,
   onKickUser,
@@ -291,6 +309,15 @@ export function HotelClient({
 }: HotelClientProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
+  const sessionIdRef = useRef<string>(
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `sess-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  );
+  const roomChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const roomChannelSubscribedRef = useRef(false);
+  const lastPresenceSigRef = useRef('');
+  const [remotePlayersCount, setRemotePlayersCount] = useState(0);
 
   const [chatText, setChatText] = useState('');
   const [chatMode, setChatMode] = useState<ChatDeliveryMode>('say');
@@ -359,7 +386,15 @@ export function HotelClient({
   const roomPets: OwnedPet[] = (player.pets ?? []).filter((p) => p.roomId === currentRoom.id);
   const bannedIds = new Set(moderationState.bannedByRoom[currentRoom.id] ?? []);
   const bannedRoomNpcs = npcs.filter((n) => n.roomId === currentRoom.id && bannedIds.has(n.id));
-  const canEditRoom = currentRoom.id === 'my_room' || player.role === 'admin' || player.rank >= 4;
+  const canEditRoom =
+    currentRoom.owner.toLowerCase() === player.username.toLowerCase() ||
+    currentRoom.id === 'my_room' ||
+    player.role === 'admin' ||
+    player.rank >= 4;
+  const isBanzaiRoom =
+    currentRoom.modelName === 'model_banzai' ||
+    currentRoom.id === 'battle_banzai' ||
+    currentRoom.numericId === 3;
   const canModerateRoom = isRoomOwnerOrAdmin(currentRoom, player);
 
   // Enable soundEngine only while HotelClient is mounted
@@ -388,6 +423,7 @@ export function HotelClient({
     keysHeld: new Set<string>(),
     keyStepCooldown: 0,
     petSims: {} as Record<string, PetSimState>,
+    remotePlayers: {} as Record<string, RemotePlayerSim>,
     particles: Array.from({ length: PARTICLE_POOL_SIZE }, (): SimParticle => ({
       active: false,
       x: 0,
@@ -426,6 +462,7 @@ export function HotelClient({
     carryItem,
     moonwalk,
     onAwardBanzaiReward,
+    onRefreshRoomFurni,
   });
   latestRef.current = {
     player,
@@ -440,6 +477,7 @@ export function HotelClient({
     carryItem,
     moonwalk,
     onAwardBanzaiReward,
+    onRefreshRoomFurni,
   };
 
   const showToast = useCallback((msg: string) => {
@@ -490,6 +528,268 @@ export function HotelClient({
     },
     []
   );
+
+  const buildLocalPresenceSnapshot = useCallback(
+    (overrides?: {
+      targetX?: number;
+      targetY?: number;
+      pose?: AvatarPose;
+      carryItem?: CarryItemId;
+      moonwalk?: boolean;
+      dir?: Direction;
+    }): RemotePlayerState => {
+      const sim = simRef.current;
+      const curX = Math.round(sim.px);
+      const curY = Math.round(sim.py);
+      const pBadge =
+        player.rank >= 5
+          ? 'ADM'
+          : player.rank === 4
+          ? 'MOD'
+          : player.rank === 3
+          ? 'EVT'
+          : player.hcDays > 0
+          ? 'HC'
+          : undefined;
+      return {
+        sessionId: sessionIdRef.current,
+        username: player.username,
+        motto: player.motto,
+        look: player.look,
+        x: curX,
+        y: curY,
+        targetX: overrides?.targetX ?? curX,
+        targetY: overrides?.targetY ?? curY,
+        dir: overrides?.dir ?? sim.dir,
+        pose: overrides?.pose ?? sim.pose,
+        carryItem: overrides?.carryItem ?? carryItem,
+        moonwalk: overrides?.moonwalk ?? moonwalk,
+        badge: pBadge,
+        badges: player.unlockedBadges,
+        rank: player.rank,
+        updatedAt: Date.now(),
+      };
+    },
+    [carryItem, moonwalk, player]
+  );
+
+  const broadcastAvatarMove = useCallback(
+    (overrides?: {
+      targetX?: number;
+      targetY?: number;
+      pose?: AvatarPose;
+      carryItem?: CarryItemId;
+      moonwalk?: boolean;
+      dir?: Direction;
+    }) => {
+      const ch = roomChannelRef.current;
+      if (!ch || !roomChannelSubscribedRef.current) return;
+      const snapshot = buildLocalPresenceSnapshot(overrides);
+      ch.send({ type: 'broadcast', event: 'avatar:move', payload: snapshot }).catch(() => {});
+      ch.track(snapshot).catch(() => {});
+    },
+    [buildLocalPresenceSnapshot]
+  );
+
+  const broadcastChatMessage = useCallback(
+    (text: string, opts?: { mode?: ChatDeliveryMode; bubbleStyle?: ChatBubbleStyle }) => {
+      const ch = roomChannelRef.current;
+      if (!ch || !roomChannelSubscribedRef.current) return;
+      ch.send({
+        type: 'broadcast',
+        event: 'avatar:chat',
+        payload: {
+          sessionId: sessionIdRef.current,
+          username: player.username,
+          look: player.look,
+          text,
+          mode: opts?.mode ?? 'say',
+          bubbleStyle: opts?.bubbleStyle ?? 'classic',
+        },
+      }).catch(() => {});
+    },
+    [player.look, player.username]
+  );
+
+  // Supabase Realtime Multiplayer Presence & Broadcast per Room
+  useEffect(() => {
+    const roomId = currentRoom.id;
+    const mySessionId = sessionIdRef.current;
+    simRef.current.remotePlayers = {};
+    setRemotePlayersCount(0);
+    roomChannelSubscribedRef.current = false;
+
+    const channel = supabase.channel(`pixl-room:${roomId}`, {
+      config: {
+        presence: { key: mySessionId },
+        broadcast: { self: false },
+      },
+    });
+
+    const syncPresenceMap = () => {
+      const state = channel.presenceState<RemotePlayerState>();
+      const existing = simRef.current.remotePlayers;
+      const nextMap: Record<string, RemotePlayerSim> = {};
+
+      for (const [key, presences] of Object.entries(state)) {
+        if (key === mySessionId || !Array.isArray(presences) || presences.length === 0) continue;
+        const p = presences[presences.length - 1];
+        if (!p || p.sessionId === mySessionId) continue;
+
+        const prev = existing[p.sessionId];
+        if (prev) {
+          nextMap[p.sessionId] = {
+            ...prev,
+            username: p.username,
+            motto: p.motto,
+            look: p.look,
+            badge: p.badge,
+            badges: p.badges,
+            rank: p.rank,
+          };
+        } else {
+          const roomDef = latestRef.current.currentRoom;
+          const furniList = latestRef.current.currentFurni;
+          const initPath =
+            p.targetX !== p.x || p.targetY !== p.y
+              ? findPath(roomDef, furniList, p.x, p.y, p.targetX, p.targetY)
+              : [];
+          nextMap[p.sessionId] = {
+            ...p,
+            path: initPath,
+            targetPose: p.pose,
+          };
+        }
+      }
+
+      simRef.current.remotePlayers = nextMap;
+      setRemotePlayersCount(Object.keys(nextMap).length);
+    };
+
+    channel
+      .on('presence', { event: 'sync' }, syncPresenceMap)
+      .on('presence', { event: 'join' }, syncPresenceMap)
+      .on('presence', { event: 'leave' }, syncPresenceMap)
+      .on('broadcast', { event: 'avatar:move' }, ({ payload }) => {
+        const p = payload as RemotePlayerState | null;
+        if (!p || !p.sessionId || p.sessionId === mySessionId) return;
+
+        const existing = simRef.current.remotePlayers[p.sessionId];
+        const roomDef = latestRef.current.currentRoom;
+        const furniList = latestRef.current.currentFurni;
+
+        if (!existing) {
+          const path =
+            p.targetX !== p.x || p.targetY !== p.y
+              ? findPath(roomDef, furniList, p.x, p.y, p.targetX, p.targetY)
+              : [];
+          simRef.current.remotePlayers[p.sessionId] = {
+            ...p,
+            path,
+            targetPose: p.pose,
+          };
+          setRemotePlayersCount(Object.keys(simRef.current.remotePlayers).length);
+          return;
+        }
+
+        const curTileX = Math.round(existing.x);
+        const curTileY = Math.round(existing.y);
+        let nextPath = existing.path;
+        if (p.targetX !== curTileX || p.targetY !== curTileY) {
+          const computed = findPath(roomDef, furniList, curTileX, curTileY, p.targetX, p.targetY);
+          if (computed.length > 0) {
+            nextPath = computed;
+          } else {
+            existing.x = p.targetX;
+            existing.y = p.targetY;
+            nextPath = [];
+          }
+        } else {
+          nextPath = [];
+        }
+
+        simRef.current.remotePlayers[p.sessionId] = {
+          ...existing,
+          username: p.username,
+          motto: p.motto,
+          look: p.look,
+          targetX: p.targetX,
+          targetY: p.targetY,
+          dir: p.dir,
+          pose: nextPath.length > 0 ? 'walk' : p.pose,
+          targetPose: p.pose,
+          carryItem: p.carryItem,
+          moonwalk: p.moonwalk,
+          badge: p.badge,
+          badges: p.badges,
+          rank: p.rank,
+          updatedAt: p.updatedAt,
+          path: nextPath,
+        };
+      })
+      .on('broadcast', { event: 'avatar:chat' }, ({ payload }) => {
+        const chat = payload as {
+          sessionId?: string;
+          username?: string;
+          look?: LookConfig;
+          text?: string;
+          mode?: ChatDeliveryMode;
+          bubbleStyle?: ChatBubbleStyle;
+        } | null;
+        if (!chat || !chat.sessionId || chat.sessionId === mySessionId || !chat.text) return;
+        pushBubble(
+          chat.sessionId,
+          chat.username || 'Guest',
+          chat.look || latestRef.current.player.look,
+          chat.text,
+          { mode: chat.mode ?? 'say', bubbleStyle: chat.bubbleStyle ?? 'classic' }
+        );
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          roomChannelSubscribedRef.current = true;
+          const snap = buildLocalPresenceSnapshot();
+          lastPresenceSigRef.current = JSON.stringify({
+            look: snap.look,
+            motto: snap.motto,
+            carryItem: snap.carryItem,
+            moonwalk: snap.moonwalk,
+          });
+          channel
+            .track(snap)
+            .then(() => {
+              syncPresenceMap();
+            })
+            .catch(() => {});
+          latestRef.current.onRefreshRoomFurni?.(roomId);
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          roomChannelSubscribedRef.current = false;
+        }
+      });
+
+    roomChannelRef.current = channel;
+
+    return () => {
+      roomChannelSubscribedRef.current = false;
+      roomChannelRef.current = null;
+      channel.untrack().catch(() => {});
+      supabase.removeChannel(channel);
+    };
+  }, [currentRoom.id, pushBubble]);
+
+  // Re-broadcast presence whenever local look, motto, carryItem, or moonwalk actually changes
+  useEffect(() => {
+    if (!roomChannelRef.current || !roomChannelSubscribedRef.current) return;
+    const sig = JSON.stringify({
+      look: player.look,
+      motto: player.motto,
+      carryItem,
+      moonwalk,
+    });
+    if (sig === lastPresenceSigRef.current) return;
+    lastPresenceSigRef.current = sig;
+    broadcastAvatarMove();
+  }, [player.look, player.motto, carryItem, moonwalk, broadcastAvatarMove]);
 
   const handleSelectTrax = useCallback(
     (trackIndex: number | null) => {
@@ -725,6 +1025,7 @@ export function HotelClient({
           if (isTileWalkable(room, furni, tx, ty, true)) {
             sim.path = [{ x: tx, y: ty }];
             sim.keyStepCooldown = 0.18;
+            broadcastAvatarMove({ targetX: tx, targetY: ty, pose: 'walk' });
           }
         }
       }
@@ -761,14 +1062,48 @@ export function HotelClient({
               sim.pose = 'sit';
               sim.dir = seat.dir;
               setPlayerPoseUI('sit');
+              broadcastAvatarMove({ targetX: Math.round(sim.px), targetY: Math.round(sim.py), pose: 'sit', dir: seat.dir });
             } else {
               sim.pose = 'stand';
               setPlayerPoseUI('stand');
+              broadcastAvatarMove({ targetX: Math.round(sim.px), targetY: Math.round(sim.py), pose: 'stand' });
             }
           }
         } else {
           sim.px += (dx / dist) * moveDist;
           sim.py += (dy / dist) * moveDist;
+        }
+      }
+
+      // Smoothly advance remote multiplayer players along their paths
+      for (const rp of Object.values(sim.remotePlayers)) {
+        if (rp.path.length > 0) {
+          const target = rp.path[0];
+          const dx = target.x - rp.x;
+          const dy = target.y - rp.y;
+          const dist = Math.hypot(dx, dy);
+          const speed = 3.6;
+          const naturalDir = deltaToDirection(dx, dy, rp.dir);
+          rp.dir = rp.moonwalk ? (((naturalDir + 2) % 4) as Direction) : naturalDir;
+          rp.pose = 'walk';
+          const moveDist = speed * dt;
+          if (dist <= moveDist) {
+            rp.x = target.x;
+            rp.y = target.y;
+            rp.path.shift();
+            if (rp.path.length === 0) {
+              const seat = getSeatAtTile(furni, Math.round(rp.x), Math.round(rp.y));
+              if (seat) {
+                rp.pose = 'sit';
+                rp.dir = seat.dir;
+              } else {
+                rp.pose = rp.targetPose === 'walk' ? 'stand' : rp.targetPose;
+              }
+            }
+          } else {
+            rp.x += (dx / dist) * moveDist;
+            rp.y += (dy / dist) * moveDist;
+          }
         }
       }
 
@@ -843,9 +1178,11 @@ export function HotelClient({
         }
       }
 
-      // Battle Banzai Arena simulation (when in battle_banzai & match active)
+      // Battle Banzai Arena simulation (when in model_banzai & match active)
       const bz = banzaiRef.current;
-      if (room.id === 'battle_banzai' && bz.active) {
+      const roomIsBanzai =
+        room.modelName === 'model_banzai' || room.id === 'battle_banzai' || room.numericId === 3;
+      if (roomIsBanzai && bz.active) {
         bz.timeLeft = Math.max(0, bz.timeLeft - dt);
 
         // Player tile capture
@@ -1017,7 +1354,7 @@ export function HotelClient({
           const isHovered = sim.hoverTile?.x === x && sim.hoverTile?.y === y;
           drawIsoFloorTile(ctx, pos.x, pos.y, x, y, room.floorTheme, isHovered);
 
-          if (room.id === 'battle_banzai' && isBanzaiTile(x, y)) {
+          if (roomIsBanzai && isBanzaiTile(x, y)) {
             const tileState = bz.tiles[banzaiTileKey(x, y)] ?? { level: 0, team: null };
             drawBanzaiTileOverlay(ctx, pos.x, pos.y, tileState, sim.animTick);
           }
@@ -1117,7 +1454,7 @@ export function HotelClient({
       }
 
       // Battle Banzai Arena Bot Opponents
-      if (room.id === 'battle_banzai' && bz.active) {
+      if (roomIsBanzai && bz.active) {
         for (const bot of [bz.bots.red, bz.bots.yellow]) {
           const pos = gridToScreen(bot.x, bot.y, originX, originY);
           drawList.push({
@@ -1139,6 +1476,34 @@ export function HotelClient({
             },
           });
         }
+      }
+
+      // Remote live multiplayer avatars in the same room
+      for (const rp of Object.values(sim.remotePlayers)) {
+        const pos = gridToScreen(rp.x, rp.y, originX, originY);
+        drawList.push({
+          depth: rp.x + rp.y + 0.088,
+          draw: () => {
+            const sprite = getAvatarSprite(rp.look, rp.dir, rp.pose, sim.animTick);
+            const seatOffset = rp.pose === 'sit' ? -5 : 0;
+            ctx.drawImage(sprite, Math.round(pos.x - 22), Math.round(pos.y + 16 - 66 + seatOffset));
+
+            if (rp.carryItem && rp.carryItem !== 'none') {
+              const cDef = getCarryItemDef(rp.carryItem as CarryItemId);
+              const hx = Math.round(pos.x + (rp.dir === 1 || rp.dir === 2 ? -10 : 6));
+              const hy = Math.round(pos.y - 18 + seatOffset);
+              ctx.fillStyle = '#1b1922';
+              ctx.fillRect(hx - 1, hy - 1, 7, 9);
+              ctx.fillStyle = cDef.color;
+              ctx.fillRect(hx, hy, 5, 7);
+              ctx.fillStyle = cDef.accentColor;
+              ctx.fillRect(hx + 1, hy - 2, 3, 2);
+            }
+
+            const label = rp.badge ? `[${rp.badge}] ${rp.username}` : rp.username;
+            drawNameTag(pos.x, pos.y - 54 + seatOffset, label, '#38bdf8');
+          },
+        });
       }
 
       // Player avatar (+ Carry Handitem rendering!)
@@ -1267,7 +1632,7 @@ export function HotelClient({
       cancelAnimationFrame(rafId);
       ro.disconnect();
     };
-  }, [pushBubble, showToast, spawnParticles]);
+  }, [broadcastAvatarMove, pushBubble, showToast, spawnParticles]);
 
   const handleCanvasPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -1334,6 +1699,29 @@ export function HotelClient({
       const pos = gridToScreen(ax, ay, originX, originY);
       return Math.abs(sx - pos.x) <= 22 && sy >= pos.y - 54 && sy <= pos.y + 18;
     };
+
+    const clickedRemote = Object.values(sim.remotePlayers).find(
+      (rp) => (Math.round(rp.x) === tile.x && Math.round(rp.y) === tile.y) || isHitOnSprite(rp.x, rp.y)
+    );
+    if (clickedRemote) {
+      soundEngine.playClick();
+      const matchedDir = directory.find(
+        (d) => d.name.toLowerCase() === clickedRemote.username.toLowerCase()
+      );
+      setSelectedProfile(null);
+      setSelectedPetId(null);
+      setInspectedTrophy(null);
+      setAvatarActionMenu({
+        id: matchedDir?.id ?? clickedRemote.sessionId,
+        isRemotePlayer: true,
+        name: clickedRemote.username,
+        motto: clickedRemote.motto,
+        look: clickedRemote.look,
+        badge: clickedRemote.badge,
+        badges: clickedRemote.badges ?? ['badge_checkin'],
+      });
+      return;
+    }
 
     const clickedNpc = roomNpcs.find(
       (n) => (n.x === tile.x && n.y === tile.y) || isHitOnSprite(n.x, n.y)
@@ -1495,6 +1883,7 @@ export function HotelClient({
     const path = findPath(currentRoom, currentFurni, sim.px, sim.py, tile.x, tile.y);
     if (path.length > 0) {
       sim.path = path;
+      broadcastAvatarMove({ targetX: tile.x, targetY: tile.y, pose: 'walk' });
       setAvatarActionMenu(null);
       setSelectedProfile(null);
       setSelectedFurniUid(null);
@@ -1536,21 +1925,25 @@ export function HotelClient({
         sim.pose = 'wave';
         sim.waveTimer = 1.6;
         setPlayerPoseUI('wave');
+        broadcastAvatarMove({ pose: 'wave' });
       } else if (pose === 'dance') {
         const next = sim.pose === 'dance' ? 'stand' : 'dance';
         sim.pose = next;
         setPlayerPoseUI(next);
+        broadcastAvatarMove({ pose: next });
         if (next === 'dance') onUnlockBadge?.('badge_dj');
       } else if (pose === 'sit') {
         const next = sim.pose === 'sit' ? 'stand' : 'sit';
         sim.pose = next;
         setPlayerPoseUI(next);
+        broadcastAvatarMove({ pose: next });
       } else {
         sim.pose = 'stand';
         setPlayerPoseUI('stand');
+        broadcastAvatarMove({ pose: 'stand' });
       }
     },
-    [onUnlockBadge]
+    [broadcastAvatarMove, onUnlockBadge]
   );
 
   const executeChatOrCommand = useCallback(
@@ -1588,13 +1981,12 @@ export function HotelClient({
         }
         if (parsedCmd.type === 'roll') {
           soundEngine.playDiceRoll();
-          pushBubble(
-            'player',
-            player.username,
-            player.look,
-            `*rolls a ${parsedCmd.rolled} on the PIXL Dice!*`,
-            { mode: chatMode, bubbleStyle }
-          );
+          const rollText = `*rolls a ${parsedCmd.rolled} on the PIXL Dice!*`;
+          pushBubble('player', player.username, player.look, rollText, {
+            mode: chatMode,
+            bubbleStyle,
+          });
+          broadcastChatMessage(rollText, { mode: chatMode, bubbleStyle });
           return;
         }
         if (parsedCmd.type === 'furni_chooser') {
@@ -1626,9 +2018,14 @@ export function HotelClient({
             showToast('You can only :pickall in rooms you own or manage.');
             return;
           }
-          const count = currentFurni.length;
-          for (const item of currentFurni) {
-            onPickupFurni(currentRoom.id, item.uid);
+          let count = 0;
+          if (onPickupAllFurni) {
+            count = onPickupAllFurni(currentRoom.id);
+          } else {
+            count = currentFurni.length;
+            for (const item of currentFurni) {
+              onPickupFurni(currentRoom.id, item.uid);
+            }
           }
           soundEngine.playFurniPickup();
           showToast(`Picked up ${count} furniture items back into your Inventory!`);
@@ -1641,6 +2038,7 @@ export function HotelClient({
         mode: chatMode,
         bubbleStyle,
       });
+      broadcastChatMessage(trimmed, { mode: chatMode, bubbleStyle });
       onUnlockBadge?.('badge_social');
 
       // 3. Check Pet Chat Commands (sit, lay, jump, speak, sitz, platz, spring)
@@ -1679,11 +2077,13 @@ export function HotelClient({
       }
     },
     [
+      broadcastChatMessage,
       bubbleStyle,
       canEditRoom,
       chatMode,
       currentFurni,
       currentRoom.id,
+      onPickupAllFurni,
       onPickupFurni,
       onUnlockBadge,
       player.look,
@@ -1827,6 +2227,15 @@ export function HotelClient({
                   <DoorOpen className="h-3.5 w-3.5" />
                   Rooms
                 </button>
+
+                <span
+                  data-testid="hud-live-players-count"
+                  title="Live players in this room via Supabase Realtime"
+                  className="inline-flex items-center gap-1 rounded border border-emerald-400 bg-emerald-50 px-2 py-1 font-mono-num text-[11px] font-extrabold text-emerald-800"
+                >
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  {1 + remotePlayersCount} Live
+                </span>
               </div>
 
               {/* Moodlight / Room Dimmer Button */}
@@ -1935,7 +2344,7 @@ export function HotelClient({
           </div>
 
           {/* BATTLE BANZAI ARENA SCOREBOARD HUD */}
-          {currentRoom.id === 'battle_banzai' && (
+          {isBanzaiRoom && (
             <div
               data-testid="banzai-hud"
               className="pointer-events-auto mx-auto flex max-w-full flex-wrap items-center justify-center gap-1.5 sm:gap-3 rounded-lg border-2 border-[#22d3ee] bg-[#0f172a]/95 px-2.5 py-1.5 sm:px-4 sm:py-2 text-white shadow-xl"
@@ -1992,7 +2401,7 @@ export function HotelClient({
         )}
 
         {/* COMPACT AVATAR INTERACTION MENU (Wave / Respect / Pass Drink / Profile / Trade) */}
-        {avatarActionMenu && avatarActionMenu.npc && (
+        {avatarActionMenu && (avatarActionMenu.npc || avatarActionMenu.isRemotePlayer) && (
           <div
             data-testid="avatar-interaction-menu"
             className="pointer-events-auto fixed bottom-20 right-4 z-30 w-64 max-w-[calc(100vw-2rem)] client-window overflow-hidden"
@@ -2025,19 +2434,26 @@ export function HotelClient({
                   type="button"
                   data-testid="avatar-menu-wave"
                   onClick={() => {
-                    const target = avatarActionMenu.npc!;
+                    const targetNpc = avatarActionMenu.npc;
+                    const targetName = avatarActionMenu.name;
                     triggerAction('wave');
                     setAvatarActionMenu(null);
-                    setTimeout(() => {
-                      if (simRef.current.roomId === currentRoom.id) {
-                        pushBubble(
-                          target.id,
-                          target.name,
-                          target.look,
-                          `*waves back warmly at ${player.username}!*`
-                        );
-                      }
-                    }, 350);
+                    if (targetNpc) {
+                      setTimeout(() => {
+                        if (simRef.current.roomId === currentRoom.id) {
+                          pushBubble(
+                            targetNpc.id,
+                            targetNpc.name,
+                            targetNpc.look,
+                            `*waves back warmly at ${player.username}!*`
+                          );
+                        }
+                      }, 350);
+                    } else {
+                      const waveLine = `*waves at ${targetName}!*`;
+                      pushBubble('player', player.username, player.look, waveLine);
+                      broadcastChatMessage(waveLine);
+                    }
                   }}
                   className="habbo-btn-blue inline-flex items-center justify-center gap-1.5 rounded px-3 py-1.5 text-xs font-bold cursor-pointer"
                 >
@@ -2049,8 +2465,7 @@ export function HotelClient({
                   data-testid="avatar-menu-respect"
                   disabled={respectLeft <= 0}
                   onClick={() => {
-                    const target = avatarActionMenu.npc!;
-                    handleGiveRespect(target.name, target);
+                    handleGiveRespect(avatarActionMenu.name, avatarActionMenu.npc);
                     setAvatarActionMenu(null);
                   }}
                   className="inline-flex items-center justify-center gap-1.5 rounded border border-rose-400 bg-rose-50 px-3 py-1.5 text-xs font-extrabold text-rose-800 hover:bg-rose-100 disabled:opacity-50 cursor-pointer"
@@ -2064,27 +2479,27 @@ export function HotelClient({
                     type="button"
                     data-testid="avatar-menu-pass-drink"
                     onClick={() => {
-                      const target = avatarActionMenu.npc!;
+                      const targetNpc = avatarActionMenu.npc;
+                      const targetName = avatarActionMenu.name;
                       const itemName = getCarryItemDef(carryItem).name;
                       soundEngine.playCreditChime();
                       setCarryItem('none');
                       setAvatarActionMenu(null);
-                      pushBubble(
-                        'player',
-                        player.username,
-                        player.look,
-                        `*hands ${itemName} to ${target.name}*`
-                      );
-                      setTimeout(() => {
-                        if (simRef.current.roomId === currentRoom.id) {
-                          pushBubble(
-                            target.id,
-                            target.name,
-                            target.look,
-                            `*sips the ${itemName}* Cheers, ${player.username}!`
-                          );
-                        }
-                      }, 400);
+                      const passLine = `*hands ${itemName} to ${targetName}*`;
+                      pushBubble('player', player.username, player.look, passLine);
+                      broadcastChatMessage(passLine);
+                      if (targetNpc) {
+                        setTimeout(() => {
+                          if (simRef.current.roomId === currentRoom.id) {
+                            pushBubble(
+                              targetNpc.id,
+                              targetNpc.name,
+                              targetNpc.look,
+                              `*sips the ${itemName}* Cheers, ${player.username}!`
+                            );
+                          }
+                        }, 400);
+                      }
                     }}
                     className="inline-flex items-center justify-center gap-1.5 rounded border border-amber-400 bg-amber-50 px-3 py-1.5 text-xs font-extrabold text-amber-900 hover:bg-amber-100 cursor-pointer"
                   >
@@ -2105,18 +2520,20 @@ export function HotelClient({
                 >
                   <User className="h-3.5 w-3.5" /> View Profile
                 </button>
-                <button
-                  type="button"
-                  data-testid="avatar-menu-trade"
-                  onClick={() => {
-                    soundEngine.playClick();
-                    setTradingPartner(avatarActionMenu.npc!);
-                    setAvatarActionMenu(null);
-                  }}
-                  className="habbo-btn-gold inline-flex items-center justify-center gap-1.5 rounded px-3 py-1.5 text-xs font-extrabold cursor-pointer"
-                >
-                  <ArrowLeftRight className="h-3.5 w-3.5" /> Trade (Tauschen)
-                </button>
+                {avatarActionMenu.npc && (
+                  <button
+                    type="button"
+                    data-testid="avatar-menu-trade"
+                    onClick={() => {
+                      soundEngine.playClick();
+                      setTradingPartner(avatarActionMenu.npc!);
+                      setAvatarActionMenu(null);
+                    }}
+                    className="habbo-btn-gold inline-flex items-center justify-center gap-1.5 rounded px-3 py-1.5 text-xs font-extrabold cursor-pointer"
+                  >
+                    <ArrowLeftRight className="h-3.5 w-3.5" /> Trade (Tauschen)
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -2411,9 +2828,9 @@ export function HotelClient({
         )}
 
         {/* BOTTOM PIXL TOOLBAR & CHAT INPUT */}
-        <div className="pointer-events-auto mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-1.5 sm:gap-2 client-window px-2.5 py-2 sm:px-3">
+        <div className="pointer-events-auto mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 client-window px-2.5 py-2 sm:px-3">
           {/* Action Buttons + :commands Trigger */}
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1 shrink-0">
             <button
               type="button"
               onClick={() => triggerAction('wave')}
@@ -2464,7 +2881,10 @@ export function HotelClient({
           </div>
 
           {/* Speech Bar with Chat Mode (Say/Shout/Whisper) & Bubble Color */}
-          <form onSubmit={handleSendChat} className="flex flex-1 min-w-[200px] items-center gap-1">
+          <form
+            onSubmit={handleSendChat}
+            className="flex min-w-[240px] flex-1 basis-[280px] items-center gap-1 overflow-hidden"
+          >
             <select
               aria-label="Chat delivery mode"
               data-testid="chat-mode-select"
@@ -2502,7 +2922,7 @@ export function HotelClient({
               onChange={(e) => setChatText(e.target.value)}
               maxLength={96}
               placeholder="Chat or type :commands, :moonwalk, :furni, :cola, sit..."
-              className="w-full rounded border-2 border-stone-400 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:border-[#2b7de9] focus:outline-none"
+              className="min-w-0 flex-1 rounded border-2 border-stone-400 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:border-[#2b7de9] focus:outline-none"
             />
             <button
               type="submit"
@@ -2514,7 +2934,7 @@ export function HotelClient({
           </form>
 
           {/* Friends, Catalogue, Inventory & Admin Tools */}
-          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-1.5 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center justify-center lg:justify-end gap-1.5 w-full lg:w-auto shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -2641,6 +3061,7 @@ export function HotelClient({
             soundEngine.playEnterHotel();
             onSwitchRoom(rid);
           }}
+          onCreateRoom={onCreateRoom}
           onClose={() => setShowNavigator(false)}
         />
       )}

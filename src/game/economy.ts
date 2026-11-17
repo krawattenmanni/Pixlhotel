@@ -1,4 +1,4 @@
-import { FURNI_CATALOGUE } from './data';
+import { findFurniDef } from './data';
 import type {
   Direction,
   InventoryEntry,
@@ -123,40 +123,47 @@ export function buyCatalogueItem(
   player: PlayerState,
   furniId: string,
   rawQty = 1,
-  engravingMessage?: string
+  engravingMessage?: string,
+  priceOverride?: { costCredits?: number; costDuckets?: number; amount?: number; name?: string }
 ): VoucherResult {
-  const def = FURNI_CATALOGUE.find((f) => f.id === furniId);
+  const def = findFurniDef(furniId);
   if (!def) {
     return { ok: false, message: 'Catalogue item not found.', player };
   }
-  const quantity = Math.max(1, Math.min(20, Math.floor(rawQty)));
-  const totalCredits = def.costCredits * quantity;
-  const totalDuckets = def.costDuckets * quantity;
+  const unitCredits = priceOverride?.costCredits ?? def.costCredits;
+  const unitDuckets = priceOverride?.costDuckets ?? def.costDuckets;
+  const bundleAmount = Math.max(1, priceOverride?.amount ?? 1);
+  const displayName = priceOverride?.name ?? def.name;
+
+  const purchases = Math.max(1, Math.min(20, Math.floor(rawQty)));
+  const totalCredits = unitCredits * purchases;
+  const totalDuckets = unitDuckets * purchases;
+  const addedItems = purchases * bundleAmount;
 
   if (player.credits < totalCredits) {
     return {
       ok: false,
-      message: `Need ${totalCredits} Credits to purchase ${quantity}x ${def.name}.`,
+      message: `Need ${totalCredits} Credits to purchase ${addedItems}x ${displayName}.`,
       player,
     };
   }
   if (player.duckets < totalDuckets) {
     return {
       ok: false,
-      message: `Need ${totalDuckets} Duckets to purchase ${quantity}x ${def.name}.`,
+      message: `Need ${totalDuckets} Duckets to purchase ${addedItems}x ${displayName}.`,
       player,
     };
   }
 
   const nextInventory = [...player.inventory];
-  const existingIdx = nextInventory.findIndex((i) => i.furniId === furniId);
+  const existingIdx = nextInventory.findIndex((i) => i.furniId === def.id);
   if (existingIdx >= 0) {
     nextInventory[existingIdx] = {
       ...nextInventory[existingIdx],
-      quantity: nextInventory[existingIdx].quantity + quantity,
+      quantity: nextInventory[existingIdx].quantity + addedItems,
     };
   } else {
-    nextInventory.push({ furniId, quantity });
+    nextInventory.push({ furniId: def.id, quantity: addedItems });
   }
 
   let nextPendingEngravings = { ...(player.pendingEngravings ?? {}) };
@@ -169,16 +176,16 @@ export function buyCatalogueItem(
       engravedBy: player.username,
       engravedAt: new Date().toISOString().slice(0, 10),
     };
-    const queue = [...(nextPendingEngravings[furniId] ?? [])];
-    for (let i = 0; i < quantity; i++) queue.push(meta);
-    nextPendingEngravings = { ...nextPendingEngravings, [furniId]: queue };
+    const queue = [...(nextPendingEngravings[def.id] ?? [])];
+    for (let i = 0; i < addedItems; i++) queue.push(meta);
+    nextPendingEngravings = { ...nextPendingEngravings, [def.id]: queue };
   }
 
   return {
     ok: true,
     message: def.engravable
-      ? `Purchased & engraved ${quantity > 1 ? `${quantity}x ` : ''}${def.name}! Place it in a room to read the plaque.`
-      : `Purchased ${quantity > 1 ? `${quantity}x ` : ''}${def.name}! Added to your Inventory.`,
+      ? `Purchased & engraved ${addedItems > 1 ? `${addedItems}x ` : ''}${displayName}! Place it in a room to read the plaque.`
+      : `Purchased ${addedItems > 1 ? `${addedItems}x ` : ''}${displayName}! Added to your Inventory.`,
     player: {
       ...player,
       credits: player.credits - totalCredits,
@@ -203,7 +210,7 @@ export function canPlaceFurniAt(
   // Allow placing on top of walkable rugs, disallow stacking solid items on solid items
   const existing = placedFurni.filter((f) => f.x === x && f.y === y);
   for (const item of existing) {
-    const def = FURNI_CATALOGUE.find((d) => d.id === item.furniId);
+    const def = findFurniDef(item.furniId);
     if (def && !def.walkable) return false;
   }
   return true;
@@ -245,8 +252,16 @@ export function placeFurniFromInventory(
     };
   }
 
+  const consumedItemId = entry.itemIds && entry.itemIds.length > 0 ? entry.itemIds[0] : undefined;
   const nextInventory = inventory
-    .map((e) => (e.furniId === furniId ? { ...e, quantity: e.quantity - 1 } : e))
+    .map((e) => {
+      if (e.furniId !== furniId) return e;
+      return {
+        ...e,
+        quantity: e.quantity - 1,
+        itemIds: e.itemIds ? e.itemIds.slice(1) : undefined,
+      };
+    })
     .filter((e) => e.quantity > 0);
 
   let nextPending = pendingEngravings;
@@ -257,10 +272,12 @@ export function placeFurniFromInventory(
     nextPending = { ...pendingEngravings, [furniId]: queue.slice(1) };
   }
 
-  const newUid = `placed-${furniId}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  const newUid = consumedItemId
+    ? String(consumedItemId)
+    : `placed-${furniId}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
   const nextPlaced: PlacedFurni[] = [
     ...placedFurni,
-    { uid: newUid, furniId, x, y, dir, state: 1, customData },
+    { uid: newUid, itemId: consumedItemId, furniId, x, y, dir, state: 1, customData },
   ];
 
   return {
@@ -289,10 +306,29 @@ export function pickupFurniToInventory(
   const nextPlaced = placedFurni.filter((p) => p.uid !== uid);
   const nextInventory = [...inventory];
   const idx = nextInventory.findIndex((e) => e.furniId === target.furniId);
+  const returnedId =
+    typeof target.itemId === 'number'
+      ? target.itemId
+      : /^\d+$/.test(target.uid)
+      ? Number(target.uid)
+      : undefined;
+
   if (idx >= 0) {
-    nextInventory[idx] = { ...nextInventory[idx], quantity: nextInventory[idx].quantity + 1 };
+    const cur = nextInventory[idx];
+    nextInventory[idx] = {
+      ...cur,
+      quantity: cur.quantity + 1,
+      itemIds:
+        returnedId !== undefined
+          ? [...(cur.itemIds ?? []), returnedId]
+          : cur.itemIds,
+    };
   } else {
-    nextInventory.push({ furniId: target.furniId, quantity: 1 });
+    nextInventory.push({
+      furniId: target.furniId,
+      quantity: 1,
+      itemIds: returnedId !== undefined ? [returnedId] : undefined,
+    });
   }
 
   let nextPending = pendingEngravings;

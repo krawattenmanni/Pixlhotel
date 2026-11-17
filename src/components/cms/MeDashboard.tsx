@@ -10,18 +10,19 @@ import {
   DoorOpen,
   Gift,
   Heart,
+  Moon,
   Newspaper,
   PawPrint,
   RotateCw,
   Sparkles,
   Sun,
   Sunset,
-  Moon,
   Users,
   Utensils,
   X,
 } from 'lucide-react';
 import { findBadgeDefById } from '../../game/customBadges';
+import { getEquippedBadges } from '../../game/data';
 import { getPetDef } from '../../game/pets';
 import type {
   AvatarPose,
@@ -32,6 +33,7 @@ import type {
   PlayerState,
   RoomDef,
 } from '../../game/types';
+import { BadgeInfoModal } from '../BadgeInfoModal';
 import {
   PixelAvatarCanvas,
   PixelBadge,
@@ -101,6 +103,7 @@ export function MeDashboard({
 
   const [activeSlide, setActiveSlide] = useState(0);
   const [openArticle, setOpenArticle] = useState<NewsArticle | null>(null);
+  const [inspectBadgeId, setInspectBadgeId] = useState<string | null>(null);
 
   const handleMottoCommit = () => {
     onSaveMotto(mottoDraft);
@@ -133,10 +136,12 @@ export function MeDashboard({
 
   const currentNews = news[activeSlide] ?? news[0];
   const dailyClaimed = player.redeemedVouchers.includes('DAILY');
+  const equippedBadges = getEquippedBadges(player);
 
   const filteredRooms = rooms.filter((r) => {
-    if (roomFilter === 'public') return r.category === 'public' && r.id !== 'battle_banzai';
-    if (roomFilter === 'games') return r.id === 'battle_banzai';
+    const isBanzai = r.modelName === 'model_banzai' || r.id === 'battle_banzai' || r.numericId === 3;
+    if (roomFilter === 'public') return r.category === 'public' && !isBanzai;
+    if (roomFilter === 'games') return isBanzai;
     if (roomFilter === 'private') return r.category === 'private';
     return true;
   });
@@ -144,12 +149,12 @@ export function MeDashboard({
   const ownedPets = player.pets ?? [];
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
       {/* LEFT MAIN COLUMN */}
-      <div className="space-y-6 lg:col-span-8">
-        {/* HERO AVATAR CARD — Interactive PIXL Home */}
+      <div className="space-y-5 lg:col-span-8">
+        {/* HERO ME CARD — Classic 2009 HoloCMS Home Box */}
         <section className="habbo-box">
-          <div className="habbo-box-header flex flex-wrap items-center justify-between gap-2 bg-gradient-to-r from-[#1e4e79] via-[#28669c] to-[#1e4e79]">
+          <div className="habbo-box-header habbo-header-blue flex flex-wrap items-center justify-between gap-2">
             <span className="inline-flex items-center gap-2">
               <PixelBadgeSprite
                 badgeId={player.equippedBadgeId}
@@ -162,11 +167,11 @@ export function MeDashboard({
 
             <div className="flex flex-wrap items-center gap-2">
               {/* Backdrop Theme Switcher */}
-              <div className="inline-flex items-center rounded border border-white/25 bg-black/20 p-0.5 text-[10px]">
+              <div className="inline-flex items-center rounded-[2px] border border-[#000000]/50 bg-[#0f2c47] p-0.5 text-[10px]">
                 <button
                   type="button"
                   onClick={() => setBackdropTheme('sunny')}
-                  className={`inline-flex items-center gap-1 rounded px-2 py-0.5 font-bold cursor-pointer ${
+                  className={`inline-flex items-center gap-1 rounded-[2px] px-1.5 py-0.5 font-bold cursor-pointer ${
                     backdropTheme === 'sunny' ? 'bg-white text-[#0f3454]' : 'text-white/90 hover:text-white'
                   }`}
                 >
@@ -175,7 +180,7 @@ export function MeDashboard({
                 <button
                   type="button"
                   onClick={() => setBackdropTheme('sunset')}
-                  className={`inline-flex items-center gap-1 rounded px-2 py-0.5 font-bold cursor-pointer ${
+                  className={`inline-flex items-center gap-1 rounded-[2px] px-1.5 py-0.5 font-bold cursor-pointer ${
                     backdropTheme === 'sunset' ? 'bg-white text-[#9a3412]' : 'text-white/90 hover:text-white'
                   }`}
                 >
@@ -184,7 +189,7 @@ export function MeDashboard({
                 <button
                   type="button"
                   onClick={() => setBackdropTheme('starlight')}
-                  className={`inline-flex items-center gap-1 rounded px-2 py-0.5 font-bold cursor-pointer ${
+                  className={`inline-flex items-center gap-1 rounded-[2px] px-1.5 py-0.5 font-bold cursor-pointer ${
                     backdropTheme === 'starlight' ? 'bg-white text-[#1e1b4b]' : 'text-white/90 hover:text-white'
                   }`}
                 >
@@ -192,23 +197,23 @@ export function MeDashboard({
                 </button>
               </div>
 
-              <div className="flex items-center gap-1.5">
-                {player.role === 'admin' && <PixelBadge code="ADM" label="Creator & Hotel Admin" />}
+              <div className="flex items-center gap-1">
+                {player.role === 'admin' && <PixelBadge code="ADM" label="Hotel Manager" />}
                 {player.hcDays > 0 && <PixelBadge code="HC" label="PIXL Club VIP" />}
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-4 sm:p-5">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-stretch">
+          <div className="bg-white p-3.5 sm:p-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch">
               {/* Interactive Pixel-Art PIXL Hotel Rooftop Terrace Stage */}
               <div
-                className={`relative flex flex-col items-center justify-end overflow-hidden rounded-lg border px-5 pt-6 pb-3 sm:w-60 shrink-0 transition-colors ${
+                className={`relative flex flex-col items-center justify-end overflow-hidden rounded-[3px] border border-[#000000] px-4 pt-5 pb-3 sm:w-56 shrink-0 ${
                   backdropTheme === 'sunny'
-                    ? 'border-[#9cc2df] bg-gradient-to-b from-[#69c2fa] via-[#9fd9fc] to-[#d6efff]'
+                    ? 'bg-gradient-to-b from-[#69c2fa] via-[#9fd9fc] to-[#d6efff]'
                     : backdropTheme === 'sunset'
-                    ? 'border-[#f97316] bg-gradient-to-b from-[#7c2d12] via-[#ea580c] to-[#fde047]'
-                    : 'border-[#312e81] bg-gradient-to-b from-[#090d1a] via-[#1e1b4b] to-[#312e81]'
+                    ? 'bg-gradient-to-b from-[#7c2d12] via-[#ea580c] to-[#fde047]'
+                    : 'bg-gradient-to-b from-[#090d1a] via-[#1e1b4b] to-[#312e81]'
                 }`}
               >
                 <svg
@@ -220,7 +225,6 @@ export function MeDashboard({
                 >
                   {backdropTheme === 'starlight' ? (
                     <>
-                      {/* Pixel Moon & Stars */}
                       <rect x="176" y="16" width="18" height="18" fill="#fef08a" />
                       <rect x="182" y="18" width="12" height="12" fill="#1e1b4b" />
                       <rect x="24" y="20" width="3" height="3" fill="#ffffff" />
@@ -230,7 +234,6 @@ export function MeDashboard({
                     </>
                   ) : (
                     <>
-                      {/* Sun & Clouds */}
                       <rect
                         x="176"
                         y="14"
@@ -262,7 +265,6 @@ export function MeDashboard({
                       />
                     </>
                   )}
-                  {/* Distant PIXL Hotel Towers */}
                   <rect
                     x="12"
                     y="78"
@@ -284,23 +286,19 @@ export function MeDashboard({
                   <rect x="164" y="74" width="6" height="6" fill="#fef08a" />
                   <rect x="178" y="74" width="6" height="6" fill="#fef08a" />
                   <rect x="164" y="88" width="6" height="6" fill="#38bdf8" />
-                  {/* Palm Tree on Left */}
                   <rect x="24" y="102" width="6" height="44" fill="#854d0e" />
                   <rect x="8" y="96" width="18" height="6" fill="#16a34a" />
                   <rect x="28" y="96" width="18" height="6" fill="#22c55e" />
                   <rect x="14" y="90" width="26" height="6" fill="#4ade80" />
-                  {/* Classic Terracotta Brick Parapet Wall */}
                   <rect x="0" y="140" width="220" height="22" fill="#b45309" />
                   <rect x="0" y="136" width="220" height="5" fill="#e5e7eb" />
                   <rect x="8" y="144" width="14" height="5" fill="#92400e" />
                   <rect x="64" y="144" width="14" height="5" fill="#92400e" />
                   <rect x="146" y="144" width="14" height="5" fill="#92400e" />
-                  {/* Tiled Rooftop Terrace Floor */}
                   <rect x="0" y="162" width="220" height="58" fill="#e2d9c5" />
                   <rect x="0" y="162" width="220" height="4" fill="#c7bba4" />
                 </svg>
 
-                {/* Avatar standing on stage + Pose/Rotation controls */}
                 <div className="relative z-10 flex flex-col items-center w-full">
                   <PixelAvatarCanvas
                     look={player.look}
@@ -309,19 +307,18 @@ export function MeDashboard({
                     frame={0}
                     scale={2}
                   />
-                  <div className="relative -mt-2 h-4 w-28 rounded-sm border border-[#64748b] bg-gradient-to-b from-[#e2e8f0] to-[#94a3b8] shadow-sm" />
+                  <div className="relative -mt-2 h-3.5 w-24 rounded-[2px] border border-[#000000] bg-gradient-to-b from-[#e2e8f0] to-[#94a3b8]" />
 
-                  {/* Interactive Stage Pose & Rotate Bar */}
-                  <div className="mt-2.5 flex flex-wrap items-center justify-center gap-1">
+                  <div className="mt-2 flex flex-wrap items-center justify-center gap-1">
                     {(['wave', 'stand', 'dance', 'sit'] as AvatarPose[]).map((pose) => (
                       <button
                         key={pose}
                         type="button"
                         onClick={() => setStagePose(pose)}
-                        className={`rounded border px-1.5 py-0.5 text-[10px] font-bold capitalize cursor-pointer ${
+                        className={`rounded-[2px] border px-1.5 py-0.5 text-[10px] font-bold capitalize cursor-pointer ${
                           stagePose === pose
-                            ? 'border-[#0f3454] bg-[#0f3454] text-white'
-                            : 'border-[#1e4a6d]/40 bg-white/90 text-[#0f3454] hover:bg-white'
+                            ? 'border-[#000000] bg-[#1d4e78] text-white'
+                            : 'border-[#000000]/60 bg-white text-[#111827] hover:bg-[#f1f5f9]'
                         }`}
                       >
                         {pose}
@@ -332,7 +329,7 @@ export function MeDashboard({
                       onClick={() => setStageDir(((stageDir + 1) % 4) as Direction)}
                       aria-label="Rotate avatar on stage"
                       title="Rotate"
-                      className="rounded border border-[#1e4a6d]/40 bg-white/90 p-1 text-[#0f3454] hover:bg-white cursor-pointer"
+                      className="rounded-[2px] border border-[#000000]/60 bg-white p-1 text-[#111827] hover:bg-[#f1f5f9] cursor-pointer"
                     >
                       <RotateCw className="h-3 w-3" />
                     </button>
@@ -341,91 +338,134 @@ export function MeDashboard({
                   <button
                     type="button"
                     onClick={onOpenWardrobe}
-                    className="mt-1.5 rounded border border-[#1e4a6d] bg-white/95 px-2.5 py-0.5 text-[11px] font-extrabold text-[#1e4a6d] shadow-sm hover:bg-white cursor-pointer"
+                    className="habbo-btn-silver mt-1.5 px-2.5 py-0.5 text-[10px] font-bold cursor-pointer"
                   >
-                    Change Look in Wardrobe
+                    Change Look
                   </button>
                 </div>
               </div>
 
-              {/* Profile Info, Daily Check-In, Quick Badge Strip, Motto & Enter CTA */}
-              <div className="flex flex-1 min-w-0 flex-col justify-between gap-3.5">
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-start justify-between gap-2.5">
+              {/* Profile Info, Check-In CTA, 5 Equipped Badges, Motto */}
+              <div className="flex flex-1 min-w-0 flex-col justify-between gap-3">
+                <div className="space-y-2.5">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <PixelBadgeSprite
-                        badgeId={player.equippedBadgeId}
-                        unlocked
-                        size={36}
-                        customBadges={customBadges}
-                      />
+                      <button
+                        type="button"
+                        onClick={() => setInspectBadgeId(player.equippedBadgeId)}
+                        className="rounded-[2px] border border-[#000000] bg-[#fefce8] p-1 shrink-0 cursor-pointer hover:bg-[#fef08a]/50"
+                        title="Click to view badge info"
+                      >
+                        <PixelBadgeSprite
+                          badgeId={player.equippedBadgeId}
+                          unlocked
+                          size={34}
+                          customBadges={customBadges}
+                        />
+                      </button>
                       <div className="min-w-0">
-                        <h1 className="font-pixel text-xl sm:text-2xl text-[#0f3454] break-words">
+                        <h1 className="font-pixel text-lg sm:text-xl text-[#0f3454] break-words">
                           {player.username}
                         </h1>
-                        <p className="text-xs font-semibold text-slate-500">
-                          {player.role === 'admin'
-                            ? 'Hotel Manager & Founder'
-                            : 'PIXL Hotel Citizen'}{' '}
-                          · {player.unlockedBadges.length} Badges · {ownedPets.length} Pets
+                        <p className="text-[11px] font-bold text-[#475569]">
+                          {player.role === 'admin' ? 'Hotel Manager & Founder' : 'PIXL Hotel Citizen'} ·{' '}
+                          {player.unlockedBadges.length} Badges · {ownedPets.length} Pets
                         </p>
                       </div>
                     </div>
 
-                    {/* Daily Check-In Reward Button */}
+                    {/* Oversized Classic Glossy Green CHECK IN CTA */}
                     <button
                       type="button"
-                      disabled={dailyClaimed}
-                      onClick={handleClaimDaily}
-                      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-extrabold whitespace-nowrap shrink-0 ${
-                        dailyClaimed
-                          ? 'border border-emerald-300 bg-emerald-50 text-emerald-800 cursor-default'
-                          : 'habbo-btn-gold cursor-pointer'
-                      }`}
+                      onClick={() => onEnterHotel()}
+                      className="habbo-btn-green habbo-pulse px-4 py-2 font-pixel text-[11px] sm:text-xs tracking-wide cursor-pointer whitespace-nowrap shrink-0"
                     >
-                      <CalendarCheck className="h-3.5 w-3.5" />
-                      {dailyClaimed ? 'Daily Reward Claimed' : 'Claim Daily (+75c / +50d)'}
+                      ENTER PIXLHOTEL / CHECK IN
                     </button>
                   </div>
 
-                  {dailyFeedback && (
-                    <p className="rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800">
-                      {dailyFeedback.text}
-                    </p>
-                  )}
-
-                  {/* Quick-Equip Unlocked Badges Strip */}
-                  <div className="rounded-md border border-slate-200 bg-slate-50/80 px-3 py-2">
-                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-1.5">
+                  {/* Equipped 5 Badge Slots + All Unlocked Clickable Strip */}
+                  <div className="rounded-[2px] border border-[#94a3b8] bg-[#f8fafc] px-2.5 py-2">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-[#1d4e78] mb-1.5">
                       <span className="inline-flex items-center gap-1">
-                        <Award className="h-3.5 w-3.5 text-[#7c3aed]" />
-                        My Unlocked Badges (Click to Equip)
+                        <Award className="h-3.5 w-3.5 text-[#d97706]" />
+                        Equipped Badges ({equippedBadges.length}/5) — Click any badge to inspect
                       </span>
-                      <span className="font-mono-num text-[10px] text-slate-500">
-                        Active: {findBadgeDefById(player.equippedBadgeId, customBadges)?.code ?? 'HTL'}
-                      </span>
+                      <button
+                        type="button"
+                        disabled={dailyClaimed}
+                        onClick={handleClaimDaily}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold ${
+                          dailyClaimed
+                            ? 'rounded-[2px] border border-[#94a3b8] bg-[#e2e8f0] text-[#475569] cursor-default'
+                            : 'habbo-btn-gold cursor-pointer'
+                        }`}
+                      >
+                        <CalendarCheck className="h-3 w-3" />
+                        {dailyClaimed ? 'Daily Claimed' : 'Daily +75c'}
+                      </button>
                     </div>
+
+                    {dailyFeedback && (
+                      <p className="mb-1.5 rounded-[2px] border border-[#1f4f09] bg-[#ecfdf5] px-2 py-1 text-[10px] font-bold text-[#14532d]">
+                        {dailyFeedback.text}
+                      </p>
+                    )}
+
+                    {/* 5 Active Slots */}
                     <div className="flex flex-wrap items-center gap-1.5">
+                      {Array.from({ length: 5 }).map((_, idx) => {
+                        const bId = equippedBadges[idx];
+                        const def = bId ? findBadgeDefById(bId, customBadges) : null;
+                        return (
+                          <button
+                            key={`slot-${idx}`}
+                            type="button"
+                            disabled={!bId}
+                            onClick={() => bId && setInspectBadgeId(bId)}
+                            title={def ? `${def.name} [${def.code}] — Click for info` : 'Empty slot'}
+                            className={`flex h-9 w-9 items-center justify-center rounded-[2px] border ${
+                              bId
+                                ? 'border-[#000000] bg-[#dbeafe] cursor-pointer hover:bg-[#bfdbfe]'
+                                : 'border-[#cbd5e1] bg-white cursor-default'
+                            }`}
+                          >
+                            {bId ? (
+                              <PixelBadgeSprite
+                                badgeId={bId}
+                                unlocked
+                                size={26}
+                                customBadges={customBadges}
+                              />
+                            ) : (
+                              <span className="text-[9px] font-bold text-[#94a3b8]">#{idx + 1}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+
+                      <span className="mx-1 text-[#94a3b8]">|</span>
+
                       {player.unlockedBadges.map((bId) => {
                         const def = findBadgeDefById(bId, customBadges);
                         if (!def) return null;
-                        const active = player.equippedBadgeId === bId;
+                        const active = equippedBadges.includes(bId);
                         return (
                           <button
                             key={bId}
                             type="button"
-                            title={`${def.name} [${def.code}] — Click to equip`}
-                            onClick={() => onEquipBadge?.(bId)}
-                            className={`rounded border p-1 transition-all cursor-pointer ${
+                            title={`${def.name} [${def.code}] — Click to inspect or toggle slot`}
+                            onClick={() => setInspectBadgeId(bId)}
+                            className={`rounded-[2px] border p-1 cursor-pointer ${
                               active
-                                ? 'border-[#2563eb] bg-[#dbeafe] ring-1 ring-[#2563eb]'
-                                : 'border-slate-200 bg-white hover:border-slate-400'
+                                ? 'border-[#000000] bg-[#fef08a]'
+                                : 'border-[#94a3b8] bg-white hover:border-[#000000]'
                             }`}
                           >
                             <PixelBadgeSprite
                               badgeId={def.id}
                               unlocked
-                              size={24}
+                              size={22}
                               customBadges={customBadges}
                             />
                           </button>
@@ -435,11 +475,11 @@ export function MeDashboard({
                   </div>
 
                   {/* Wide Mobile-Safe Inline Editable Motto */}
-                  <div className="rounded-md border border-[#c8d6e5] bg-[#f4f8fc] p-3">
-                    <label htmlFor="motto-input" className="block text-xs font-extrabold text-[#2c6e9b]">
+                  <div className="rounded-[2px] border border-[#94a3b8] bg-[#f4f8fc] p-2.5">
+                    <label htmlFor="motto-input" className="block text-[11px] font-bold text-[#1d4e78]">
                       My PIXL Motto (updates live in-game)
                     </label>
-                    <div className="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <div className="mt-1 flex flex-col gap-1.5 sm:flex-row sm:items-center">
                       <input
                         id="motto-input"
                         type="text"
@@ -453,13 +493,13 @@ export function MeDashboard({
                             (e.target as HTMLInputElement).blur();
                           }
                         }}
-                        className="w-full min-w-0 flex-1 rounded border-2 border-[#b8cde0] bg-white px-3 py-1.5 text-sm font-medium text-slate-900 focus:border-[#2c6e9b] focus:outline-none"
+                        className="w-full min-w-0 flex-1 rounded-[2px] border border-[#000000] bg-white px-2.5 py-1 text-[12px] font-semibold text-[#111827] focus:border-[#2b6ca3] focus:outline-none"
                         placeholder="Enter your PIXL Hotel motto..."
                       />
                       <button
                         type="button"
                         onClick={handleMottoCommit}
-                        className="habbo-btn-blue rounded px-4 py-1.5 text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer"
+                        className="habbo-btn-blue px-3.5 py-1 text-[11px] font-bold whitespace-nowrap shrink-0 cursor-pointer"
                       >
                         {mottoSavedTick ? (
                           <span className="inline-flex items-center justify-center gap-1">
@@ -473,39 +513,31 @@ export function MeDashboard({
                   </div>
                 </div>
 
-                {/* Currency Counters & Big Green Enter Button */}
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3">
+                {/* Currency Counters Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#cbd5e1] pt-2.5">
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex items-center gap-1.5 rounded-md border border-[#e5c158] bg-[#fffbeb] px-3 py-1.5">
-                      <Coins className="h-4 w-4 text-[#d97706]" />
-                      <span className="font-mono-num text-sm font-extrabold text-[#92400e]">
+                    <div className="flex items-center gap-1.5 rounded-[2px] border border-[#000000] bg-[#fffbeb] px-2.5 py-1">
+                      <Coins className="h-3.5 w-3.5 text-[#d97706]" />
+                      <span className="font-mono-num text-[12px] font-bold text-[#92400e]">
                         {player.credits}
                       </span>
-                      <span className="text-xs font-semibold text-amber-800">Credits</span>
+                      <span className="text-[11px] font-bold text-[#b45309]">Credits</span>
                     </div>
-                    <div className="flex items-center gap-1.5 rounded-md border border-[#d8b4fe] bg-[#faf5ff] px-3 py-1.5">
-                      <Sparkles className="h-4 w-4 text-[#7c3aed]" />
-                      <span className="font-mono-num text-sm font-extrabold text-[#5b21b6]">
+                    <div className="flex items-center gap-1.5 rounded-[2px] border border-[#000000] bg-[#faf5ff] px-2.5 py-1">
+                      <Sparkles className="h-3.5 w-3.5 text-[#7c3aed]" />
+                      <span className="font-mono-num text-[12px] font-bold text-[#5b21b6]">
                         {player.duckets}
                       </span>
-                      <span className="text-xs font-semibold text-violet-800">Duckets</span>
+                      <span className="text-[11px] font-bold text-[#6d28d9]">Duckets</span>
                     </div>
-                    <div className="flex items-center gap-1.5 rounded-md border border-[#c8d6e5] bg-[#f8fafc] px-3 py-1.5">
-                      <Crown className="h-4 w-4 text-[#ca8a04]" />
-                      <span className="font-mono-num text-sm font-extrabold text-slate-900">
+                    <div className="flex items-center gap-1.5 rounded-[2px] border border-[#000000] bg-[#f8fafc] px-2.5 py-1">
+                      <Crown className="h-3.5 w-3.5 text-[#ca8a04]" />
+                      <span className="font-mono-num text-[12px] font-bold text-[#111827]">
                         {player.hcDays}
                       </span>
-                      <span className="text-xs font-semibold text-slate-600">VIP Days</span>
+                      <span className="text-[11px] font-bold text-[#475569]">HC Days</span>
                     </div>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => onEnterHotel()}
-                    className="habbo-btn-green habbo-pulse rounded-lg px-6 py-2.5 font-pixel text-sm sm:text-base tracking-wide cursor-pointer whitespace-nowrap"
-                  >
-                    Enter Hotel
-                  </button>
                 </div>
               </div>
             </div>
@@ -514,17 +546,17 @@ export function MeDashboard({
 
         {/* NEWS & CAMPAIGNS SLIDER */}
         <section className="habbo-box">
-          <div className="habbo-box-header flex items-center justify-between bg-[#f37021]">
+          <div className="habbo-box-header habbo-header-orange flex items-center justify-between">
             <span className="inline-flex items-center gap-2">
-              <Newspaper className="h-4 w-4" />
+              <Newspaper className="h-3.5 w-3.5" />
               PIXL Hotel News &amp; Events
             </span>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1">
               <button
                 type="button"
                 aria-label="Previous news story"
                 onClick={() => setActiveSlide((prev) => (prev - 1 + news.length) % news.length)}
-                className="rounded bg-black/20 p-1 hover:bg-black/35 cursor-pointer"
+                className="rounded-[2px] border border-[#000000]/40 bg-black/20 p-0.5 hover:bg-black/35 cursor-pointer"
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
               </button>
@@ -534,8 +566,8 @@ export function MeDashboard({
                   type="button"
                   onClick={() => setActiveSlide(idx)}
                   aria-label={`View news slide ${idx + 1}: ${item.title}`}
-                  className={`h-2.5 w-6 rounded-sm transition-colors cursor-pointer ${
-                    idx === activeSlide ? 'bg-white' : 'bg-black/30 hover:bg-white/60'
+                  className={`h-2 w-5 rounded-[1px] cursor-pointer ${
+                    idx === activeSlide ? 'bg-white' : 'bg-black/35 hover:bg-white/60'
                   }`}
                 />
               ))}
@@ -543,18 +575,17 @@ export function MeDashboard({
                 type="button"
                 aria-label="Next news story"
                 onClick={() => setActiveSlide((prev) => (prev + 1) % news.length)}
-                className="rounded bg-black/20 p-1 hover:bg-black/35 cursor-pointer"
+                className="rounded-[2px] border border-[#000000]/40 bg-black/20 p-0.5 hover:bg-black/35 cursor-pointer"
               >
                 <ChevronRight className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
 
-          <div className="p-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-12">
-              {/* Pixel Art Banner Illustration */}
+          <div className="p-3.5">
+            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-12">
               <div
-                className={`sm:col-span-5 flex items-center justify-center rounded-md border-2 border-[#1b1922] p-4 ${
+                className={`sm:col-span-5 flex items-center justify-center rounded-[2px] border border-[#000000] p-3 ${
                   currentNews.bannerPalette === 'crimson'
                     ? 'bg-gradient-to-br from-[#7f1d1d] to-[#dc2626]'
                     : currentNews.bannerPalette === 'teal'
@@ -562,7 +593,7 @@ export function MeDashboard({
                     : 'bg-gradient-to-br from-[#92400e] to-[#f59e0b]'
                 }`}
               >
-                <svg className="h-28 w-44" viewBox="0 0 160 100" shapeRendering="crispEdges">
+                <svg className="h-24 w-40" viewBox="0 0 160 100" shapeRendering="crispEdges">
                   <rect x="8" y="8" width="144" height="84" fill="rgba(0,0,0,0.22)" />
                   {currentNews.bannerPalette === 'crimson' ? (
                     <>
@@ -594,28 +625,24 @@ export function MeDashboard({
                 </svg>
               </div>
 
-              <div className="sm:col-span-7 flex flex-col justify-between gap-3">
+              <div className="sm:col-span-7 flex flex-col justify-between gap-2.5">
                 <div>
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                  <div className="flex items-center gap-2 text-[11px] font-bold text-[#64748b]">
                     <span>{currentNews.tag}</span>
                     <span aria-hidden="true">·</span>
                     <span>{currentNews.date}</span>
                   </div>
-                  <h2 className="mt-1 text-lg font-extrabold text-slate-900">
-                    {currentNews.title}
-                  </h2>
-                  <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
-                    {currentNews.summary}
-                  </p>
+                  <h2 className="mt-1 text-[15px] font-bold text-[#111827]">{currentNews.title}</h2>
+                  <p className="mt-1 text-[12px] leading-relaxed text-[#374151]">{currentNews.summary}</p>
                 </div>
 
-                <div className="flex items-center justify-between pt-2">
+                <div className="flex items-center justify-between pt-1">
                   <button
                     type="button"
                     onClick={() => setOpenArticle(currentNews)}
-                    className="habbo-btn-blue rounded px-4 py-1.5 text-xs font-bold cursor-pointer"
+                    className="habbo-btn-blue px-3.5 py-1 text-[11px] font-bold cursor-pointer"
                   >
-                    Read Full Story &rsaquo;
+                    Read more &raquo;
                   </button>
                   <div className="flex gap-2">
                     {news.map((n, idx) => (
@@ -623,10 +650,8 @@ export function MeDashboard({
                         key={n.id}
                         type="button"
                         onClick={() => setActiveSlide(idx)}
-                        className={`text-xs font-bold cursor-pointer ${
-                          idx === activeSlide
-                            ? 'text-[#235c8a] underline'
-                            : 'text-slate-400 hover:text-slate-700'
+                        className={`text-[11px] font-bold cursor-pointer ${
+                          idx === activeSlide ? 'text-[#1d4e78] underline' : 'text-[#64748b] hover:text-[#111827]'
                         }`}
                       >
                         {idx + 1}
@@ -641,28 +666,28 @@ export function MeDashboard({
 
         {/* MY ROOMS & HOT ROOMS EXPLORER */}
         <section className="habbo-box">
-          <div className="habbo-box-header flex flex-wrap items-center justify-between gap-2 bg-[#2c6e9b]">
+          <div className="habbo-box-header habbo-header-blue flex flex-wrap items-center justify-between gap-2">
             <span className="inline-flex items-center gap-2">
-              <DoorOpen className="h-4 w-4" />
-              PIXL Navigator — Hot Rooms &amp; Suites
+              <DoorOpen className="h-3.5 w-3.5" />
+              PIXL Navigator — Public &amp; Guest Rooms
             </span>
             <div className="flex flex-wrap items-center gap-1">
               {(
                 [
                   { id: 'all', label: 'All Rooms' },
-                  { id: 'public', label: 'Lounges' },
+                  { id: 'public', label: 'Public Rooms' },
                   { id: 'games', label: 'Battle Banzai' },
-                  { id: 'private', label: 'My Suite' },
+                  { id: 'private', label: 'Guest Suites' },
                 ] as { id: RoomFilter; label: string }[]
               ).map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => setRoomFilter(tab.id)}
-                  className={`rounded px-2.5 py-0.5 text-[11px] font-bold cursor-pointer ${
+                  className={`rounded-[2px] border px-2 py-0.5 text-[10px] font-bold cursor-pointer ${
                     roomFilter === tab.id
-                      ? 'bg-white text-[#0f3454]'
-                      : 'bg-black/20 text-white/90 hover:bg-black/35'
+                      ? 'border-[#000000] bg-white text-[#0f3454]'
+                      : 'border-transparent bg-black/25 text-white/95 hover:bg-black/40'
                   }`}
                 >
                   {tab.label}
@@ -671,43 +696,40 @@ export function MeDashboard({
             </div>
           </div>
 
-          <div className="divide-y divide-slate-200">
+          <div className="divide-y divide-[#cbd5e1]">
             {filteredRooms.map((room) => {
               const occPct = Math.min(100, Math.round((room.baseOccupancy / 75) * 100));
               return (
                 <div
                   key={room.id}
-                  className="flex flex-col justify-between gap-3 p-4 hover:bg-slate-50 sm:flex-row sm:items-center"
+                  className="flex flex-col justify-between gap-2.5 p-3 hover:bg-[#f8fafc] sm:flex-row sm:items-center"
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-bold text-slate-900">{room.name}</h3>
-                      <span className="text-xs font-semibold text-slate-500">
-                        · Host: {room.owner === 'PixelGuest' ? player.username : room.owner}
+                      <h3 className="text-[13px] font-bold text-[#111827]">{room.name}</h3>
+                      <span className="text-[11px] font-semibold text-[#64748b]">
+                        · Owner: {room.owner === 'PixelGuest' ? player.username : room.owner}
                       </span>
                     </div>
-                    <p className="mt-0.5 text-sm text-slate-600">{room.description}</p>
+                    <p className="mt-0.5 text-[11px] text-[#475569]">{room.description}</p>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
                     <div className="w-24 hidden sm:block">
-                      <div className="flex items-center justify-between text-[11px] font-bold text-emerald-800 mb-0.5">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-[#15803d] mb-0.5">
                         <span className="inline-flex items-center gap-1">
                           <Users className="h-3 w-3" />
                           <span className="font-mono-num">{room.baseOccupancy}</span>
                         </span>
-                        <span className="text-[10px] text-slate-400">Live</span>
+                        <span className="text-[9px] text-[#64748b]">Online</span>
                       </div>
-                      <div className="h-1.5 w-full overflow-hidden rounded bg-slate-200">
-                        <div
-                          className="h-full bg-emerald-500"
-                          style={{ width: `${occPct}%` }}
-                        />
+                      <div className="h-1.5 w-full overflow-hidden rounded-[1px] border border-[#000000]/40 bg-[#e2e8f0]">
+                        <div className="h-full bg-[#22c55e]" style={{ width: `${occPct}%` }} />
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => onEnterHotel(room.id)}
-                      className="habbo-btn-green rounded px-3.5 py-1.5 text-xs font-bold whitespace-nowrap cursor-pointer"
+                      className="habbo-btn-green px-3 py-1 text-[11px] font-bold whitespace-nowrap cursor-pointer"
                     >
                       Go to Room
                     </button>
@@ -720,19 +742,18 @@ export function MeDashboard({
       </div>
 
       {/* RIGHT SIDEBAR */}
-      <aside className="space-y-6 lg:col-span-4">
-        {/* VOUCHER CODE REDEEMER WITH 1-CLICK CHIPS */}
+      <aside className="space-y-5 lg:col-span-4">
+        {/* VOUCHER CODE REDEEMER */}
         <section className="habbo-box">
-          <div className="habbo-box-header flex items-center gap-2 bg-[#549600]">
-            <Gift className="h-4 w-4" />
+          <div className="habbo-box-header habbo-header-green flex items-center gap-2">
+            <Gift className="h-3.5 w-3.5" />
             PIXL Voucher Redeemer
           </div>
-          <div className="p-4 space-y-3">
-            <p className="text-xs leading-relaxed text-slate-600">
-              Enter a voucher code below or tap any active promo code to claim instant rewards:
+          <div className="p-3.5 space-y-2.5">
+            <p className="text-[11px] leading-relaxed text-[#475569]">
+              Enter a voucher code below or click any active promo chip:
             </p>
 
-            {/* Quick-Tap Voucher Buttons */}
             <div className="grid grid-cols-2 gap-1.5">
               {PROMO_VOUCHERS.map((v) => {
                 const claimed =
@@ -744,14 +765,14 @@ export function MeDashboard({
                     type="button"
                     disabled={claimed}
                     onClick={() => handleQuickVoucher(v.code)}
-                    className={`flex flex-col items-start rounded border px-2.5 py-1.5 text-left transition-colors ${
+                    className={`flex flex-col items-start rounded-[2px] border px-2 py-1 text-left ${
                       claimed
-                        ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-default'
-                        : 'border-emerald-300 bg-emerald-50/70 text-slate-900 hover:bg-emerald-100 cursor-pointer'
+                        ? 'border-[#cbd5e1] bg-[#f1f5f9] text-[#94a3b8] cursor-default'
+                        : 'border-[#000000] bg-[#ecfdf5] text-[#111827] hover:bg-[#d1fae5] cursor-pointer'
                     }`}
                   >
-                    <span className="font-mono-num text-xs font-extrabold">{v.code}</span>
-                    <span className="text-[10px] font-semibold text-slate-600">
+                    <span className="font-mono-num text-[11px] font-bold">{v.code}</span>
+                    <span className="text-[10px] font-semibold text-[#475569]">
                       {claimed ? 'Claimed ✓' : v.reward}
                     </span>
                   </button>
@@ -759,7 +780,7 @@ export function MeDashboard({
               })}
             </div>
 
-            <form onSubmit={handleVoucherSubmit} className="flex gap-2">
+            <form onSubmit={handleVoucherSubmit} className="flex gap-1.5">
               <label htmlFor="voucher-input" className="sr-only">
                 Voucher Code
               </label>
@@ -769,11 +790,11 @@ export function MeDashboard({
                 value={voucherCode}
                 onChange={(e) => setVoucherCode(e.target.value)}
                 placeholder="Enter voucher code..."
-                className="w-full rounded border border-slate-300 px-3 py-1.5 text-sm font-semibold uppercase tracking-wide text-slate-900 focus:border-[#0d9488] focus:outline-none"
+                className="w-full rounded-[2px] border border-[#000000] bg-white px-2.5 py-1 text-[12px] font-bold uppercase text-[#111827] focus:border-[#3d8b18] focus:outline-none"
               />
               <button
                 type="submit"
-                className="habbo-btn-green rounded px-3.5 py-1.5 text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer"
+                className="habbo-btn-green px-3 py-1 text-[11px] font-bold whitespace-nowrap shrink-0 cursor-pointer"
               >
                 Redeem
               </button>
@@ -781,10 +802,10 @@ export function MeDashboard({
             {voucherFeedback && (
               <p
                 role="status"
-                className={`rounded border px-2.5 py-1.5 text-xs font-semibold ${
+                className={`rounded-[2px] border px-2.5 py-1 text-[11px] font-bold ${
                   voucherFeedback.ok
-                    ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                    : 'border-rose-300 bg-rose-50 text-rose-800'
+                    ? 'border-[#1f4f09] bg-[#ecfdf5] text-[#14532d]'
+                    : 'border-[#7f1d1d] bg-[#fef2f2] text-[#991b1b]'
                 }`}
               >
                 {voucherFeedback.text}
@@ -795,47 +816,44 @@ export function MeDashboard({
 
         {/* MY PIXL PETS & COMPANIONS WIDGET */}
         <section className="habbo-box">
-          <div className="habbo-box-header flex items-center justify-between bg-[#d97706]">
+          <div className="habbo-box-header habbo-header-orange flex items-center justify-between">
             <span className="inline-flex items-center gap-2">
-              <PawPrint className="h-4 w-4 text-[#fef08a]" />
+              <PawPrint className="h-3.5 w-3.5 text-[#fef08a]" />
               My PIXL Pets ({ownedPets.length})
             </span>
-            <span className="text-xs font-semibold text-amber-100">Live Companion Care</span>
+            <span className="text-[10px] font-bold text-amber-100">Companion Care</span>
           </div>
-          <div className="divide-y divide-slate-200">
+          <div className="divide-y divide-[#cbd5e1]">
             {ownedPets.length === 0 ? (
-              <div className="p-4 text-center space-y-2">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-amber-200 bg-amber-50">
-                  <PixelPetCanvas species="golden_terrier" size={44} />
+              <div className="p-3.5 text-center space-y-2">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-[2px] border border-[#000000] bg-[#fffbeb]">
+                  <PixelPetCanvas species="golden_terrier" size={40} />
                 </div>
-                <p className="text-xs text-slate-600">
-                  You haven&apos;t adopted a pet yet! Open the Hotel Catalogue to adopt a Golden Terrier, Tabby Kitten, or Baby Fire Dragon.
+                <p className="text-[11px] text-[#475569]">
+                  Adopt a Golden Terrier, Tabby Kitten, or Baby Fire Dragon inside the Hotel Catalogue!
                 </p>
                 <button
                   type="button"
                   onClick={() => onEnterHotel()}
-                  className="habbo-btn-blue rounded px-3 py-1.5 text-xs font-bold cursor-pointer"
+                  className="habbo-btn-blue px-3 py-1 text-[11px] font-bold cursor-pointer"
                 >
-                  Adopt in Hotel Catalogue
+                  Open Hotel Catalogue
                 </button>
               </div>
             ) : (
               ownedPets.map((pet) => {
                 const def = getPetDef(pet.species);
-                const petRoom =
-                  rooms.find((r) => r.id === pet.roomId)?.name ?? 'Welcome Lounge';
+                const petRoom = rooms.find((r) => r.id === pet.roomId)?.name ?? 'Welcome Lounge';
                 return (
-                  <div key={pet.id} className="p-3.5 space-y-2">
+                  <div key={pet.id} className="p-3 space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="flex h-12 w-12 items-center justify-center rounded border border-amber-300 bg-amber-50/70 shrink-0">
-                          <PixelPetCanvas species={pet.species} size={42} />
+                        <div className="flex h-11 w-11 items-center justify-center rounded-[2px] border border-[#000000] bg-[#fffbeb] shrink-0">
+                          <PixelPetCanvas species={pet.species} size={38} />
                         </div>
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-extrabold text-slate-900">
-                            {pet.name}
-                          </p>
-                          <p className="truncate text-xs text-slate-500">
+                          <p className="truncate text-[13px] font-bold text-[#111827]">{pet.name}</p>
+                          <p className="truncate text-[11px] text-[#475569]">
                             {def.name} · In {petRoom}
                           </p>
                         </div>
@@ -843,21 +861,21 @@ export function MeDashboard({
                       <button
                         type="button"
                         onClick={() => onCarePet?.(pet.id, 'feed')}
-                        className="habbo-btn-green rounded px-2.5 py-1 text-xs font-bold shrink-0 cursor-pointer"
+                        className="habbo-btn-green px-2.5 py-1 text-[11px] font-bold shrink-0 cursor-pointer"
                       >
-                        Feed Treat
+                        Feed
                       </button>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 text-[11px] font-bold text-slate-600">
-                      <div className="flex items-center justify-between rounded bg-slate-50 px-2 py-1">
+                    <div className="grid grid-cols-2 gap-1.5 text-[10px] font-bold text-[#334155]">
+                      <div className="flex items-center justify-between rounded-[2px] border border-[#cbd5e1] bg-[#f8fafc] px-2 py-0.5">
                         <span className="inline-flex items-center gap-1">
-                          <Utensils className="h-3 w-3 text-amber-600" /> Fullness
+                          <Utensils className="h-3 w-3 text-[#d97706]" /> Fullness
                         </span>
                         <span className="font-mono-num">{pet.hunger}%</span>
                       </div>
-                      <div className="flex items-center justify-between rounded bg-slate-50 px-2 py-1">
+                      <div className="flex items-center justify-between rounded-[2px] border border-[#cbd5e1] bg-[#f8fafc] px-2 py-0.5">
                         <span className="inline-flex items-center gap-1">
-                          <Heart className="h-3 w-3 text-rose-500" /> Mood
+                          <Heart className="h-3 w-3 text-[#e11d48]" /> Mood
                         </span>
                         <span className="font-mono-num">{pet.happiness}%</span>
                       </div>
@@ -871,18 +889,18 @@ export function MeDashboard({
 
         {/* FRIENDS ONLINE */}
         <section className="habbo-box">
-          <div className="habbo-box-header flex items-center justify-between bg-[#1e9d54]">
+          <div className="habbo-box-header habbo-header-green flex items-center justify-between">
             <span className="inline-flex items-center gap-2">
-              <Users className="h-4 w-4" />
+              <Users className="h-3.5 w-3.5" />
               Friends ({friends.length})
             </span>
-            <span className="font-mono-num text-xs">
+            <span className="font-mono-num text-[11px]">
               {friends.filter((f) => f.online).length} online
             </span>
           </div>
-          <div className="divide-y divide-slate-200">
+          <div className="divide-y divide-[#cbd5e1]">
             {friends.length === 0 ? (
-              <p className="p-4 text-xs text-slate-500">
+              <p className="p-3.5 text-[11px] text-[#64748b]">
                 No friends added yet. Visit Players &amp; Friends to add PIXLs!
               </p>
             ) : (
@@ -891,20 +909,20 @@ export function MeDashboard({
                   ? rooms.find((r) => r.id === friend.roomId)?.name ?? 'Hotel Lobby'
                   : 'Offline';
                 return (
-                  <div key={friend.id} className="flex items-center justify-between gap-2 p-3">
+                  <div key={friend.id} className="flex items-center justify-between gap-2 p-2.5">
                     <button
                       type="button"
                       onClick={() => onInspectPlayer(friend.id)}
-                      className="flex items-center gap-2.5 min-w-0 text-left cursor-pointer group"
+                      className="flex items-center gap-2 min-w-0 text-left cursor-pointer group"
                     >
-                      <div className="rounded border border-slate-300 bg-[#e8f4fc] p-0.5 shrink-0">
-                        <PixelHeadCanvas look={friend.look} size={34} />
+                      <div className="rounded-[2px] border border-[#000000] bg-[#e8f4fc] p-0.5 shrink-0">
+                        <PixelHeadCanvas look={friend.look} size={32} />
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-slate-900 group-hover:underline">
+                        <p className="truncate text-[12px] font-bold text-[#111827] group-hover:underline">
                           {friend.name}
                         </p>
-                        <p className="truncate text-xs text-slate-500">
+                        <p className="truncate text-[10px] text-[#475569]">
                           {friend.online ? `In ${roomName}` : 'Offline'}
                         </p>
                       </div>
@@ -913,9 +931,9 @@ export function MeDashboard({
                       <button
                         type="button"
                         onClick={() => onEnterHotel(friend.roomId)}
-                        className="habbo-btn-blue rounded px-2.5 py-1 text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer"
+                        className="habbo-btn-blue px-2.5 py-1 text-[10px] font-bold whitespace-nowrap shrink-0 cursor-pointer"
                       >
-                        Follow into Hotel
+                        Follow
                       </button>
                     )}
                   </div>
@@ -927,36 +945,36 @@ export function MeDashboard({
 
         {/* PIXL CLUB VIP MEMBERSHIP BOX */}
         <section className="habbo-box">
-          <div className="habbo-box-header flex items-center gap-2 bg-[#f37021]">
-            <Crown className="h-4 w-4 text-[#fef08a]" />
-            PIXL Club (HC) VIP Membership
+          <div className="habbo-box-header habbo-header-orange flex items-center gap-2">
+            <Crown className="h-3.5 w-3.5 text-[#fef08a]" />
+            PIXL Club (HC) Membership
           </div>
-          <div className="bg-gradient-to-b from-[#fffbeb] to-white p-4">
+          <div className="bg-gradient-to-b from-[#fffbeb] to-white p-3.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-amber-900">Current VIP Balance</span>
-              <span className="font-mono-num text-base font-extrabold text-amber-700">
+              <span className="text-[11px] font-bold text-[#78350f]">Current HC Balance</span>
+              <span className="font-mono-num text-[14px] font-bold text-[#b45309]">
                 {player.hcDays} days left
               </span>
             </div>
-            <ul className="mt-2.5 space-y-1 text-xs text-slate-700">
+            <ul className="mt-2 space-y-1 text-[11px] text-[#374151]">
               <li>· Exclusive golden HC badge &amp; profile trim</li>
-              <li>· Priority access to Club Mammoth &amp; VIP Rares</li>
+              <li>· Priority access to Club Mammoth &amp; HC Rares</li>
               <li>· Bonus Wardrobe accessories &amp; suite layouts</li>
             </ul>
             <button
               type="button"
               onClick={handleExtendHC}
-              className="habbo-btn-gold mt-3.5 w-full rounded py-2 text-xs font-extrabold cursor-pointer"
+              className="habbo-btn-gold mt-3 w-full py-1.5 text-[11px] font-bold cursor-pointer"
             >
               Join / Extend PIXL Club (+31 Days · 50 Credits)
             </button>
             {hcFeedback && (
               <p
                 role="status"
-                className={`mt-2 rounded border px-2.5 py-1.5 text-xs font-semibold ${
+                className={`mt-2 rounded-[2px] border px-2.5 py-1 text-[11px] font-bold ${
                   hcFeedback.ok
-                    ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                    : 'border-rose-300 bg-rose-50 text-rose-800'
+                    ? 'border-[#1f4f09] bg-[#ecfdf5] text-[#14532d]'
+                    : 'border-[#7f1d1d] bg-[#fef2f2] text-[#991b1b]'
                 }`}
               >
                 {hcFeedback.text}
@@ -969,38 +987,38 @@ export function MeDashboard({
       {/* NEWS ARTICLE MODAL */}
       {openArticle && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="news-modal-title"
         >
-          <div className="habbo-box w-full max-w-lg bg-white">
-            <div className="habbo-box-header flex items-center justify-between bg-[#e06d1b]">
-              <span>{openArticle.tag}</span>
+          <div className="client-window w-full max-w-lg overflow-hidden">
+            <div className="client-window-bar flex items-center justify-between px-3 py-1.5">
+              <span className="text-[11px] font-bold">{openArticle.tag}</span>
               <button
                 type="button"
                 onClick={() => setOpenArticle(null)}
                 aria-label="Close news article"
-                className="rounded p-1 hover:bg-black/20 cursor-pointer"
+                className="client-close-btn"
               >
-                <X className="h-4 w-4" />
+                <X className="h-3 w-3" />
               </button>
             </div>
-            <div className="p-5">
-              <p className="text-xs font-semibold text-slate-500">{openArticle.date}</p>
-              <h2 id="news-modal-title" className="mt-1 text-xl font-extrabold text-slate-900">
+            <div className="bg-white p-4">
+              <p className="text-[11px] font-bold text-[#64748b]">{openArticle.date}</p>
+              <h2 id="news-modal-title" className="mt-1 text-[16px] font-bold text-[#111827]">
                 {openArticle.title}
               </h2>
-              <div className="mt-3 space-y-3 text-sm leading-relaxed text-slate-700">
+              <div className="mt-2.5 space-y-2.5 text-[12px] leading-relaxed text-[#374151]">
                 {openArticle.body.map((paragraph, i) => (
                   <p key={i}>{paragraph}</p>
                 ))}
               </div>
-              <div className="mt-5 flex justify-end gap-2">
+              <div className="mt-4 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setOpenArticle(null)}
-                  className="rounded border border-slate-300 px-4 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 cursor-pointer"
+                  className="habbo-btn-silver px-3.5 py-1 text-[11px] font-bold cursor-pointer"
                 >
                   Close
                 </button>
@@ -1010,7 +1028,7 @@ export function MeDashboard({
                     setOpenArticle(null);
                     onEnterHotel();
                   }}
-                  className="habbo-btn-green rounded px-4 py-1.5 text-xs font-bold cursor-pointer"
+                  className="habbo-btn-green px-3.5 py-1 text-[11px] font-bold cursor-pointer"
                 >
                   Enter Hotel
                 </button>
@@ -1019,6 +1037,15 @@ export function MeDashboard({
           </div>
         </div>
       )}
+
+      <BadgeInfoModal
+        badgeId={inspectBadgeId}
+        unlocked={inspectBadgeId ? player.unlockedBadges.includes(inspectBadgeId) : false}
+        equipped={inspectBadgeId ? equippedBadges.includes(inspectBadgeId) : false}
+        customBadges={customBadges}
+        onEquip={(id) => onEquipBadge?.(id)}
+        onClose={() => setInspectBadgeId(null)}
+      />
     </div>
   );
 }

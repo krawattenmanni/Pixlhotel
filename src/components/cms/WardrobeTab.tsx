@@ -62,24 +62,24 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
   };
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
       {/* LIVE PREVIEW PANEL */}
       <div className="lg:col-span-4">
         <div className="habbo-box">
-          <div className="habbo-box-header flex items-center gap-2 bg-[#7c3aed]">
-            <Shirt className="h-4 w-4" />
-            Live PIXL Preview
+          <div className="habbo-box-header habbo-header-dark flex items-center gap-2">
+            <Shirt className="h-4 w-4 text-[#fde047]" />
+            Live PIXL Wardrobe
           </div>
-          <div className="flex flex-col items-center bg-gradient-to-b from-[#d8ebfc] to-[#eef7ff] p-6">
-            <div className="flex h-60 w-full flex-col items-center justify-end rounded-lg border-2 border-[#9ec5e6] bg-white/80 pb-4 pt-6">
+          <div className="flex flex-col items-center bg-[#f4f8fc] p-5">
+            <div className="flex h-60 w-full flex-col items-center justify-end rounded-[3px] border border-[#000000] bg-gradient-to-b from-[#9fd9fc] to-[#eef7ff] pb-4 pt-6">
               <PixelAvatarCanvas look={draft} dir={previewDir} pose={previewPose} frame={0} scale={3} />
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            <div className="mt-3.5 flex flex-wrap items-center justify-center gap-1.5">
               <button
                 type="button"
                 onClick={() => setPreviewDir(((previewDir + 1) % 4) as Direction)}
-                className="habbo-btn-blue inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-bold cursor-pointer"
+                className="habbo-btn-blue inline-flex items-center gap-1 px-3 py-1 text-[11px] font-bold cursor-pointer"
               >
                 <RotateCw className="h-3.5 w-3.5" />
                 Rotate
@@ -89,10 +89,10 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
                   key={p}
                   type="button"
                   onClick={() => setPreviewPose(p)}
-                  className={`rounded border px-2.5 py-1.5 text-xs font-bold capitalize cursor-pointer ${
+                  className={`rounded-[2px] border px-2.5 py-1 text-[11px] font-bold capitalize cursor-pointer ${
                     previewPose === p
-                      ? 'border-[#1d4ed8] bg-[#2b7de9] text-white'
-                      : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+                      ? 'border-[#000000] bg-[#2b6ca3] text-white'
+                      : 'border-[#94a3b8] bg-white text-[#1f2937] hover:bg-[#e2e8f0]'
                   }`}
                 >
                   {p}
@@ -103,7 +103,7 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
             <button
               type="button"
               onClick={handleSave}
-              className="habbo-btn-green mt-5 w-full rounded-md py-3 font-pixel text-sm cursor-pointer"
+              className="habbo-btn-green mt-4 w-full py-2.5 font-pixel text-xs cursor-pointer"
             >
               {savedNotice ? (
                 <span className="inline-flex items-center gap-1.5">
@@ -113,8 +113,8 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
                 'Save Look'
               )}
             </button>
-            <p className="mt-2 text-center text-xs text-slate-500">
-              Updates immediately across CMS and Hotel Client.
+            <p className="mt-2 text-center text-[11px] text-[#475569]">
+              Updates immediately across HoloCMS and Hotel Client.
             </p>
           </div>
         </div>
@@ -123,19 +123,19 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
       {/* CUSTOMIZER CONTROLS */}
       <div className="space-y-5 lg:col-span-8">
         <div className="habbo-box">
-          <div className="habbo-box-header bg-[#235c8a]">Head, Hair &amp; Expression</div>
-          <div className="grid grid-cols-1 gap-5 p-5 sm:grid-cols-2">
+          <div className="habbo-box-header habbo-header-blue">Head, Hair &amp; Expression</div>
+          <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
             <div>
-              <p className="text-xs font-bold text-slate-700">Skin Tone</p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <p className="text-[11px] font-bold text-[#1f2937]">Skin Tone</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {SKIN_PALETTE.map((c) => (
                   <button
                     key={c.hex}
                     type="button"
                     aria-label={`Skin tone ${c.name}`}
                     onClick={() => setDraft({ ...draft, skinColor: c.hex })}
-                    className={`h-8 w-8 rounded border-2 cursor-pointer ${
-                      draft.skinColor === c.hex ? 'border-slate-900 scale-110' : 'border-slate-300'
+                    className={`h-7 w-7 rounded-[2px] border cursor-pointer ${
+                      draft.skinColor === c.hex ? 'border-[#000000] ring-2 ring-[#f58220]' : 'border-[#64748b]'
                     }`}
                     style={{ backgroundColor: c.hex }}
                   />
@@ -144,17 +144,17 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
             </div>
 
             <div>
-              <p className="text-xs font-bold text-slate-700">Facial Expression</p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <p className="text-[11px] font-bold text-[#1f2937]">Facial Expression</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {EXPRESSIONS.map((exp) => (
                   <button
                     key={exp.id}
                     type="button"
                     onClick={() => setDraft({ ...draft, expression: exp.id })}
-                    className={`rounded border px-3 py-1.5 text-xs font-bold cursor-pointer ${
+                    className={`rounded-[2px] border px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
                       draft.expression === exp.id
-                        ? 'border-[#1d4ed8] bg-[#2b7de9] text-white'
-                        : 'border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                        ? 'border-[#000000] bg-[#2b6ca3] text-white'
+                        : 'border-[#94a3b8] bg-[#f8fafc] text-[#1f2937] hover:bg-[#e2e8f0]'
                     }`}
                   >
                     {exp.label}
@@ -164,17 +164,17 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
             </div>
 
             <div>
-              <p className="text-xs font-bold text-slate-700">Hairstyle</p>
-              <div className="mt-2 grid grid-cols-2 gap-2">
+              <p className="text-[11px] font-bold text-[#1f2937]">Hairstyle</p>
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
                 {HAIR_STYLES.map((hs) => (
                   <button
                     key={hs.id}
                     type="button"
                     onClick={() => setDraft({ ...draft, hairStyle: hs.id })}
-                    className={`rounded border px-3 py-1.5 text-xs font-bold text-left cursor-pointer ${
+                    className={`rounded-[2px] border px-2.5 py-1 text-[11px] font-bold text-left cursor-pointer ${
                       draft.hairStyle === hs.id
-                        ? 'border-[#1d4ed8] bg-[#2b7de9] text-white'
-                        : 'border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                        ? 'border-[#000000] bg-[#2b6ca3] text-white'
+                        : 'border-[#94a3b8] bg-[#f8fafc] text-[#1f2937] hover:bg-[#e2e8f0]'
                     }`}
                   >
                     {hs.label}
@@ -184,16 +184,16 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
             </div>
 
             <div>
-              <p className="text-xs font-bold text-slate-700">Hair Color</p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <p className="text-[11px] font-bold text-[#1f2937]">Hair Color</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {HAIR_PALETTE.map((c) => (
                   <button
                     key={c.hex}
                     type="button"
                     aria-label={`Hair color ${c.name}`}
                     onClick={() => setDraft({ ...draft, hairColor: c.hex })}
-                    className={`h-8 w-8 rounded border-2 cursor-pointer ${
-                      draft.hairColor === c.hex ? 'border-slate-900 scale-110' : 'border-slate-300'
+                    className={`h-7 w-7 rounded-[2px] border cursor-pointer ${
+                      draft.hairColor === c.hex ? 'border-[#000000] ring-2 ring-[#f58220]' : 'border-[#64748b]'
                     }`}
                     style={{ backgroundColor: c.hex }}
                   />
@@ -204,20 +204,20 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
         </div>
 
         <div className="habbo-box">
-          <div className="habbo-box-header bg-[#2b7de9]">Outfit &amp; Accessories</div>
-          <div className="grid grid-cols-1 gap-5 p-5 sm:grid-cols-2">
+          <div className="habbo-box-header habbo-header-orange">Outfit &amp; Accessories</div>
+          <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
             <div>
-              <p className="text-xs font-bold text-slate-700">Shirt Style</p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <p className="text-[11px] font-bold text-[#1f2937]">Shirt Style</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {SHIRT_STYLES.map((s) => (
                   <button
                     key={s.id}
                     type="button"
                     onClick={() => setDraft({ ...draft, shirtStyle: s.id })}
-                    className={`rounded border px-3 py-1.5 text-xs font-bold cursor-pointer ${
+                    className={`rounded-[2px] border px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
                       draft.shirtStyle === s.id
-                        ? 'border-[#1d4ed8] bg-[#2b7de9] text-white'
-                        : 'border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                        ? 'border-[#000000] bg-[#2b6ca3] text-white'
+                        : 'border-[#94a3b8] bg-[#f8fafc] text-[#1f2937] hover:bg-[#e2e8f0]'
                     }`}
                   >
                     {s.label}
@@ -227,16 +227,16 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
             </div>
 
             <div>
-              <p className="text-xs font-bold text-slate-700">Shirt Color</p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <p className="text-[11px] font-bold text-[#1f2937]">Shirt Color</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {CLOTHING_PALETTE.map((c) => (
                   <button
                     key={c.hex}
                     type="button"
                     aria-label={`Shirt color ${c.name}`}
                     onClick={() => setDraft({ ...draft, shirtColor: c.hex })}
-                    className={`h-8 w-8 rounded border-2 cursor-pointer ${
-                      draft.shirtColor === c.hex ? 'border-slate-900 scale-110' : 'border-slate-300'
+                    className={`h-7 w-7 rounded-[2px] border cursor-pointer ${
+                      draft.shirtColor === c.hex ? 'border-[#000000] ring-2 ring-[#f58220]' : 'border-[#64748b]'
                     }`}
                     style={{ backgroundColor: c.hex }}
                   />
@@ -245,16 +245,16 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
             </div>
 
             <div>
-              <p className="text-xs font-bold text-slate-700">Pants Color</p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <p className="text-[11px] font-bold text-[#1f2937]">Pants Color</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {CLOTHING_PALETTE.map((c) => (
                   <button
                     key={c.hex}
                     type="button"
                     aria-label={`Pants color ${c.name}`}
                     onClick={() => setDraft({ ...draft, pantsColor: c.hex })}
-                    className={`h-8 w-8 rounded border-2 cursor-pointer ${
-                      draft.pantsColor === c.hex ? 'border-slate-900 scale-110' : 'border-slate-300'
+                    className={`h-7 w-7 rounded-[2px] border cursor-pointer ${
+                      draft.pantsColor === c.hex ? 'border-[#000000] ring-2 ring-[#f58220]' : 'border-[#64748b]'
                     }`}
                     style={{ backgroundColor: c.hex }}
                   />
@@ -263,16 +263,16 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
             </div>
 
             <div>
-              <p className="text-xs font-bold text-slate-700">Shoes Color</p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <p className="text-[11px] font-bold text-[#1f2937]">Shoes Color</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {CLOTHING_PALETTE.map((c) => (
                   <button
                     key={c.hex}
                     type="button"
                     aria-label={`Shoes color ${c.name}`}
                     onClick={() => setDraft({ ...draft, shoesColor: c.hex })}
-                    className={`h-8 w-8 rounded border-2 cursor-pointer ${
-                      draft.shoesColor === c.hex ? 'border-slate-900 scale-110' : 'border-slate-300'
+                    className={`h-7 w-7 rounded-[2px] border cursor-pointer ${
+                      draft.shoesColor === c.hex ? 'border-[#000000] ring-2 ring-[#f58220]' : 'border-[#64748b]'
                     }`}
                     style={{ backgroundColor: c.hex }}
                   />
@@ -281,17 +281,17 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
             </div>
 
             <div className="sm:col-span-2">
-              <p className="text-xs font-bold text-slate-700">Head &amp; Face Accessories</p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <p className="text-[11px] font-bold text-[#1f2937]">Head &amp; Face Accessories</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {ACCESSORIES.map((acc) => (
                   <button
                     key={acc.id}
                     type="button"
                     onClick={() => setDraft({ ...draft, accessory: acc.id })}
-                    className={`rounded border px-3.5 py-2 text-xs font-bold cursor-pointer ${
+                    className={`rounded-[2px] border px-3 py-1.5 text-[11px] font-bold cursor-pointer ${
                       draft.accessory === acc.id
-                        ? 'border-[#b45309] bg-[#f59e0b] text-slate-950'
-                        : 'border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                        ? 'border-[#000000] bg-[#f59e0b] text-[#1c1200]'
+                        : 'border-[#94a3b8] bg-[#f8fafc] text-[#1f2937] hover:bg-[#e2e8f0]'
                     }`}
                   >
                     {acc.label}

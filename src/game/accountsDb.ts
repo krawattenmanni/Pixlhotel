@@ -3,6 +3,7 @@ import type {
   AccountRank,
   LookConfig,
   PlayerState,
+  RankDef,
   StaffMember,
   UserAccount,
 } from './types';
@@ -115,6 +116,7 @@ function makeSeedAccount(params: {
 
   return {
     id: params.id,
+    displayId: params.id,
     username: params.username,
     password: params.password,
     rank: params.rank,
@@ -134,7 +136,8 @@ export function getSeedAccountsDB(): UserAccount[] {
   return [
     {
       id: '#001',
-      username: 'KrawattenManni',
+      displayId: '#001',
+      username: 'Krawattenmanni',
       password: 'Manni123',
       rank: 5,
       role: 'admin',
@@ -144,12 +147,14 @@ export function getSeedAccountsDB(): UserAccount[] {
       lastSeen: 'Online now',
       playerState: {
         ...ADMIN_PLAYER_STATE,
+        username: 'Krawattenmanni',
         rank: 5,
         role: 'admin',
       },
     },
     {
       id: '#002',
+      displayId: '#002',
       username: 'PixelGuest',
       password: 'pixlhotel',
       rank: 2,
@@ -368,8 +373,10 @@ export function loadAccountsDB(storage: StorageLike | null = getDefaultStorage()
     return parsed.map((item, idx) => {
       const rank = (item.rank ?? (item.role === 'admin' ? 5 : 1)) as AccountRank;
       const role = rank >= 4 ? 'admin' : 'player';
+      const fallbackDisplay = `#${String(idx + 1).padStart(3, '0')}`;
       return {
-        id: item.id ?? `#${String(idx + 1).padStart(3, '0')}`,
+        id: item.id ?? fallbackDisplay,
+        displayId: item.displayId ?? (String(item.id ?? '').startsWith('#') ? item.id : fallbackDisplay),
         username: item.username,
         password: item.password,
         rank,
@@ -515,24 +522,30 @@ export function updateAccountAdminFields(
   });
 }
 
-export function deriveStaffMembersFromAccounts(accounts: UserAccount[]): StaffMember[] {
+export function deriveStaffMembersFromAccounts(
+  accounts: UserAccount[],
+  ranks?: RankDef[]
+): StaffMember[] {
   return accounts
     .filter((acc) => acc.rank >= 3 && !acc.banned)
     .sort((a, b) => b.rank - a.rank || a.id.localeCompare(b.id))
     .map((acc) => {
       const meta = RANK_META[acc.rank];
+      const dbRank = ranks?.find((r) => r.id === acc.rank);
       const department: StaffMember['department'] =
         acc.rank === 5 ? 'Hotel Managers' : acc.rank === 4 ? 'Moderators' : 'Event Team';
       const customRole =
         acc.username.toLowerCase() === 'krawattenmanni'
           ? 'Creator & Hotel Admin'
-          : acc.rank === 5
-          ? 'Hotel Manager'
-          : acc.rank === 4
-          ? 'Safety Moderator'
-          : 'Event Team Host';
+          : dbRank?.name ||
+            (acc.rank === 5
+              ? 'Hotel Manager'
+              : acc.rank === 4
+              ? 'Safety Moderator'
+              : 'Event Team Host');
       const badgeLabel =
         acc.rank === 5 ? 'Admin Crest' : acc.rank === 4 ? 'Guardian Shield' : 'Golden Star';
+      const badgeCode = dbRank?.badgeCode || meta.badgeCode;
 
       return {
         id: `staff-${acc.id}`,
@@ -541,10 +554,10 @@ export function deriveStaffMembersFromAccounts(accounts: UserAccount[]): StaffMe
         role: customRole,
         department,
         motto: acc.playerState.motto,
-        badgeCode: meta.badgeCode,
+        badgeCode,
         badgeLabel,
         online: acc.online,
-        roomId: acc.playerState.currentRoomId || 'welcome_lounge',
+        roomId: acc.playerState.currentRoomId || '1',
         look: acc.playerState.look,
         badges: acc.playerState.unlockedBadges,
       };

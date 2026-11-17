@@ -45,12 +45,62 @@ export interface FurniItemDef {
   width: number;
   depth: number;
   isRare?: boolean;
+  isLtd?: boolean;
+  catalogSection?: string;
   animated?: boolean;
   engravable?: boolean;
 }
 
+export interface CatalogPageRow {
+  id: number;
+  parent_id: number;
+  caption: string;
+  icon_image: number;
+  visible: boolean;
+  min_rank: number;
+  order_num: number;
+}
+
+export interface CatalogItemRow {
+  id: number;
+  page_id: number;
+  catalog_name: string;
+  cost_credits: number;
+  cost_duckets: number;
+  amount: number;
+  item_type: string;
+}
+
+export interface CatalogEntryView {
+  dbId?: number;
+  pageId: number;
+  furniId: string;
+  catalogName: string;
+  description: string;
+  costCredits: number;
+  costDuckets: number;
+  amount: number;
+  category: FurniCategory;
+  isRare?: boolean;
+  isLtd?: boolean;
+  hcOnly?: boolean;
+  engravable?: boolean;
+}
+
+export interface HotelAlertPayload {
+  id: string;
+  title: string;
+  message: string;
+  sender: string;
+  timestamp: string;
+}
+
 export interface PlacedFurni {
   uid: string;
+  itemId?: number;
+  userId?: number;
+  dbId?: string;
+  owner?: string;
   furniId: string;
   x: number;
   y: number;
@@ -62,6 +112,7 @@ export interface PlacedFurni {
 export interface InventoryEntry {
   furniId: string;
   quantity: number;
+  itemIds?: number[];
 }
 
 export type PetSpecies = 'golden_terrier' | 'tabby_kitten' | 'baby_dragon';
@@ -78,6 +129,7 @@ export interface PetDef {
 
 export interface OwnedPet {
   id: string;
+  numericId?: number;
   species: PetSpecies;
   name: string;
   owner: string;
@@ -112,18 +164,39 @@ export interface BanzaiTileState {
   team: BanzaiTeam | null;
 }
 
-export type RoomFloorTheme = 'parquet' | 'marble' | 'rooftop' | 'tatami' | 'banzai';
-export type RoomWallTheme = 'cream' | 'navy' | 'brick' | 'nightsky' | 'neon';
+export type RoomFloorTheme =
+  | 'lido_deck'
+  | 'parquet'
+  | 'marble'
+  | 'rooftop'
+  | 'disco'
+  | 'park_grass'
+  | 'tatami'
+  | 'banzai';
+
+export type RoomWallTheme =
+  | 'lido_sky'
+  | 'cream'
+  | 'navy'
+  | 'brick'
+  | 'nightsky'
+  | 'neon'
+  | 'park_hedge';
 
 export interface RoomDef {
   id: string;
+  numericId?: number;
   name: string;
   owner: string;
   description: string;
   category: 'public' | 'private';
+  categoryNum?: number;
+  modelName?: string;
+  state?: string;
+  usersMax?: number;
   floorTheme: RoomFloorTheme;
   wallTheme: RoomWallTheme;
-  /** Row-major grid of tile characters: 'x' void, '0' walkable floor, '1' raised terrace */
+  /** Row-major grid: 'x' void, '0' floor, '1'/'2' raised terrace, 's' stairs, 'w' pool water, 'b' changing booth, 'd' diving board */
   layout: string[];
   spawn: { x: number; y: number };
   initialFurni: PlacedFurni[];
@@ -160,9 +233,11 @@ export interface SpeechBubble {
 
 export interface NewsArticle {
   id: string;
+  numericId?: number;
   title: string;
   date: string;
   tag: string;
+  author?: string;
   summary: string;
   body: string[];
   bannerPalette: 'gold' | 'teal' | 'crimson';
@@ -210,10 +285,40 @@ export interface BadgeDef {
   customPixels?: (string | null)[];
 }
 
+export interface RankDef {
+  id: AccountRank;
+  name: string;
+  badgeCode: string;
+}
+
+export interface BanRecord {
+  id: number;
+  bantype: string;
+  value: string;
+  reason: string;
+  expire: string;
+  addedBy: string;
+  addedDate: string;
+}
+
+export interface VoucherDef {
+  id: number;
+  code: string;
+  credits: number;
+  duckets: number;
+  hcDays: number;
+  badgeId: string;
+  uses: number;
+}
+
 export interface UserAccount {
   id: string;
+  numericId?: number;
+  displayId?: string;
   username: string;
   password: string;
+  mail?: string;
+  gender?: 'M' | 'F';
   rank: AccountRank;
   role: UserRole;
   banned: boolean;
@@ -224,7 +329,29 @@ export interface UserAccount {
   playerState: PlayerState;
 }
 
+export interface RemotePlayerState {
+  sessionId: string;
+  username: string;
+  motto: string;
+  look: LookConfig;
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  dir: Direction;
+  pose: AvatarPose;
+  carryItem: string;
+  moonwalk: boolean;
+  swimming?: boolean;
+  swimwearColor?: string;
+  badge?: string;
+  badges: string[];
+  rank: AccountRank;
+  updatedAt: number;
+}
+
 export interface PlayerState {
+  numericId?: number;
   username: string;
   rank: AccountRank;
   role: UserRole;
@@ -237,6 +364,7 @@ export interface PlayerState {
   redeemedVouchers: string[];
   unlockedBadges: string[];
   equippedBadgeId: string;
+  equippedBadges?: string[];
   friendIds: string[];
   currentRoomId: string;
   pets: OwnedPet[];

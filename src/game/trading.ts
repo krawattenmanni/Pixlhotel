@@ -105,8 +105,12 @@ export function executeTradeTransfer(
   }
 
   const nextInvMap = new Map<string, number>();
+  const itemIdsMap = new Map<string, number[]>();
   for (const entry of player.inventory) {
     nextInvMap.set(entry.furniId, entry.quantity);
+    if (entry.itemIds && entry.itemIds.length > 0) {
+      itemIdsMap.set(entry.furniId, [...entry.itemIds]);
+    }
   }
 
   // Validate & deduct player's offered items
@@ -120,8 +124,14 @@ export function executeTradeTransfer(
       };
     }
     const rem = current - slot.quantity;
-    if (rem > 0) nextInvMap.set(slot.furniId, rem);
-    else nextInvMap.delete(slot.furniId);
+    if (rem > 0) {
+      nextInvMap.set(slot.furniId, rem);
+      const ids = itemIdsMap.get(slot.furniId);
+      if (ids) itemIdsMap.set(slot.furniId, ids.slice(slot.quantity));
+    } else {
+      nextInvMap.delete(slot.furniId);
+      itemIdsMap.delete(slot.furniId);
+    }
   }
 
   // Grant partner's offered items
@@ -130,7 +140,11 @@ export function executeTradeTransfer(
   }
 
   const nextInventory: InventoryEntry[] = Array.from(nextInvMap.entries()).map(
-    ([furniId, quantity]) => ({ furniId, quantity })
+    ([furniId, quantity]) => ({
+      furniId,
+      quantity,
+      itemIds: itemIdsMap.get(furniId),
+    })
   );
 
   const nextCredits = player.credits - cleanOfferedCredits + cleanReceivedCredits;

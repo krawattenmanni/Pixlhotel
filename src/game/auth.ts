@@ -98,16 +98,19 @@ export function registerUser(
       { furniId: 'palm_tree', quantity: 1 },
     ],
     redeemedVouchers: [],
-    unlockedBadges: ['badge_checkin', 'badge_hc'],
+    unlockedBadges: ['badge_checkin', 'badge_new', 'badge_hc'],
     equippedBadgeId: 'badge_checkin',
+    equippedBadges: ['badge_checkin', 'badge_new', 'badge_hc'],
     friendIds: ['npc-marco', 'npc-pixie'],
     currentRoomId: 'welcome_lounge',
     pets: [],
     pendingEngravings: {},
   };
 
+  const nextDisplay = nextAccountId(accounts);
   const newAccount: UserAccount = {
-    id: nextAccountId(accounts),
+    id: nextDisplay,
+    displayId: nextDisplay,
     username,
     password: rawPassword,
     rank: 1,
@@ -132,26 +135,51 @@ export function syncBadgesWithPlayer(player: PlayerState, extraBadgeId?: string)
   badges.add('badge_checkin');
 
   if (player.hcDays > 0) badges.add('badge_hc');
+  if (player.rank >= 2) badges.add('badge_vip');
+  if (player.rank >= 4) badges.add('badge_mod');
   if (player.rank === 5 || player.role === 'admin') badges.add('badge_admin');
   if (player.redeemedVouchers.length > 0) badges.add('badge_voucher');
-  if (player.inventory.some((i) => i.furniId === 'fire_dragon' && i.quantity > 0)) {
+  if (
+    player.inventory.some(
+      (i) => (i.furniId === 'fire_dragon' || i.furniId === 'jade_dragon' || i.furniId === 'silver_dragon') && i.quantity > 0
+    )
+  ) {
     badges.add('badge_dragon');
   }
-  if (player.inventory.some((i) => i.furniId === 'throne' && i.quantity > 0)) {
+  if (
+    player.inventory.some((i) => (i.furniId === 'throne' || i.furniId === 'ice_throne') && i.quantity > 0)
+  ) {
     badges.add('badge_throne');
   }
   if (extraBadgeId) badges.add(extraBadgeId);
 
   const nextList = Array.from(badges);
-  if (
+  const currentEquipped =
+    Array.isArray(player.equippedBadges) && player.equippedBadges.length > 0
+      ? player.equippedBadges.filter((id) => nextList.includes(id)).slice(0, 5)
+      : player.equippedBadgeId && nextList.includes(player.equippedBadgeId)
+      ? [player.equippedBadgeId]
+      : [nextList[0] ?? 'badge_checkin'];
+
+  const primaryEquipped = currentEquipped[0] ?? player.equippedBadgeId ?? 'badge_checkin';
+
+  const sameUnlocked =
     nextList.length === player.unlockedBadges.length &&
-    nextList.every((b) => player.unlockedBadges.includes(b))
-  ) {
+    nextList.every((b) => player.unlockedBadges.includes(b));
+  const sameEquipped =
+    Array.isArray(player.equippedBadges) &&
+    currentEquipped.length === player.equippedBadges.length &&
+    currentEquipped.every((b, idx) => player.equippedBadges![idx] === b) &&
+    player.equippedBadgeId === primaryEquipped;
+
+  if (sameUnlocked && sameEquipped) {
     return player;
   }
 
   return {
     ...player,
     unlockedBadges: nextList,
+    equippedBadgeId: primaryEquipped,
+    equippedBadges: currentEquipped,
   };
 }
