@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthPortal } from './components/auth/AuthPortal';
+import { BadgesTab } from './components/cms/BadgesTab';
 import { CmsHeader } from './components/cms/CmsHeader';
 import { CommunityTab } from './components/cms/CommunityTab';
 import { HousekeepingTab } from './components/cms/HousekeepingTab';
@@ -10,6 +11,7 @@ import { StaffTab } from './components/cms/StaffTab';
 import { WardrobeTab } from './components/cms/WardrobeTab';
 import { HotelClient } from './components/hotel/HotelClient';
 import { LoadingScreen } from './components/hotel/LoadingScreen';
+import { PixelBadgeSprite } from './components/PixelSpriteCanvas';
 import {
   demoteFromStaff,
   deriveStaffMembersFromAccounts,
@@ -54,13 +56,21 @@ import {
 } from './game/moderation';
 import {
   awardCustomBadgeToAccount,
+  findBadgeDefById,
   loadCustomBadges,
   mintCustomBadge,
   saveCustomBadges,
 } from './game/customBadges';
+import {
+  getLocalizedBadgeMeta,
+  loadSavedLanguage,
+  saveLanguagePreference,
+  t,
+} from './game/i18n';
 import { buyPet, getPetDef } from './game/pets';
 import { habboAudio } from './game/habboAudio';
 import {
+  awardBadgeInSupabase,
   broadcastHotelAlertViaChannel,
   createRoomInSupabase,
   decrementVoucherUsesInSupabase,
@@ -103,6 +113,7 @@ import type {
   Direction,
   HabboNPC,
   HotelAlertPayload,
+  LanguageCode,
   LookConfig,
   NewsArticle,
   PetSpecies,
@@ -117,6 +128,46 @@ import type {
   UserAccount,
   VoucherDef,
 } from './game/types';
+
+const SAVED_SESSION_KEY = 'pixlhotel_saved_session';
+
+function savePersistedSession(username: string): void {
+  try {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(
+        SAVED_SESSION_KEY,
+        JSON.stringify({ username, rememberMe: true, savedAt: Date.now() })
+      );
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function clearPersistedSession(): void {
+  try {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(SAVED_SESSION_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function loadPersistedSessionUsername(): string | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    const raw = window.localStorage.getItem(SAVED_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { username?: string; rememberMe?: boolean };
+    if (parsed && parsed.rememberMe !== false && typeof parsed.username === 'string' && parsed.username.trim()) {
+      return parsed.username.trim();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export default function App() {
   const [accounts, setAccounts] = useState<UserAccount[]>(() => loadAccountsDB());
@@ -139,6 +190,8 @@ export default function App() {
   });
 
   const [cmsTab, setCmsTab] = useState<CmsTab>('me');
+  const [lang, setLang] = useState<LanguageCode>(() => loadSavedLanguage());
+  const [badgeNotification, setBadgeNotification] = useState<{ badgeId: string } | null>(null);
   const [selectedDirectoryPlayerId, setSelectedDirectoryPlayerId] = useState<string | null>(null);
   const [player, setPlayer] = useState<PlayerState>(INITIAL_PLAYER_STATE);
   const [muted, setMuted] = useState(false);
@@ -153,6 +206,19 @@ export default function App() {
     accepted: boolean;
     ts: number;
   } | null>(null);
+
+  const handleChangeLang = useCallback((nextLang: LanguageCode) => {
+    setLang(nextLang);
+    saveLanguagePreference(nextLang);
+  }, []);
+
+  useEffect(() => {
+    if (!badgeNotification) return;
+    const timer = window.setTimeout(() => {
+      setBadgeNotification(null);
+    }, 9000);
+    return () => window.clearTimeout(timer);
+  }, [badgeNotification]);
 
   const [roomFurniMap, setRoomFurniMap] = useState<Record<string, PlacedFurni[]>>(() => {
     const map: Record<string, PlacedFurni[]> = {};
@@ -176,6 +242,7 @@ export default function App() {
   roomFurniMapRef.current = roomFurniMap;
   const screenRef = useRef(screen);
   screenRef.current = screen;
+  const restoredSessionRef = useRef(false);
   const [presenceUsernames, setPresenceUsernames] = useState<string[]>([]);
   const presenceSessionIdRef = useRef<string>(
     `sess-${Math.random().toString(36).slice(2, 10)}-${Date.now()}`
@@ -246,12 +313,35 @@ export default function App() {
       accountsRef.current = snap.accounts;
 
       const currentScreen = screenRef.current;
+      if (currentScreen === 'auth' && !restoredSessionRef.current) {
+        const savedUsername = loadPersistedSessionUsername();
+        if (savedUsername) {
+          const savedAcc = snap.accounts.find(
+            (a) => a.username.toLowerCase() === savedUsername.toLowerCase()
+          );
+          const isBanned = snap.bans.some(
+            (b) => b.value.toLowerCase() === savedUsername.toLowerCase()
+          );
+          if (savedAcc && !savedAcc.banned && !isBanned) {
+            restoredSessionRef.current = true;
+            const synced = syncBadgesWithPlayer(savedAcc.playerState);
+            playerRef.current = synced;
+            setPlayer(synced);
+            setScreen('cms');
+            void updateAccountInSupabase({ ...savedAcc, online: true, playerState: synced });
+            return;
+          }
+        }
+      }
+
       const activeName = playerRef.current.username.toLowerCase();
       const matched = snap.accounts.find((a) => a.username.toLowerCase() === activeName);
       if (matched && currentScreen !== 'auth') {
         if (matched.banned) {
+          clearPersistedSession();
           setScreen('auth');
         } else if (pendingUserWriteCountRef.current === 0) {
+          const prevUnlocked = new Set(playerRef.current.unlockedBadges ?? []);
           const synced = syncBadgesWithPlayer({
             ...matched.playerState,
             currentRoomId:
@@ -259,6 +349,11 @@ export default function App() {
                 ? playerRef.current.currentRoomId
                 : matched.playerState.currentRoomId,
           });
+          const newlyAdded = (synced.unlockedBadges ?? []).find((id) => !prevUnlocked.has(id));
+          if (newlyAdded) {
+            setBadgeNotification({ badgeId: newlyAdded });
+            habboAudio.playRespectFanfare();
+          }
           playerRef.current = synced;
           setPlayer(synced);
         }
@@ -450,7 +545,13 @@ export default function App() {
   const updatePlayer = useCallback(
     (updater: (prev: PlayerState) => PlayerState, extraBadgeId?: string) => {
       const prevPlayer = playerRef.current;
+      const prevUnlocked = new Set(prevPlayer.unlockedBadges ?? []);
       const updated = syncBadgesWithPlayer(updater(prevPlayer), extraBadgeId);
+      const newlyUnlockedId = (updated.unlockedBadges ?? []).find((id) => !prevUnlocked.has(id));
+      if (newlyUnlockedId) {
+        setBadgeNotification({ badgeId: newlyUnlockedId });
+        habboAudio.playRespectFanfare();
+      }
       playerRef.current = updated;
       setPlayer(updated);
 
@@ -475,6 +576,12 @@ export default function App() {
         void updateAccountInSupabase(updatedAccount).finally(() => {
           pendingUserWriteCountRef.current = Math.max(0, pendingUserWriteCountRef.current - 1);
         });
+        if (newlyUnlockedId) {
+          const uid = updatedAccount.numericId ?? Number(updatedAccount.id);
+          if (Number.isFinite(uid) && uid > 0) {
+            void awardBadgeInSupabase(uid, newlyUnlockedId);
+          }
+        }
       }
     },
     []
@@ -494,7 +601,8 @@ export default function App() {
   const handleLogin = useCallback(
     async (
       username: string,
-      password: string
+      password: string,
+      rememberMe = true
     ): Promise<{ ok: boolean; banned?: boolean; message: string }> => {
       await refreshRetroSnapshot();
 
@@ -518,6 +626,12 @@ export default function App() {
         const synced = syncBadgesWithPlayer(res.account.playerState);
         playerRef.current = synced;
         setPlayer(synced);
+        if (rememberMe !== false) {
+          savePersistedSession(res.account.username);
+        } else {
+          clearPersistedSession();
+        }
+        restoredSessionRef.current = true;
         setCmsTab('me');
         setScreen('cms');
         void updateAccountInSupabase({ ...res.account, online: true, playerState: synced }).then(() => {
@@ -541,13 +655,19 @@ export default function App() {
     ): Promise<{ ok: boolean; message: string }> => {
       await refreshRetroSnapshot();
 
+      const resolvedGender: 'M' | 'F' = gender ?? look?.gender ?? 'M';
+      const finalLook: LookConfig = {
+        ...(look ?? DEFAULT_LOOK),
+        gender: resolvedGender,
+      };
+
       const res = registerUser(
         accountsRef.current,
         username,
         password,
         confirmPassword,
         motto,
-        look
+        finalLook
       );
       if (!res.ok || !res.account || !res.accounts) {
         return { ok: res.ok, message: res.message };
@@ -557,9 +677,9 @@ export default function App() {
         username: res.account.username,
         password: res.account.password,
         motto: res.account.playerState.motto,
-        look: res.account.playerState.look,
+        look: finalLook,
         mail: mail?.trim() || `${res.account.username.toLowerCase()}@pixlhotel.ch`,
-        gender: gender ?? 'M',
+        gender: resolvedGender,
         rank: 1,
         credits: 250,
         duckets: 150,
@@ -574,9 +694,18 @@ export default function App() {
       const freshMatch = snap?.accounts.find(
         (a) => a.username.toLowerCase() === res.account!.username.toLowerCase()
       );
-      const nextPlayer = syncBadgesWithPlayer(freshMatch?.playerState ?? res.account.playerState);
+      const baseState = freshMatch?.playerState ?? res.account.playerState;
+      const nextPlayer = syncBadgesWithPlayer({
+        ...baseState,
+        look: {
+          ...baseState.look,
+          gender: resolvedGender,
+        },
+      });
       playerRef.current = nextPlayer;
       setPlayer(nextPlayer);
+      savePersistedSession(nextPlayer.username);
+      restoredSessionRef.current = true;
       setCmsTab('me');
       setScreen('cms');
       broadcastSyncEvent({ type: 'register', username: nextPlayer.username });
@@ -622,6 +751,8 @@ export default function App() {
   }, [refreshRetroSnapshot]);
 
   const handleSignOut = useCallback(() => {
+    clearPersistedSession();
+    restoredSessionRef.current = true;
     const activeName = playerRef.current.username.toLowerCase();
     const matched = accountsRef.current.find((a) => a.username.toLowerCase() === activeName);
     if (matched) {
@@ -1808,6 +1939,48 @@ export default function App() {
     [broadcastSyncEvent, customBadges]
   );
 
+  const handleAwardExistingBadge = useCallback(
+    async (
+      accountId: string,
+      badgeId: string
+    ): Promise<{ ok: boolean; message: string }> => {
+      const badgeDef = findBadgeDefById(badgeId, customBadges);
+      const canonicalId = badgeDef?.id ?? badgeId;
+      const updatedList = awardCustomBadgeToAccount(
+        accountsRef.current,
+        accountId,
+        canonicalId
+      );
+      accountsRef.current = updatedList;
+      setAccounts(updatedList);
+
+      const targetAcc = updatedList.find((a) => a.id === accountId);
+      if (!targetAcc) {
+        return { ok: false, message: 'Recipient account not found.' };
+      }
+
+      if (targetAcc.username.toLowerCase() === playerRef.current.username.toLowerCase()) {
+        const synced = syncBadgesWithPlayer(targetAcc.playerState, canonicalId);
+        playerRef.current = synced;
+        setPlayer(synced);
+        setBadgeNotification({ badgeId: canonicalId });
+        habboAudio.playRespectFanfare();
+      }
+
+      const targetUid = targetAcc.numericId ?? Number(targetAcc.id);
+      if (Number.isFinite(targetUid) && targetUid > 0) {
+        await awardBadgeInSupabase(targetUid, canonicalId);
+        broadcastSyncEvent({ type: 'badge:award', accountId: targetAcc.id, badgeId: canonicalId });
+      }
+
+      return {
+        ok: true,
+        message: `Awarded [${badgeDef?.code ?? canonicalId.toUpperCase()}] ${badgeDef?.name ?? canonicalId} to ${targetAcc.username}!`,
+      };
+    },
+    [broadcastSyncEvent, customBadges]
+  );
+
   const handleUpsertCatalogPage = useCallback(
     async (params: {
       id?: number;
@@ -1934,6 +2107,9 @@ export default function App() {
         catalogPages={catalogPages}
         catalogItems={catalogItems}
         muted={muted}
+        lang={lang}
+        badgeNotification={badgeNotification}
+        onDismissBadgeNotification={() => setBadgeNotification(null)}
         onToggleMute={handleToggleMute}
         onBackToCms={handleBackToCms}
         onSwitchRoom={(roomId) => updatePlayer((prev) => ({ ...prev, currentRoomId: roomId }))}
@@ -1997,6 +2173,8 @@ export default function App() {
         hcDays={player.hcDays}
         friendsCount={friendProfiles.length}
         onSignOut={handleSignOut}
+        lang={lang}
+        onChangeLang={handleChangeLang}
       />
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-0 sm:px-6 pb-6">
@@ -2053,6 +2231,15 @@ export default function App() {
           />
         )}
 
+        {cmsTab === 'badges' && (
+          <BadgesTab
+            player={player}
+            customBadges={customBadges}
+            lang={lang}
+            onEquipBadge={handleEquipBadge}
+          />
+        )}
+
         {cmsTab === 'staff' && (
           <StaffTab
             staff={liveStaff}
@@ -2090,6 +2277,7 @@ export default function App() {
             }}
             onPostNews={handlePostNews}
             onMintAndAwardBadge={handleMintAndAwardBadge}
+            onAwardExistingBadge={handleAwardExistingBadge}
             onUpsertCatalogPage={handleUpsertCatalogPage}
             onUpsertCatalogItem={handleUpsertCatalogItem}
             onDeleteCatalogItem={handleDeleteCatalogItem}
@@ -2098,6 +2286,97 @@ export default function App() {
         )}
         </div>
       </main>
+
+      {badgeNotification && (() => {
+        const badgeDef = findBadgeDefById(badgeNotification.badgeId, customBadges);
+        const localized = badgeDef
+          ? getLocalizedBadgeMeta(badgeDef, lang)
+          : {
+              name: badgeNotification.badgeId.toUpperCase(),
+              description: t(lang, 'badgeUnlockedHint'),
+            };
+        return (
+          <div
+            className="fixed top-3.5 right-3.5 z-[72] w-80 overflow-hidden border border-[#000000] bg-[#1e1e1e] text-white shadow-[0_6px_0_rgba(0,0,0,0.45)]"
+            data-testid="badge-received-alert"
+            role="status"
+            aria-live="polite"
+          >
+            <div
+              className="flex items-center justify-between border-b border-[#000000] px-3 py-1.5"
+              style={{
+                background: 'linear-gradient(180deg, #f59e0b 0%, #b45309 100%)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45)',
+              }}
+            >
+              <span className="font-pixel text-[11px] font-bold text-white drop-shadow-[0_1px_0_#000]">
+                ★ {t(lang, 'newBadgeReceived')}
+              </span>
+              <button
+                type="button"
+                onClick={() => setBadgeNotification(null)}
+                className="client-close-btn"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-3 space-y-2.5 bg-[#1e1e1e]">
+              <p className="text-[11px] font-bold text-[#fde047]">
+                {t(lang, 'youUnlockedNewBadge')}
+              </p>
+              <div className="flex items-center gap-3 rounded-[2px] border border-[#3f3f46] bg-[#27272a] p-2.5">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[2px] border border-[#52525b] bg-[#18181b]">
+                  <PixelBadgeSprite
+                    badgeId={badgeNotification.badgeId}
+                    size={48}
+                    customBadges={customBadges}
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate text-[12px] font-extrabold text-white">
+                      {localized.name}
+                    </span>
+                    {badgeDef?.code && (
+                      <span className="rounded-[2px] bg-[#3f3f46] px-1 py-0.5 font-mono text-[9px] font-bold text-[#fde047]">
+                        [{badgeDef.code}]
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-[10px] leading-snug text-[#d4d4d8]">
+                    {localized.description}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-0.5">
+                <button
+                  type="button"
+                  data-testid="badge-alert-wear-now"
+                  onClick={() => {
+                    habboAudio.playUiClick();
+                    handleEquipBadge(badgeNotification.badgeId);
+                    setBadgeNotification(null);
+                  }}
+                  className="habbo-btn-green px-3 py-1 text-[11px] font-bold cursor-pointer"
+                >
+                  {t(lang, 'wearNow')}
+                </button>
+                <button
+                  type="button"
+                  data-testid="badge-alert-ok"
+                  onClick={() => {
+                    habboAudio.playUiClick();
+                    setBadgeNotification(null);
+                  }}
+                  className="habbo-btn-blue px-3 py-1 text-[11px] font-bold cursor-pointer"
+                >
+                  {t(lang, 'okBtn')}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {hotelAlert && (
         <div

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Award, Check, Lock } from 'lucide-react';
 import { findBadgeDefById, getAllBadgeDefs } from '../../game/customBadges';
 import { getEquippedBadges } from '../../game/data';
+import { normalizeBadgeCategoryGroup, type BadgeCategoryFilter } from '../../game/i18n';
 import type { CustomBadgeDef, PlayerState } from '../../game/types';
 import { BadgeInfoModal } from '../BadgeInfoModal';
 import { PixelBadgeSprite } from '../PixelSpriteCanvas';
@@ -16,6 +17,7 @@ type BadgeFilter = 'all' | 'collected' | 'missing';
 
 export function BadgesPage({ player, customBadges = [], onEquipBadge }: BadgesPageProps) {
   const [filter, setFilter] = useState<BadgeFilter>('all');
+  const [categoryFilter, setCategoryFilter] = useState<BadgeCategoryFilter>('all');
   const [inspectBadgeId, setInspectBadgeId] = useState<string | null>(null);
 
   const allBadges = getAllBadgeDefs(customBadges);
@@ -27,8 +29,11 @@ export function BadgesPage({ player, customBadges = [], onEquipBadge }: BadgesPa
 
   const visibleBadges = allBadges.filter((b) => {
     const has = collectedSet.has(b.id);
-    if (filter === 'collected') return has;
-    if (filter === 'missing') return !has;
+    if (filter === 'collected' && !has) return false;
+    if (filter === 'missing' && has) return false;
+    if (categoryFilter !== 'all' && normalizeBadgeCategoryGroup(b.category) !== categoryFilter) {
+      return false;
+    }
     return true;
   });
 
@@ -133,8 +138,33 @@ export function BadgesPage({ player, customBadges = [], onEquipBadge }: BadgesPa
           </div>
         </div>
 
-        {/* Progress Bar */}
-        <div className="px-4 pb-4">
+        {/* Category Filter Pills + Progress Bar */}
+        <div className="px-4 pb-4 space-y-2.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(
+              [
+                { id: 'all', label: 'All Categories' },
+                { id: 'Achievements', label: 'Achievements' },
+                { id: 'Games & Rooms', label: 'Games & Rooms' },
+                { id: 'Rares', label: 'Rares' },
+                { id: 'Events & Seasonal', label: 'Events & Seasonal' },
+                { id: 'Staff & VIP', label: 'Staff & VIP' },
+              ] as { id: BadgeCategoryFilter; label: string }[]
+            ).map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setCategoryFilter(cat.id)}
+                className={`rounded-[2px] border px-2.5 py-0.5 text-[10px] font-bold cursor-pointer ${
+                  categoryFilter === cat.id
+                    ? 'border-[#000000] bg-[#1e293b] text-[#fde047]'
+                    : 'border-[#cbd5e1] bg-[#f8fafc] text-[#334155] hover:bg-[#e2e8f0]'
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
           <div className="h-3 w-full overflow-hidden rounded-[2px] border border-[#000000] bg-[#e2e8f0]">
             <div
               className="h-full bg-gradient-to-r from-[#2b6ca3] to-[#5bb52c] transition-all"

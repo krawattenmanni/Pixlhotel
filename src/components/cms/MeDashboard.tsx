@@ -23,6 +23,7 @@ import {
 } from '../../game/clientFeatures';
 import { findBadgeDefById } from '../../game/customBadges';
 import { getEquippedBadges } from '../../game/data';
+import { normalizeBadgeCategoryGroup, type BadgeCategoryFilter } from '../../game/i18n';
 import { getPetDef } from '../../game/pets';
 import { getRoomThumbnailImage } from '../../game/pixelSprites';
 import type {
@@ -308,6 +309,7 @@ export function MeDashboard({
   const [activeSlide, setActiveSlide] = useState(0);
   const [openArticle, setOpenArticle] = useState<NewsArticle | null>(null);
   const [inspectBadgeId, setInspectBadgeId] = useState<string | null>(null);
+  const [badgeCategoryFilter, setBadgeCategoryFilter] = useState<BadgeCategoryFilter>('all');
 
   const handleMottoCommit = () => {
     const clean = mottoDraft.trim() || 'Living the retro pixel dream!';
@@ -718,41 +720,74 @@ export function MeDashboard({
             </div>
           </div>
 
-          {/* Clearly Separated "My Badge Collection" Grid Below */}
+          {/* Clearly Separated "My Badge Collection" Grid Below with Category Filter Pills */}
           <div>
-            <p className="mb-2 text-[11px] font-bold text-[#334155]">
-              My Badge Collection ({player.unlockedBadges.length})
-            </p>
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10" data-testid="badge-collection-grid">
-              {player.unlockedBadges.map((bId) => {
-                const def = findBadgeDefById(bId, customBadges);
-                if (!def) return null;
-                const active = equippedBadges.includes(bId);
-                return (
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] font-bold text-[#334155]">
+                My Badge Collection ({player.unlockedBadges.length})
+              </p>
+              <div className="flex flex-wrap items-center gap-1" data-testid="me-badge-category-pills">
+                {(
+                  [
+                    { id: 'all', label: 'All' },
+                    { id: 'Achievements', label: 'Achievements' },
+                    { id: 'Games & Rooms', label: 'Games & Rooms' },
+                    { id: 'Rares', label: 'Rares' },
+                    { id: 'Events & Seasonal', label: 'Seasonal' },
+                    { id: 'Staff & VIP', label: 'Staff & VIP' },
+                  ] as { id: BadgeCategoryFilter; label: string }[]
+                ).map((cat) => (
                   <button
-                    key={bId}
+                    key={cat.id}
                     type="button"
-                    data-testid={`me-badge-${bId}`}
-                    title={`${def.name} [${def.code}] — Click to inspect`}
-                    onClick={() => setInspectBadgeId(bId)}
-                    className={`flex flex-col items-center justify-center gap-1 rounded-[2px] border p-1.5 cursor-pointer ${
-                      active
-                        ? 'border-[#000000] bg-[#fef9c3] shadow-[inset_0_1px_0_#ffffff]'
-                        : 'border-[#cbd5e1] bg-[#f8fafc] hover:border-[#000000] hover:bg-[#e8f4fc]'
+                    onClick={() => setBadgeCategoryFilter(cat.id)}
+                    className={`rounded-[2px] border px-2 py-0.5 text-[9px] font-bold cursor-pointer ${
+                      badgeCategoryFilter === cat.id
+                        ? 'border-[#000000] bg-[#2b6ca3] text-white'
+                        : 'border-[#cbd5e1] bg-[#f8fafc] text-[#334155] hover:bg-[#e2e8f0]'
                     }`}
                   >
-                    <PixelBadgeSprite
-                      badgeId={def.id}
-                      unlocked
-                      size={40}
-                      customBadges={customBadges}
-                    />
-                    <span className="font-mono-num text-[9px] font-bold text-[#334155]">
-                      {def.code}
-                    </span>
+                    {cat.label}
                   </button>
-                );
-              })}
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10" data-testid="badge-collection-grid">
+              {player.unlockedBadges
+                .filter((bId) => {
+                  if (badgeCategoryFilter === 'all') return true;
+                  const def = findBadgeDefById(bId, customBadges);
+                  return def ? normalizeBadgeCategoryGroup(def.category) === badgeCategoryFilter : false;
+                })
+                .map((bId) => {
+                  const def = findBadgeDefById(bId, customBadges);
+                  if (!def) return null;
+                  const active = equippedBadges.includes(bId);
+                  return (
+                    <button
+                      key={bId}
+                      type="button"
+                      data-testid={`me-badge-${bId}`}
+                      title={`${def.name} [${def.code}] — Click to inspect`}
+                      onClick={() => setInspectBadgeId(bId)}
+                      className={`flex flex-col items-center justify-center gap-1 rounded-[2px] border p-1.5 cursor-pointer ${
+                        active
+                          ? 'border-[#000000] bg-[#fef9c3] shadow-[inset_0_1px_0_#ffffff]'
+                          : 'border-[#cbd5e1] bg-[#f8fafc] hover:border-[#000000] hover:bg-[#e8f4fc]'
+                      }`}
+                    >
+                      <PixelBadgeSprite
+                        badgeId={def.id}
+                        unlocked
+                        size={40}
+                        customBadges={customBadges}
+                      />
+                      <span className="font-mono-num text-[9px] font-bold text-[#334155]">
+                        {def.code}
+                      </span>
+                    </button>
+                  );
+                })}
             </div>
           </div>
         </div>

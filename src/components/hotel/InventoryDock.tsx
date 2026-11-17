@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Award, Check, Package, PawPrint, RotateCw, Trash2, X } from 'lucide-react';
 import { findBadgeDefById } from '../../game/customBadges';
 import { findFurniDef, getEquippedBadges } from '../../game/data';
+import { normalizeBadgeCategoryGroup, type BadgeCategoryFilter } from '../../game/i18n';
 import type {
   CustomBadgeDef,
   InventoryEntry,
@@ -49,6 +50,7 @@ export function InventoryDock({
   onClose,
 }: InventoryDockProps) {
   const [activeTab, setActiveTab] = useState<'furni' | 'badges'>(initialTab);
+  const [badgeCategory, setBadgeCategory] = useState<BadgeCategoryFilter>('all');
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
@@ -244,56 +246,89 @@ export function InventoryDock({
             </div>
           </div>
 
+          {/* Category Filter Pills */}
+          <div className="flex flex-wrap gap-1" data-testid="inv-badge-category-pills">
+            {(
+              [
+                { id: 'all', label: 'All' },
+                { id: 'Achievements', label: 'Achiev.' },
+                { id: 'Games & Rooms', label: 'Games' },
+                { id: 'Rares', label: 'Rares' },
+                { id: 'Events & Seasonal', label: 'Seasonal' },
+                { id: 'Staff & VIP', label: 'Staff' },
+              ] as { id: BadgeCategoryFilter; label: string }[]
+            ).map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setBadgeCategory(cat.id)}
+                className={`rounded-[2px] border px-1.5 py-0.5 text-[9px] font-bold cursor-pointer ${
+                  badgeCategory === cat.id
+                    ? 'border-[#000000] bg-[#2b6ca3] text-white'
+                    : 'border-[#999999] bg-white text-[#334155] hover:bg-[#e5e7eb]'
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+
           <div className="grid max-h-36 sm:max-h-48 grid-cols-3 gap-1.5 overflow-y-auto border border-[#999999] bg-[#d4d4d4] p-1.5 rounded-[2px]">
-            {player.unlockedBadges.map((badgeId) => {
-              const def = findBadgeDefById(badgeId, customBadges);
-              if (!def) return null;
-              const isEquipped = equippedIds.includes(badgeId);
-              return (
-                <div
-                  key={badgeId}
-                  className={`flex flex-col items-center justify-between border p-1.5 text-center rounded-[2px] ${
-                    isEquipped
-                      ? 'border-[#000000] bg-[#fef9c3]'
-                      : 'border-[#999999] bg-white'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => onInspectBadge?.(badgeId)}
-                    className="flex flex-col items-center cursor-pointer w-full"
-                    title={`${def.name}: Click to inspect`}
+            {player.unlockedBadges
+              .filter((badgeId) => {
+                if (badgeCategory === 'all') return true;
+                const def = findBadgeDefById(badgeId, customBadges);
+                return def ? normalizeBadgeCategoryGroup(def.category) === badgeCategory : false;
+              })
+              .map((badgeId) => {
+                const def = findBadgeDefById(badgeId, customBadges);
+                if (!def) return null;
+                const isEquipped = equippedIds.includes(badgeId);
+                return (
+                  <div
+                    key={badgeId}
+                    className={`flex flex-col items-center justify-between border p-1.5 text-center rounded-[2px] ${
+                      isEquipped
+                        ? 'border-[#000000] bg-[#fef9c3]'
+                        : 'border-[#999999] bg-white'
+                    }`}
                   >
-                    <PixelBadgeSprite
-                      badgeId={def.id}
-                      unlocked
-                      size={30}
-                      customBadges={customBadges}
-                    />
-                    <span className="mt-1 font-pixel text-[8px] text-[#111827] truncate w-full">
-                      {def.code}
-                    </span>
-                  </button>
-                  {onEquipBadge && (
                     <button
                       type="button"
-                      onClick={() => onEquipBadge(badgeId)}
-                      className={`mt-1 w-full py-0.5 text-[9px] font-bold cursor-pointer ${
-                        isEquipped ? 'habbo-btn-green' : 'habbo-btn-silver'
-                      }`}
+                      onClick={() => onInspectBadge?.(badgeId)}
+                      className="flex flex-col items-center cursor-pointer w-full"
+                      title={`${def.name}: Click to inspect`}
                     >
-                      {isEquipped ? (
-                        <span className="inline-flex items-center justify-center gap-0.5">
-                          <Check className="h-2.5 w-2.5" /> On
-                        </span>
-                      ) : (
-                        'Wear'
-                      )}
+                      <PixelBadgeSprite
+                        badgeId={def.id}
+                        unlocked
+                        size={30}
+                        customBadges={customBadges}
+                      />
+                      <span className="mt-1 font-pixel text-[8px] text-[#111827] truncate w-full">
+                        {def.code}
+                      </span>
                     </button>
-                  )}
-                </div>
-              );
-            })}
+                    {onEquipBadge && (
+                      <button
+                        type="button"
+                        onClick={() => onEquipBadge(badgeId)}
+                        className={`mt-1 w-full py-0.5 text-[9px] font-bold cursor-pointer ${
+                          isEquipped ? 'habbo-btn-green' : 'habbo-btn-silver'
+                        }`}
+                      >
+                        {isEquipped ? (
+                          <span className="inline-flex items-center justify-center gap-0.5">
+                            <Check className="h-2.5 w-2.5" /> On
+                          </span>
+                        ) : (
+                          'Wear'
+                        )}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
           </div>
         </div>
       )}

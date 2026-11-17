@@ -1,15 +1,19 @@
 import { useState } from 'react';
-import { Check, RotateCw, Shirt } from 'lucide-react';
-import { CLOTHING_PALETTE, HAIR_PALETTE, SKIN_PALETTE } from '../../game/data';
+import { Check, Crown, RotateCw, Shirt, Shuffle } from 'lucide-react';
 import type {
-  AccessoryStyle,
   AvatarPose,
   Direction,
-  ExpressionStyle,
-  HairStyle,
   LookConfig,
-  ShirtStyle,
 } from '../../game/types';
+import {
+  WARDROBE_ACCESSORIES,
+  WARDROBE_CLOTHING_COLORS,
+  WARDROBE_EXPRESSIONS,
+  WARDROBE_HAIR_COLORS,
+  WARDROBE_HAIR_STYLES,
+  WARDROBE_SHIRT_STYLES,
+  WARDROBE_SKIN_COLORS,
+} from '../../game/wardrobeOptions';
 import { PixelAvatarCanvas } from '../PixelSpriteCanvas';
 
 interface WardrobeTabProps {
@@ -17,40 +21,11 @@ interface WardrobeTabProps {
   onSaveLook: (look: LookConfig) => void;
 }
 
-const HAIR_STYLES: { id: HairStyle; label: string }[] = [
-  { id: 'quiff', label: 'Classic Quiff' },
-  { id: 'spiky', label: 'Spiky Gel' },
-  { id: 'bob', label: 'Retro Bob' },
-  { id: 'long', label: 'Long Flowing' },
-  { id: 'mohawk', label: 'Punk Mohawk' },
-  { id: 'curls', label: 'Soft Curls' },
-];
-
-const EXPRESSIONS: { id: ExpressionStyle; label: string }[] = [
-  { id: 'happy', label: 'Happy Grin' },
-  { id: 'cool', label: 'Cool Focus' },
-  { id: 'cheeky', label: 'Cheeky Smile' },
-  { id: 'serene', label: 'Chill Calm' },
-];
-
-const SHIRT_STYLES: { id: ShirtStyle; label: string }[] = [
-  { id: 'hoodie', label: 'HC Hoodie' },
-  { id: 'tee', label: 'Classic Tee' },
-  { id: 'suit', label: 'VIP Suit' },
-  { id: 'stripes', label: 'Sailor Stripes' },
-  { id: 'tank', label: 'Summer Tank' },
-];
-
-const ACCESSORIES: { id: AccessoryStyle; label: string }[] = [
-  { id: 'none', label: 'None' },
-  { id: 'crown', label: 'Golden Crown' },
-  { id: 'headphones', label: 'DJ Headphones' },
-  { id: 'sunglasses', label: 'Cool Shades' },
-  { id: 'cap', label: 'Retro Cap' },
-];
-
 export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
-  const [draft, setDraft] = useState<LookConfig>(currentLook);
+  const [draft, setDraft] = useState<LookConfig>({
+    gender: currentLook.gender ?? 'M',
+    ...currentLook,
+  });
   const [previewDir, setPreviewDir] = useState<Direction>(0);
   const [previewPose, setPreviewPose] = useState<AvatarPose>('stand');
   const [savedNotice, setSavedNotice] = useState(false);
@@ -59,6 +34,22 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
     onSaveLook(draft);
     setSavedNotice(true);
     setTimeout(() => setSavedNotice(false), 2000);
+  };
+
+  const handleRandomize = () => {
+    const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+    setDraft((prev) => ({
+      ...prev,
+      skinColor: pick(WARDROBE_SKIN_COLORS).hex,
+      hairStyle: pick(WARDROBE_HAIR_STYLES).id,
+      hairColor: pick(WARDROBE_HAIR_COLORS).hex,
+      expression: pick(WARDROBE_EXPRESSIONS).id,
+      shirtStyle: pick(WARDROBE_SHIRT_STYLES).id,
+      shirtColor: pick(WARDROBE_CLOTHING_COLORS).hex,
+      pantsColor: pick(WARDROBE_CLOTHING_COLORS).hex,
+      shoesColor: pick(WARDROBE_CLOTHING_COLORS).hex,
+      accessory: pick(WARDROBE_ACCESSORIES).id,
+    }));
   };
 
   return (
@@ -75,7 +66,28 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
               <PixelAvatarCanvas look={draft} dir={previewDir} pose={previewPose} frame={0} scale={3} />
             </div>
 
-            <div className="mt-3.5 flex flex-wrap items-center justify-center gap-1.5">
+            {/* Gender Switcher */}
+            <div className="mt-3 flex w-full gap-2">
+              {(['M', 'F'] as const).map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  data-testid={`cms-wardrobe-gender-${g.toLowerCase()}`}
+                  onClick={() => setDraft((prev) => ({ ...prev, gender: g }))}
+                  className={`flex-1 rounded-[2px] border py-1.5 text-[11px] font-bold cursor-pointer ${
+                    (draft.gender ?? 'M') === g
+                      ? g === 'F'
+                        ? 'border-[#000000] bg-[#db2777] text-white'
+                        : 'border-[#000000] bg-[#2b6ca3] text-white'
+                      : 'border-[#94a3b8] bg-white text-[#1f2937] hover:bg-[#e2e8f0]'
+                  }`}
+                >
+                  {g === 'M' ? 'Male / Boy (M)' : 'Female / Girl (F)'}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-2.5 flex flex-wrap items-center justify-center gap-1.5">
               <button
                 type="button"
                 onClick={() => setPreviewDir(((previewDir + 1) % 4) as Direction)}
@@ -83,6 +95,14 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
               >
                 <RotateCw className="h-3.5 w-3.5" />
                 Rotate
+              </button>
+              <button
+                type="button"
+                onClick={handleRandomize}
+                className="inline-flex items-center gap-1 rounded-[2px] border border-[#000000] bg-[#fef08a] px-2.5 py-1 text-[11px] font-bold text-[#1e293b] cursor-pointer hover:bg-[#fde047]"
+              >
+                <Shuffle className="h-3.5 w-3.5" />
+                Random
               </button>
               {(['stand', 'wave', 'sit', 'dance'] as AvatarPose[]).map((p) => (
                 <button
@@ -123,12 +143,12 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
       {/* CUSTOMIZER CONTROLS */}
       <div className="space-y-5 lg:col-span-8">
         <div className="habbo-box">
-          <div className="habbo-box-header habbo-header-blue">Head, Hair &amp; Expression</div>
+          <div className="habbo-box-header habbo-header-blue">Head, Hair &amp; Expression (15 Hairstyles &amp; 6 Expressions)</div>
           <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
             <div>
               <p className="text-[11px] font-bold text-[#1f2937]">Skin Tone</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {SKIN_PALETTE.map((c) => (
+                {WARDROBE_SKIN_COLORS.map((c) => (
                   <button
                     key={c.hex}
                     type="button"
@@ -146,47 +166,49 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
             <div>
               <p className="text-[11px] font-bold text-[#1f2937]">Facial Expression</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {EXPRESSIONS.map((exp) => (
+                {WARDROBE_EXPRESSIONS.map((exp) => (
                   <button
                     key={exp.id}
                     type="button"
                     onClick={() => setDraft({ ...draft, expression: exp.id })}
-                    className={`rounded-[2px] border px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
+                    className={`inline-flex items-center gap-1 rounded-[2px] border px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
                       draft.expression === exp.id
                         ? 'border-[#000000] bg-[#2b6ca3] text-white'
                         : 'border-[#94a3b8] bg-[#f8fafc] text-[#1f2937] hover:bg-[#e2e8f0]'
                     }`}
                   >
-                    {exp.label}
+                    <span>{exp.label}</span>
+                    {exp.hcOnly && <Crown className="h-3 w-3 text-[#eab308]" />}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div>
-              <p className="text-[11px] font-bold text-[#1f2937]">Hairstyle</p>
-              <div className="mt-2 grid grid-cols-2 gap-1.5">
-                {HAIR_STYLES.map((hs) => (
+            <div className="sm:col-span-2">
+              <p className="text-[11px] font-bold text-[#1f2937]">Hairstyle (Women &amp; Men)</p>
+              <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                {WARDROBE_HAIR_STYLES.map((hs) => (
                   <button
                     key={hs.id}
                     type="button"
                     onClick={() => setDraft({ ...draft, hairStyle: hs.id })}
-                    className={`rounded-[2px] border px-2.5 py-1 text-[11px] font-bold text-left cursor-pointer ${
+                    className={`flex items-center justify-between rounded-[2px] border px-2.5 py-1.5 text-[11px] font-bold text-left cursor-pointer ${
                       draft.hairStyle === hs.id
                         ? 'border-[#000000] bg-[#2b6ca3] text-white'
                         : 'border-[#94a3b8] bg-[#f8fafc] text-[#1f2937] hover:bg-[#e2e8f0]'
                     }`}
                   >
-                    {hs.label}
+                    <span className="truncate">{hs.label}</span>
+                    {hs.hcOnly && <Crown className="h-3 w-3 shrink-0 text-[#eab308]" />}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div>
+            <div className="sm:col-span-2">
               <p className="text-[11px] font-bold text-[#1f2937]">Hair Color</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {HAIR_PALETTE.map((c) => (
+                {WARDROBE_HAIR_COLORS.map((c) => (
                   <button
                     key={c.hex}
                     type="button"
@@ -204,32 +226,33 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
         </div>
 
         <div className="habbo-box">
-          <div className="habbo-box-header habbo-header-orange">Outfit &amp; Accessories</div>
+          <div className="habbo-box-header habbo-header-orange">Outfit, Dresses &amp; Accessories</div>
           <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
-            <div>
-              <p className="text-[11px] font-bold text-[#1f2937]">Shirt Style</p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {SHIRT_STYLES.map((s) => (
+            <div className="sm:col-span-2">
+              <p className="text-[11px] font-bold text-[#1f2937]">Top, Jacket &amp; Dress Style (14 Styles)</p>
+              <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                {WARDROBE_SHIRT_STYLES.map((s) => (
                   <button
                     key={s.id}
                     type="button"
                     onClick={() => setDraft({ ...draft, shirtStyle: s.id })}
-                    className={`rounded-[2px] border px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
+                    className={`flex items-center justify-between rounded-[2px] border px-2.5 py-1.5 text-[11px] font-bold text-left cursor-pointer ${
                       draft.shirtStyle === s.id
                         ? 'border-[#000000] bg-[#2b6ca3] text-white'
                         : 'border-[#94a3b8] bg-[#f8fafc] text-[#1f2937] hover:bg-[#e2e8f0]'
                     }`}
                   >
-                    {s.label}
+                    <span className="truncate">{s.label}</span>
+                    {s.hcOnly && <Crown className="h-3 w-3 shrink-0 text-[#eab308]" />}
                   </button>
                 ))}
               </div>
             </div>
 
             <div>
-              <p className="text-[11px] font-bold text-[#1f2937]">Shirt Color</p>
+              <p className="text-[11px] font-bold text-[#1f2937]">Top / Dress Color</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {CLOTHING_PALETTE.map((c) => (
+                {WARDROBE_CLOTHING_COLORS.map((c) => (
                   <button
                     key={c.hex}
                     type="button"
@@ -245,9 +268,9 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
             </div>
 
             <div>
-              <p className="text-[11px] font-bold text-[#1f2937]">Pants Color</p>
+              <p className="text-[11px] font-bold text-[#1f2937]">Trousers &amp; Skirt Color</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {CLOTHING_PALETTE.map((c) => (
+                {WARDROBE_CLOTHING_COLORS.map((c) => (
                   <button
                     key={c.hex}
                     type="button"
@@ -262,10 +285,10 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
               </div>
             </div>
 
-            <div>
-              <p className="text-[11px] font-bold text-[#1f2937]">Shoes Color</p>
+            <div className="sm:col-span-2">
+              <p className="text-[11px] font-bold text-[#1f2937]">Shoes &amp; Sneakers Color</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {CLOTHING_PALETTE.map((c) => (
+                {WARDROBE_CLOTHING_COLORS.map((c) => (
                   <button
                     key={c.hex}
                     type="button"
@@ -281,20 +304,21 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
             </div>
 
             <div className="sm:col-span-2">
-              <p className="text-[11px] font-bold text-[#1f2937]">Head &amp; Face Accessories</p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {ACCESSORIES.map((acc) => (
+              <p className="text-[11px] font-bold text-[#1f2937]">Hats, Glasses &amp; Extras (15 Accessories)</p>
+              <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                {WARDROBE_ACCESSORIES.map((acc) => (
                   <button
                     key={acc.id}
                     type="button"
                     onClick={() => setDraft({ ...draft, accessory: acc.id })}
-                    className={`rounded-[2px] border px-3 py-1.5 text-[11px] font-bold cursor-pointer ${
+                    className={`flex items-center justify-between rounded-[2px] border px-2.5 py-1.5 text-[11px] font-bold text-left cursor-pointer ${
                       draft.accessory === acc.id
                         ? 'border-[#000000] bg-[#f59e0b] text-[#1c1200]'
                         : 'border-[#94a3b8] bg-[#f8fafc] text-[#1f2937] hover:bg-[#e2e8f0]'
                     }`}
                   >
-                    {acc.label}
+                    <span className="truncate">{acc.label}</span>
+                    {acc.hcOnly && <Crown className="h-3 w-3 shrink-0 text-[#eab308]" />}
                   </button>
                 ))}
               </div>

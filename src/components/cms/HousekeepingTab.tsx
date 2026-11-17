@@ -36,7 +36,7 @@ import {
   createEmptyBadgeGrid,
   createStarterCrownGrid,
 } from '../../game/customBadges';
-import { FURNI_CATALOGUE } from '../../game/data';
+import { BADGE_CATALOGUE, FURNI_CATALOGUE } from '../../game/data';
 import type {
   AccountRank,
   BanRecord,
@@ -81,6 +81,10 @@ interface HousekeepingTabProps {
     pixels: (string | null)[];
     recipientAccountId: string;
   }) => { ok: boolean; message: string };
+  onAwardExistingBadge?: (
+    accountId: string,
+    badgeId: string
+  ) => Promise<{ ok: boolean; message: string }> | { ok: boolean; message: string };
   onUpsertCatalogPage?: (params: {
     id?: number;
     caption: string;
@@ -120,6 +124,7 @@ export function HousekeepingTab({
   onRefreshDatabase,
   onPostNews,
   onMintAndAwardBadge,
+  onAwardExistingBadge,
   onUpsertCatalogPage,
   onUpsertCatalogItem,
   onDeleteCatalogItem,
@@ -158,6 +163,11 @@ export function HousekeepingTab({
     () => accounts[0]?.id ?? '#001'
   );
   const [badgeFeedback, setBadgeFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Grant Official Badge state
+  const [grantBadgeId, setGrantBadgeId] = useState<string>(() => BADGE_CATALOGUE[0]?.id ?? 'habbo_citizen');
+  const [grantAccountId, setGrantAccountId] = useState<string>(() => accounts[0]?.id ?? '#001');
+  const [grantBusy, setGrantBusy] = useState(false);
 
   // Quick "Add to Staff" state
   const [staffCandidateSearch, setStaffCandidateSearch] = useState('');
@@ -793,6 +803,85 @@ export function HousekeepingTab({
       )}
 
       {subTab === 'badges' && (
+        <div className="space-y-4">
+          <section className="habbo-box" data-testid="hk-grant-existing-badge">
+            <div className="habbo-box-header habbo-header-orange flex flex-wrap items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-2">
+                <Award className="h-4 w-4 text-white" />
+                Grant Official Badge to User (64 Shaped Badges)
+              </span>
+              <span className="font-mono-num text-[11px] text-amber-100">
+                {BADGE_CATALOGUE.length} official badges available
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-3 p-3.5 sm:grid-cols-12 items-end">
+              <div className="sm:col-span-5">
+                <label htmlFor="hk-grant-badge-select" className="block text-[11px] font-bold text-[#1f2937]">
+                  Select Official Shaped Badge
+                </label>
+                <div className="mt-1 flex items-center gap-2">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[2px] border border-[#000000] bg-[#1e293b]">
+                    <PixelBadgeSprite
+                      badgeId={grantBadgeId}
+                      unlocked
+                      customBadges={customBadges}
+                      size={32}
+                    />
+                  </div>
+                  <select
+                    id="hk-grant-badge-select"
+                    data-testid="hk-grant-badge-select"
+                    value={grantBadgeId}
+                    onChange={(e) => setGrantBadgeId(e.target.value)}
+                    className="w-full rounded-[2px] border border-[#000000] bg-white px-2.5 py-1.5 text-[11px] font-bold text-[#111827]"
+                  >
+                    {BADGE_CATALOGUE.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        [{b.code}] {b.name} ({b.category ?? 'achievements'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="sm:col-span-4">
+                <label htmlFor="hk-grant-account-select" className="block text-[11px] font-bold text-[#1f2937]">
+                  Recipient PIXL Account
+                </label>
+                <select
+                  id="hk-grant-account-select"
+                  data-testid="hk-grant-account-select"
+                  value={grantAccountId}
+                  onChange={(e) => setGrantAccountId(e.target.value)}
+                  className="mt-1 w-full rounded-[2px] border border-[#000000] bg-white px-2.5 py-1.5 text-[11px] font-bold text-[#111827]"
+                >
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.displayId ?? acc.id} · {acc.username} ({RANK_META[acc.rank].badgeCode})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="sm:col-span-3">
+                <button
+                  type="button"
+                  data-testid="hk-grant-badge-btn"
+                  disabled={grantBusy || !onAwardExistingBadge}
+                  onClick={async () => {
+                    if (!onAwardExistingBadge) return;
+                    setGrantBusy(true);
+                    const res = await onAwardExistingBadge(grantAccountId, grantBadgeId);
+                    setGrantBusy(false);
+                    setBadgeFeedback({ ok: res.ok, text: res.message });
+                    notify(res.message);
+                  }}
+                  className="habbo-btn-green w-full py-2 font-pixel text-[11px] cursor-pointer disabled:opacity-50"
+                >
+                  {grantBusy ? 'Awarding...' : 'Grant Official Badge'}
+                </button>
+              </div>
+            </div>
+          </section>
+
         <section className="habbo-box" data-testid="hk-badge-creator">
           <div className="habbo-box-header habbo-header-dark flex flex-wrap items-center justify-between gap-2">
             <span className="inline-flex items-center gap-2">
@@ -1069,7 +1158,8 @@ export function HousekeepingTab({
               )}
             </form>
           </div>
-        </section>
+          </section>
+        </div>
       )}
 
       {subTab === 'news_bans' && (

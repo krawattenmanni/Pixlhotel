@@ -116,11 +116,31 @@ export function WardrobeModal({
         <div className="grid gap-3 p-3 md:grid-cols-[200px_1fr] overflow-y-auto bg-[#ececec]">
           {/* Left Stage: Rotating Isometric Avatar Preview */}
           <div className="flex flex-col items-center justify-between border border-[#999999] bg-[#ffffff] p-3 rounded-[2px]">
-            <div className="flex h-[178px] w-full items-center justify-center border border-[#000000] bg-gradient-to-b from-[#334e68] to-[#1e293b] rounded-[2px]">
+            <div className="flex h-[178px] w-full flex-col items-center justify-center border border-[#000000] bg-gradient-to-b from-[#334e68] to-[#1e293b] rounded-[2px]">
               <PixelAvatarCanvas look={draft} dir={previewDir} pose="stand" scale={2.1} />
             </div>
 
-            <div className="mt-2.5 flex w-full items-center justify-between gap-1.5">
+            <div className="mt-2 flex w-full gap-1.5">
+              {(['M', 'F'] as const).map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  data-testid={`wardrobe-gender-${g.toLowerCase()}`}
+                  onClick={() => setDraft((prev) => ({ ...prev, gender: g }))}
+                  className={`flex-1 border py-1 text-[10px] font-bold rounded-[2px] cursor-pointer ${
+                    (draft.gender ?? 'M') === g
+                      ? g === 'F'
+                        ? 'border-[#000000] bg-[#db2777] text-white'
+                        : 'border-[#000000] bg-[#2b6ca3] text-white'
+                      : 'border-[#000000] bg-[#f3f4f6] text-[#111827] hover:bg-[#e5e7eb]'
+                  }`}
+                >
+                  {g === 'M' ? 'Boy (M)' : 'Girl (F)'}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-1.5 flex w-full items-center justify-between gap-1.5">
               <button
                 type="button"
                 aria-label="Rotate Avatar Left"
@@ -142,7 +162,7 @@ export function WardrobeModal({
             <button
               type="button"
               onClick={handleRandomize}
-              className="mt-2 flex w-full items-center justify-center gap-1 border border-[#000000] bg-[#f3f4f6] py-1.5 text-[11px] font-bold text-[#111827] hover:bg-[#e5e7eb] rounded-[2px] cursor-pointer"
+              className="mt-1.5 flex w-full items-center justify-center gap-1 border border-[#000000] bg-[#f3f4f6] py-1.5 text-[11px] font-bold text-[#111827] hover:bg-[#e5e7eb] rounded-[2px] cursor-pointer"
             >
               <Shuffle className="h-3 w-3" /> Randomize
             </button>

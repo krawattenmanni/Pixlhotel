@@ -1,4 +1,14 @@
-export type CmsTab = 'me' | 'friends' | 'wardrobe' | 'community' | 'staff' | 'shop' | 'housekeeping';
+export type CmsTab =
+  | 'me'
+  | 'friends'
+  | 'wardrobe'
+  | 'community'
+  | 'badges'
+  | 'staff'
+  | 'shop'
+  | 'housekeeping';
+
+export type LanguageCode = 'en' | 'de';
 
 export type AppScreen = 'cms' | 'loading' | 'hotel';
 
@@ -6,10 +16,57 @@ export type Direction = 0 | 1 | 2 | 3; // 0: SE (front-right), 1: SW (front-left
 
 export type AvatarPose = 'stand' | 'walk' | 'sit' | 'wave' | 'dance' | 'lay';
 
-export type HairStyle = 'spiky' | 'bob' | 'quiff' | 'long' | 'mohawk' | 'curls';
-export type ShirtStyle = 'tee' | 'hoodie' | 'suit' | 'stripes' | 'tank';
-export type ExpressionStyle = 'happy' | 'cool' | 'cheeky' | 'serene';
-export type AccessoryStyle = 'none' | 'crown' | 'headphones' | 'sunglasses' | 'cap';
+export type HairStyle =
+  | 'spiky'
+  | 'bob'
+  | 'quiff'
+  | 'long'
+  | 'mohawk'
+  | 'curls'
+  | 'ponytail'
+  | 'pigtails'
+  | 'side_fringe'
+  | 'braided_crown'
+  | 'princess_bun'
+  | 'messy'
+  | 'buzzcut'
+  | 'side_part'
+  | 'pompadour';
+
+export type ShirtStyle =
+  | 'tee'
+  | 'hoodie'
+  | 'suit'
+  | 'stripes'
+  | 'tank'
+  | 'dress'
+  | 'offshoulder'
+  | 'crop_cardigan'
+  | 'halter'
+  | 'sailor_blouse'
+  | 'varsity'
+  | 'leather_jacket'
+  | 'track_jacket'
+  | 'turtleneck';
+
+export type ExpressionStyle = 'happy' | 'cool' | 'cheeky' | 'serene' | 'wink' | 'surprised';
+
+export type AccessoryStyle =
+  | 'none'
+  | 'crown'
+  | 'headphones'
+  | 'sunglasses'
+  | 'cap'
+  | 'tiara'
+  | 'beanie'
+  | 'beret'
+  | 'top_hat'
+  | 'devil_horns'
+  | 'angel_halo'
+  | 'cat_ears'
+  | 'flower_clip'
+  | 'gold_chain'
+  | 'scarf';
 
 export interface LookConfig {
   gender?: 'M' | 'F';
@@ -24,7 +81,15 @@ export interface LookConfig {
   accessory: AccessoryStyle;
 }
 
-export type FurniCategory = 'seating' | 'rares' | 'tables' | 'lighting' | 'decor' | 'trophies';
+export type FurniCategory =
+  | 'seating'
+  | 'rares'
+  | 'tables'
+  | 'lighting'
+  | 'decor'
+  | 'trophies'
+  | 'plants'
+  | 'rugs';
 
 export interface TrophyMetadata {
   inscription: string;
@@ -73,6 +138,7 @@ export interface FurniItemDef {
   animated?: boolean;
   engravable?: boolean;
   isStickyNote?: boolean;
+  isWallItem?: boolean;
 }
 
 export interface CatalogPageRow {
@@ -304,13 +370,32 @@ export interface RareValueItem {
 export type AccountRank = 1 | 2 | 3 | 4 | 5;
 export type UserRole = 'admin' | 'player';
 
+export type BadgeCategory =
+  | 'Staff & VIP'
+  | 'Achievements'
+  | 'Games & Rooms'
+  | 'Rares'
+  | 'Events & Seasonal'
+  | 'Custom'
+  | 'Starter'
+  | 'Collector'
+  | 'Social'
+  | 'VIP & Staff';
+
 export interface BadgeDef {
   id: string;
   code: string;
   name: string;
   description: string;
   unlockHint: string;
-  category: 'Starter' | 'Collector' | 'Social' | 'VIP & Staff' | 'Custom';
+  nameDe?: string;
+  descriptionDe?: string;
+  unlockHintDe?: string;
+  category: BadgeCategory;
+  shape?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+  accentColor?: string;
   palette: {
     bg: string;
     border: string;

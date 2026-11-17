@@ -48,7 +48,9 @@ import {
   type DanceStyleId,
   type MoodlightConfig,
 } from '../../game/clientFeatures';
+import { findBadgeDefById } from '../../game/customBadges';
 import { findFurniDef, getEquippedBadges } from '../../game/data';
+import { getLocalizedBadgeMeta, t } from '../../game/i18n';
 import { computeFurniPlacement } from '../../game/economy';
 import {
   canStepBetweenTiles,
@@ -97,6 +99,7 @@ import type {
   Direction,
   HabboNPC,
   HotelAlertPayload,
+  LanguageCode,
   LookConfig,
   OwnedPet,
   PetAnim,
@@ -114,7 +117,7 @@ import type {
   TradeSlotItem,
 } from '../../game/types';
 import { BadgeInfoModal } from '../BadgeInfoModal';
-import { PixelPetCanvas } from '../PixelSpriteCanvas';
+import { PixelBadgeSprite, PixelPetCanvas } from '../PixelSpriteCanvas';
 import { AdminToolsPanel } from './AdminToolsPanel';
 import { AvatarInfoStand, type InfoStandTarget } from './AvatarInfoStand';
 import { CatalogueModal } from './CatalogueModal';
@@ -144,6 +147,9 @@ interface HotelClientProps {
   customBadges?: CustomBadgeDef[];
   catalogPages?: CatalogPageRow[];
   catalogItems?: CatalogItemRow[];
+  lang?: LanguageCode;
+  badgeNotification?: { badgeId: string } | null;
+  onDismissBadgeNotification?: () => void;
   muted: boolean;
   onToggleMute: () => void;
   onBackToCms: () => void;
@@ -348,6 +354,9 @@ export function HotelClient({
   customBadges = [],
   catalogPages,
   catalogItems,
+  lang = 'en',
+  badgeNotification = null,
+  onDismissBadgeNotification,
   muted,
   onToggleMute,
   onBackToCms,
@@ -640,6 +649,7 @@ export function HotelClient({
     onAwardBanzaiReward,
     onRefreshRoomFurni,
     onUnlockBadge,
+    onSwitchRoom,
   });
   latestRef.current = {
     player,
@@ -659,6 +669,7 @@ export function HotelClient({
     onAwardBanzaiReward,
     onRefreshRoomFurni,
     onUnlockBadge,
+    onSwitchRoom,
   };
 
   const getClientCamera = useCallback((vw: number, vh: number, roomOverride?: RoomDef) => {
@@ -896,7 +907,7 @@ export function HotelClient({
     const syncPresenceMap = () => {
       const state = channel.presenceState<RemotePlayerState>();
       const existing = simRef.current.remotePlayers;
-      const nextMap: Record<string, RemotePlayerSim> = {};
+      const nextMap: Record<string, RemotePlayerSim> = { ...existing };
 
       for (const [key, presences] of Object.entries(state)) {
         if (key === mySessionId || !Array.isArray(presences) || presences.length === 0) continue;
@@ -905,6 +916,7 @@ export function HotelClient({
 
         const prev = existing[p.sessionId];
         if (prev) {
+          // Never overwrite interpolated x/y while remote player is walking
           nextMap[p.sessionId] = {
             ...prev,
             username: p.username,
@@ -912,6 +924,8 @@ export function HotelClient({
             look: p.look,
             danceStyle: p.danceStyle,
             activeSign: p.activeSign,
+            carryItem: p.carryItem,
+            moonwalk: p.moonwalk,
             swimming: p.swimming,
             swimwearColor: p.swimwearColor,
             badge: p.badge,
@@ -941,7 +955,20 @@ export function HotelClient({
     channel
       .on('presence', { event: 'sync' }, syncPresenceMap)
       .on('presence', { event: 'join' }, syncPresenceMap)
-      .on('presence', { event: 'leave' }, syncPresenceMap)
+      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+        const nextMap = { ...simRef.current.remotePlayers };
+        if (key && key !== mySessionId) {
+          delete nextMap[key];
+        }
+        if (Array.isArray(leftPresences)) {
+          for (const lp of leftPresences) {
+            const sid = (lp as { sessionId?: string })?.sessionId;
+            if (sid) delete nextMap[sid];
+          }
+        }
+        simRef.current.remotePlayers = nextMap;
+        setRemotePlayersCount(Object.keys(nextMap).length);
+      })
       .on('broadcast', { event: 'avatar:move' }, ({ payload }) => {
         const p = payload as RemotePlayerState | null;
         if (!p || !p.sessionId || p.sessionId === mySessionId) return;
@@ -1012,8 +1039,26 @@ export function HotelClient({
         ) {
           habboAudio.playError();
           showToast(`You were kicked from the room by ${msg.kickedBy || 'Room Owner'}.`);
-          onSwitchRoom('welcome_lounge');
+          latestRef.current.onSwitchRoom('welcome_lounge');
         }
+      })
+      .on('broadcast', { event: 'room:ambiance' }, ({ payload }) => {
+        const amb = payload as {
+          moodlight?: MoodlightConfig;
+          floorTheme?: RoomFloorTheme;
+          wallTheme?: RoomWallTheme;
+        } | null;
+        if (!amb) return;
+        if (amb.moodlight) setMoodlight(amb.moodlight);
+        if (amb.floorTheme) {
+          setFloorThemeOverride((prev) => ({ ...prev, [roomId]: amb.floorTheme! }));
+        }
+        if (amb.wallTheme) {
+          setWallThemeOverride((prev) => ({ ...prev, [roomId]: amb.wallTheme! }));
+        }
+      })
+      .on('broadcast', { event: 'room:furni' }, () => {
+        latestRef.current.onRefreshRoomFurni?.(roomId);
       })
       .on('broadcast', { event: 'avatar:chat' }, ({ payload }) => {
         const chat = payload as {
@@ -1051,6 +1096,7 @@ export function HotelClient({
               syncPresenceMap();
             })
             .catch(() => {});
+          channel.send({ type: 'broadcast', event: 'avatar:move', payload: snap }).catch(() => {});
           latestRef.current.onRefreshRoomFurni?.(roomId);
         } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           roomChannelSubscribedRef.current = false;
@@ -1059,13 +1105,22 @@ export function HotelClient({
 
     roomChannelRef.current = channel;
 
+    // 3.5s periodic heartbeat so late joiners and existing players always see each other
+    const heartbeatId = window.setInterval(() => {
+      if (!roomChannelSubscribedRef.current) return;
+      const snap = buildLocalPresenceSnapshot();
+      channel.send({ type: 'broadcast', event: 'avatar:move', payload: snap }).catch(() => {});
+    }, 3500);
+
     return () => {
+      window.clearInterval(heartbeatId);
       roomChannelSubscribedRef.current = false;
       roomChannelRef.current = null;
       channel.untrack().catch(() => {});
       supabase.removeChannel(channel);
     };
-  }, [currentRoom.id, onSwitchRoom, pushBubble, showToast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRoom.id]);
 
   // Re-broadcast presence whenever local look, motto, carryItem, moonwalk, danceStyle, or activeSign changes
   useEffect(() => {
@@ -3708,6 +3763,101 @@ export function HotelClient({
         </div>
       </div>
 
+      {/* 1:1 HABBO "BADGE RECEIVED!" TOP-RIGHT POP-UP NOTIFICATION */}
+      {badgeNotification && (() => {
+        const badgeDef = findBadgeDefById(badgeNotification.badgeId, customBadges);
+        const localized = badgeDef
+          ? getLocalizedBadgeMeta(badgeDef, lang)
+          : {
+              name: badgeNotification.badgeId.toUpperCase(),
+              description: t(lang, 'badgeUnlockedHint'),
+            };
+        return (
+          <div
+            className="pointer-events-auto fixed top-3.5 right-3.5 z-[72] w-80 overflow-hidden border border-[#000000] bg-[#1e1e1e] text-white shadow-[0_6px_0_rgba(0,0,0,0.45)]"
+            data-testid="badge-received-alert"
+            role="status"
+            aria-live="polite"
+          >
+            <div
+              className="flex items-center justify-between border-b border-[#000000] px-3 py-1.5"
+              style={{
+                background: 'linear-gradient(180deg, #f59e0b 0%, #b45309 100%)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45)',
+              }}
+            >
+              <span className="inline-flex items-center gap-1.5 font-pixel text-[11px] font-bold text-white drop-shadow-[0_1px_0_#000]">
+                <Sparkles className="h-3.5 w-3.5 text-[#fef08a]" />
+                {t(lang, 'newBadgeReceived')}
+              </span>
+              <button
+                type="button"
+                onClick={() => onDismissBadgeNotification?.()}
+                aria-label="Close badge alert"
+                className="client-close-btn"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+            <div className="p-3 space-y-2.5 bg-[#1e1e1e]">
+              <p className="text-[11px] font-bold text-[#fde047]">
+                {t(lang, 'youUnlockedNewBadge')}
+              </p>
+              <div className="flex items-center gap-3 rounded-[2px] border border-[#3f3f46] bg-[#27272a] p-2.5">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[2px] border border-[#52525b] bg-[#18181b]">
+                  <PixelBadgeSprite
+                    badgeId={badgeNotification.badgeId}
+                    size={48}
+                    customBadges={customBadges}
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate text-[12px] font-extrabold text-white">
+                      {localized.name}
+                    </span>
+                    {badgeDef?.code && (
+                      <span className="rounded-[2px] bg-[#3f3f46] px-1 py-0.5 font-mono text-[9px] font-bold text-[#fde047]">
+                        [{badgeDef.code}]
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-[10px] leading-snug text-[#d4d4d8]">
+                    {localized.description}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-0.5">
+                <button
+                  type="button"
+                  data-testid="badge-alert-wear-now"
+                  onClick={() => {
+                    habboAudio.playUiClick();
+                    onEquipBadge?.(badgeNotification.badgeId);
+                    onDismissBadgeNotification?.();
+                    showToast(`${localized.name} equipped!`);
+                  }}
+                  className="habbo-btn-green px-3 py-1 text-[11px] font-bold cursor-pointer"
+                >
+                  {t(lang, 'wearNow')}
+                </button>
+                <button
+                  type="button"
+                  data-testid="badge-alert-ok"
+                  onClick={() => {
+                    habboAudio.playUiClick();
+                    onDismissBadgeNotification?.();
+                  }}
+                  className="habbo-btn-blue px-3 py-1 text-[11px] font-bold cursor-pointer"
+                >
+                  {t(lang, 'okBtn')}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* HOTEL-WIDE STAFF BROADCAST ALERT MODAL */}
       {hotelAlert && (
         <div
@@ -3762,14 +3912,29 @@ export function HotelClient({
           onChangeMoodlight={(next) => {
             habboAudio.playUiClick();
             setMoodlight(next);
+            void roomChannelRef.current?.send({
+              type: 'broadcast',
+              event: 'room:ambiance',
+              payload: { roomId: currentRoom.id, moodlight: next },
+            });
           }}
           onChangeFloorTheme={(theme) => {
             habboAudio.playUiClick();
             setFloorThemeOverride((prev) => ({ ...prev, [currentRoom.id]: theme }));
+            void roomChannelRef.current?.send({
+              type: 'broadcast',
+              event: 'room:ambiance',
+              payload: { roomId: currentRoom.id, floorTheme: theme },
+            });
           }}
           onChangeWallTheme={(theme) => {
             habboAudio.playUiClick();
             setWallThemeOverride((prev) => ({ ...prev, [currentRoom.id]: theme }));
+            void roomChannelRef.current?.send({
+              type: 'broadcast',
+              event: 'room:ambiance',
+              payload: { roomId: currentRoom.id, wallTheme: theme },
+            });
           }}
           onClose={() => {
             habboAudio.playWindowToggle(false);

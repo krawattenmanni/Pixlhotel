@@ -1,4 +1,9 @@
 import { normalizeBadgeSpriteKey } from './clientFeatures';
+import {
+  drawExtendedBadgeSprite,
+  drawExtendedFurniSprite,
+  renderExtendedAvatarSprite,
+} from './pixelSpritesExtended';
 import type {
   AvatarPose,
   BanzaiTileState,
@@ -23,8 +28,12 @@ const FURNI_SPRITE_ALIASES: Record<string, string> = {
   rare_dragon_silver: 'silver_dragon',
   club_sofa: 'hc_sofa',
   rare_throne: 'throne',
+  throne_gold: 'throne',
   rare_amber_red: 'amber_lamp',
   rare_fountain_gold: 'golden_fountain',
+  royal_persian_rug: 'persian_rug',
+  hc_dicemaster: 'holo_dice',
+  hc_imperial_teleporter: 'imperial_teleport',
 };
 
 function resolveFurniSpriteId(id: string): string {
@@ -95,6 +104,7 @@ function drawIsoPoly(
 
 export function getLookHash(look: LookConfig): string {
   return [
+    look.gender ?? 'M',
     look.skinColor,
     look.hairStyle,
     look.hairColor,
@@ -129,9 +139,22 @@ export function getAvatarSprite(
     ? `decksw:${swimwearColor}`
     : '0';
   const danceKey = pose === 'dance' ? danceStyle : 0;
-  const key = `av34|${getLookHash(look)}|${dir}|${pose}|d${danceKey}|${animStep}|${swimKey}`;
+  const key = `av35|${getLookHash(look)}|${dir}|${pose}|d${danceKey}|${animStep}|${swimKey}`;
   const cached = spriteCache.get(key);
   if (cached) return cached;
+
+  const rendered = renderExtendedAvatarSprite(
+    look,
+    dir,
+    pose,
+    frame,
+    inWater,
+    swimwearColor,
+    wearingSwimwear,
+    danceStyle
+  );
+  spriteCache.set(key, rendered);
+  return rendered;
 
   const W = 44;
   const H = 76;
@@ -1446,7 +1469,7 @@ export function getFurniSprite(
     px(ctx, cx - 9, cy - 21, 13, 1, '#475569');
     // Folded bottom-right corner
     px(ctx, cx + 5, cy - 19, 4, 4, palette.hi);
-  } else {
+  } else if (!drawExtendedFurniSprite(ctx, furniId, dir, state, frame, cx, cy, drawIsoBox)) {
     drawIsoBox(16, 16, 20, 10, '#cbd5e1', '#64748b', '#94a3b8');
   }
 
@@ -2961,7 +2984,7 @@ export function getBadgeSprite(
     px(s, 18, 28, 4, 8, '#166534');
     px(s, 15, 13, 10, 10, '#bbf7d0');
     px(s, 18, 16, 4, 4, '#ffffff');
-  } else {
+  } else if (!drawExtendedBadgeSprite(s, normalizedId)) {
     // Ornate Star Shield fallback for any unknown ID
     px(s, 10, 6, 20, 20, '#2b6ca3');
     px(s, 12, 26, 16, 5, '#1d4e78');

@@ -1,21 +1,25 @@
 import { useState } from 'react';
-import { Ban, KeyRound, UserPlus } from 'lucide-react';
+import { Ban, Check, KeyRound, UserPlus } from 'lucide-react';
 import { formatOnlineCountLabel } from '../../game/clientFeatures';
 import {
   ADMIN_PLAYER_STATE,
   BADGE_CATALOGUE,
   CLOTHING_PALETTE,
-  DEFAULT_LOOK,
   HAIR_PALETTE,
 } from '../../game/data';
 import type { HairStyle, LookConfig } from '../../game/types';
+import {
+  FEMALE_STARTER_PRESETS,
+  MALE_STARTER_PRESETS,
+} from '../../game/wardrobeOptions';
 import { PixelAvatarCanvas, PixelBadgeSprite } from '../PixelSpriteCanvas';
 
 interface AuthPortalProps {
   onlineCount?: number;
   onLogin: (
     username: string,
-    password: string
+    password: string,
+    rememberMe?: boolean
   ) => { ok: boolean; banned?: boolean; message: string } | Promise<{ ok: boolean; banned?: boolean; message: string }>;
   onRegister: (
     username: string,
@@ -29,11 +33,20 @@ interface AuthPortalProps {
   onContinueAsGuest: () => void | Promise<void>;
 }
 
-const QUICK_HAIRS: { id: HairStyle; label: string }[] = [
+const QUICK_HAIRS_M: { id: HairStyle; label: string }[] = [
   { id: 'quiff', label: 'Quiff' },
   { id: 'spiky', label: 'Spiky' },
-  { id: 'bob', label: 'Bob' },
-  { id: 'long', label: 'Long' },
+  { id: 'pompadour', label: 'Pompadour' },
+  { id: 'side_part', label: 'Side-Part' },
+  { id: 'mohawk', label: 'Mohawk' },
+];
+
+const QUICK_HAIRS_F: { id: HairStyle; label: string }[] = [
+  { id: 'long', label: 'Wavy Long' },
+  { id: 'ponytail', label: 'Ponytail' },
+  { id: 'pigtails', label: 'Pigtails' },
+  { id: 'bob', label: 'Sleek Bob' },
+  { id: 'princess_bun', label: 'Princess Bun' },
 ];
 
 export function AuthPortal({
@@ -44,6 +57,7 @@ export function AuthPortal({
 }: AuthPortalProps) {
   const [loginName, setLoginName] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   const [loginFeedback, setLoginFeedback] = useState<{
     ok: boolean;
     banned?: boolean;
@@ -54,18 +68,42 @@ export function AuthPortal({
   const [regName, setRegName] = useState('');
   const [regMail, setRegMail] = useState('');
   const [regGender, setRegGender] = useState<'M' | 'F'>('M');
+  const [presetIdx, setPresetIdx] = useState(0);
   const [regPassword, setRegPassword] = useState('');
   const [regConfirm, setRegConfirm] = useState('');
   const [regMotto, setRegMotto] = useState('');
-  const [regLook, setRegLook] = useState<LookConfig>(() => ({ ...DEFAULT_LOOK }));
+  const [regLook, setRegLook] = useState<LookConfig>(() => ({
+    ...MALE_STARTER_PRESETS[0],
+    gender: 'M',
+  }));
   const [regFeedback, setRegFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [registering, setRegistering] = useState(false);
+
+  const handleSelectGender = (nextGender: 'M' | 'F') => {
+    setRegGender(nextGender);
+    setPresetIdx(0);
+    const presets = nextGender === 'F' ? FEMALE_STARTER_PRESETS : MALE_STARTER_PRESETS;
+    setRegLook({
+      ...presets[0],
+      gender: nextGender,
+    });
+  };
+
+  const handleCyclePreset = () => {
+    const presets = regGender === 'F' ? FEMALE_STARTER_PRESETS : MALE_STARTER_PRESETS;
+    const nextIdx = (presetIdx + 1) % presets.length;
+    setPresetIdx(nextIdx);
+    setRegLook({
+      ...presets[nextIdx],
+      gender: regGender,
+    });
+  };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoggingIn(true);
     try {
-      const res = await onLogin(loginName, loginPassword);
+      const res = await onLogin(loginName, loginPassword, rememberMe);
       setLoginFeedback({ ok: res.ok, banned: res.banned, text: res.message });
     } finally {
       setLoggingIn(false);
@@ -76,12 +114,16 @@ export function AuthPortal({
     e.preventDefault();
     setRegistering(true);
     try {
+      const finalLook: LookConfig = {
+        ...regLook,
+        gender: regGender,
+      };
       const res = await onRegister(
         regName,
         regPassword,
         regConfirm,
         regMotto,
-        regLook,
+        finalLook,
         regMail,
         regGender
       );
@@ -211,6 +253,40 @@ export function AuthPortal({
                   />
                 </div>
 
+                {/* Keep me logged in (Eingeloggt bleiben) pixel checkbox button */}
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={rememberMe}
+                  data-testid="remember-me-toggle"
+                  onClick={() => setRememberMe((prev) => !prev)}
+                  className={`flex w-full items-center justify-between rounded-[2px] border px-2.5 py-2 text-left text-[11px] font-bold cursor-pointer transition-colors ${
+                    rememberMe
+                      ? 'border-[#000000] bg-[#eef6fc] text-[#0f3454]'
+                      : 'border-[#94a3b8] bg-[#f8fafc] text-[#475569]'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span
+                      className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-[2px] border border-[#000000] ${
+                        rememberMe ? 'bg-[#3d8b18] text-white' : 'bg-white text-transparent'
+                      }`}
+                    >
+                      <Check className="h-3 w-3 stroke-[3]" />
+                    </span>
+                    <span>Keep me logged in (Eingeloggt bleiben)</span>
+                  </span>
+                  <span
+                    className={`rounded-[2px] border px-1.5 py-0.5 font-pixel text-[8px] uppercase ${
+                      rememberMe
+                        ? 'border-[#14532d] bg-[#dcfce7] text-[#14532d]'
+                        : 'border-[#94a3b8] bg-[#e2e8f0] text-[#475569]'
+                    }`}
+                  >
+                    {rememberMe ? 'ON' : 'OFF'}
+                  </span>
+                </button>
+
                 {loginFeedback && (
                   <div
                     role="alert"
@@ -223,7 +299,7 @@ export function AuthPortal({
                         : 'border-[#7f1d1d] bg-[#fef2f2] text-[#991b1b]'
                     }`}
                   >
-                    {loginFeedback.banned && <Ban className="h-4 w-4 shrink-0 text-[#fde047] mt-0.5" />}
+                    {loginFeedback.banned && <Ban className="h-4 w-4 shrink-0 text-[#fde08a] mt-0.5" />}
                     <span>{loginFeedback.text}</span>
                   </div>
                 )}
@@ -247,11 +323,11 @@ export function AuthPortal({
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="inline-block h-2 w-2 bg-[#d97706] shrink-0" />
-                  <span><strong>52+ Furni &amp; Rares</strong> — Thrones, Dragon Lamps &amp; Battle Banzai.</span>
+                  <span><strong>108+ Furni &amp; Rares</strong> — Thrones, Dragon Lamps &amp; Battle Banzai.</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="inline-block h-2 w-2 bg-[#16a34a] shrink-0" />
-                  <span><strong>Live Friends &amp; Badges</strong> — earn crests, adopt pets, and design custom suites.</span>
+                  <span><strong>Live Friends &amp; 64 Badges</strong> — earn shaped crests, adopt pets, and design suites.</span>
                 </li>
               </ul>
             </div>
@@ -266,17 +342,63 @@ export function AuthPortal({
 
             <form onSubmit={handleRegisterSubmit} className="p-4 space-y-3">
               <div className="flex items-center gap-3 rounded-[2px] border border-[#94a3b8] bg-[#f4f8fc] p-2.5">
-                <div className="flex h-20 w-16 items-end justify-center rounded-[2px] border border-[#000000] bg-gradient-to-b from-[#9fd9fc] to-[#e2f2fe] pb-1 shrink-0">
-                  <PixelAvatarCanvas look={regLook} dir={0} pose="wave" scale={1} />
+                <div className="flex h-24 w-20 flex-col items-center justify-end rounded-[2px] border border-[#000000] bg-gradient-to-b from-[#9fd9fc] to-[#e2f2fe] pb-1.5 shrink-0">
+                  <PixelAvatarCanvas
+                    look={{ ...regLook, gender: regGender }}
+                    dir={0}
+                    pose="wave"
+                    scale={1}
+                  />
+                  <span className="mt-0.5 rounded-[2px] border border-[#000000] bg-[#1e293b] px-1.5 py-0.2 font-pixel text-[8px] text-[#fde047]">
+                    {regGender === 'F' ? 'GIRL (F)' : 'BOY (M)'}
+                  </span>
                 </div>
                 <div className="min-w-0 flex-1 space-y-1.5">
-                  <p className="text-[11px] font-bold text-[#1d4e78]">Quick Starter Look</p>
+                  <div className="flex flex-wrap items-center justify-between gap-1">
+                    <p className="text-[11px] font-bold text-[#1d4e78]">Quick Starter Look</p>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        data-testid="reg-gender-m-btn"
+                        onClick={() => handleSelectGender('M')}
+                        className={`rounded-[2px] border px-2 py-0.5 text-[10px] font-bold cursor-pointer ${
+                          regGender === 'M'
+                            ? 'border-[#000000] bg-[#2b6ca3] text-white'
+                            : 'border-[#94a3b8] bg-white text-[#1f2937]'
+                        }`}
+                      >
+                        Boy (M)
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="reg-gender-f-btn"
+                        onClick={() => handleSelectGender('F')}
+                        className={`rounded-[2px] border px-2 py-0.5 text-[10px] font-bold cursor-pointer ${
+                          regGender === 'F'
+                            ? 'border-[#000000] bg-[#db2777] text-white'
+                            : 'border-[#94a3b8] bg-white text-[#1f2937]'
+                        }`}
+                      >
+                        Girl (F)
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="reg-cycle-preset-btn"
+                        onClick={handleCyclePreset}
+                        className="rounded-[2px] border border-[#000000] bg-[#fef08a] px-2 py-0.5 text-[10px] font-bold text-[#1e293b] cursor-pointer hover:bg-[#fde047]"
+                      >
+                        Next Outfit &rsaquo;
+                      </button>
+                    </div>
+                  </div>
                   <div className="flex flex-wrap gap-1">
-                    {QUICK_HAIRS.map((h) => (
+                    {(regGender === 'F' ? QUICK_HAIRS_F : QUICK_HAIRS_M).map((h) => (
                       <button
                         key={h.id}
                         type="button"
-                        onClick={() => setRegLook((l) => ({ ...l, hairStyle: h.id }))}
+                        onClick={() =>
+                          setRegLook((l) => ({ ...l, gender: regGender, hairStyle: h.id }))
+                        }
                         className={`rounded-[2px] border px-2 py-0.5 text-[10px] font-bold cursor-pointer ${
                           regLook.hairStyle === h.id
                             ? 'border-[#000000] bg-[#2b6ca3] text-white'
@@ -289,12 +411,14 @@ export function AuthPortal({
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[10px] font-bold text-[#475569]">Top:</span>
-                    {CLOTHING_PALETTE.slice(0, 5).map((c) => (
+                    {CLOTHING_PALETTE.slice(0, 6).map((c) => (
                       <button
                         key={c.hex}
                         type="button"
                         aria-label={`Starter shirt ${c.name}`}
-                        onClick={() => setRegLook((l) => ({ ...l, shirtColor: c.hex }))}
+                        onClick={() =>
+                          setRegLook((l) => ({ ...l, gender: regGender, shirtColor: c.hex }))
+                        }
                         className={`h-4 w-4 rounded-[2px] border cursor-pointer ${
                           regLook.shirtColor === c.hex ? 'border-[#000000] scale-110' : 'border-[#94a3b8]'
                         }`}
@@ -302,12 +426,14 @@ export function AuthPortal({
                       />
                     ))}
                     <span className="text-[10px] font-bold text-[#475569] ml-1">Hair:</span>
-                    {HAIR_PALETTE.slice(0, 4).map((c) => (
+                    {HAIR_PALETTE.slice(0, 5).map((c) => (
                       <button
                         key={c.hex}
                         type="button"
                         aria-label={`Starter hair ${c.name}`}
-                        onClick={() => setRegLook((l) => ({ ...l, hairColor: c.hex }))}
+                        onClick={() =>
+                          setRegLook((l) => ({ ...l, gender: regGender, hairColor: c.hex }))
+                        }
                         className={`h-4 w-4 rounded-[2px] border cursor-pointer ${
                           regLook.hairColor === c.hex ? 'border-[#000000] scale-110' : 'border-[#94a3b8]'
                         }`}
@@ -382,7 +508,7 @@ export function AuthPortal({
                   <select
                     id="reg-gender"
                     value={regGender}
-                    onChange={(e) => setRegGender(e.target.value as 'M' | 'F')}
+                    onChange={(e) => handleSelectGender(e.target.value as 'M' | 'F')}
                     className="mt-1 w-full rounded-[2px] border border-[#000000] bg-white px-2 py-1.5 text-[12px] font-bold text-[#111827] focus:border-[#3d8b18] focus:outline-none"
                   >
                     <option value="M">Male (M)</option>
@@ -443,7 +569,7 @@ export function AuthPortal({
                   Welcome to PIXL Hotel
                 </h2>
                 <p className="mt-1 text-[11px] leading-relaxed text-[#475569] max-w-md">
-                  Register your own persistent PIXL account, dive off The Lido diving board, browse 52 retro Catalogue furnis, collect 5 clickable badges, and check into the Isometric Client!
+                  Register your own persistent PIXL account, dive off The Lido diving board, browse 108 retro Catalogue furnis, collect 64 shaped badges, and check into the Isometric Client!
                 </p>
               </div>
             </div>

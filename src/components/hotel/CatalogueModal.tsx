@@ -31,14 +31,49 @@ interface CatalogueModalProps {
 
 const SECTION_DESCRIPTIONS: Record<string, { banner: string; headerBg: string; tag?: string }> = {
   'HC Classics': {
-    banner: 'Iconic velvet HC Club Sofas, Imperial Teleporters, Mahogany Desks & Oil Lamps.',
+    banner: 'Iconic velvet HC Club Sofas, Imperial Teleporters, Mahogany Desks, Butler Statues & Gramophones.',
     headerBg: 'from-[#d97706] to-[#92400e]',
     tag: 'HC',
   },
   'Rares & Dragons': {
-    banner: 'Collector Thrones, Fire & Jade Dragon Lamps, Red Amber Lamps & Petal Patches.',
+    banner: 'Collector Thrones, Fire/Jade/Silver/Gold/Sky/Frost Dragon Lamps, Dino Eggs & Habbo Colas.',
     headerBg: 'from-[#b91c1c] to-[#7f1d1d]',
     tag: 'RARE',
+  },
+  'Mode & Industrial': {
+    banner: 'Brushed-steel Mode Sofas, Mode Bars, Corner Counters, Dining Sets & Industrial Dividers.',
+    headerBg: 'from-[#334155] to-[#1e293b]',
+  },
+  'Pura & Modern': {
+    banner: 'Clean cyan & magenta Pura Sofas, Aqua Pod Chairs, Pura Double Beds, Bubble Lamps & Fridges.',
+    headerBg: 'from-[#0284c7] to-[#1d4e78]',
+  },
+  'Area & Lodge': {
+    banner: 'Warm timber Lodge Bars, Roaring Stone Fireplaces, Green Area Sofas, Bookcases &Rustic Tables.',
+    headerBg: 'from-[#92400e] to-[#78350f]',
+  },
+  'Iced & Plasto': {
+    banner: 'Translucent colourful Plasto Pod Chairs, Round Tables, Iced Sofas, Solariums & Shutters.',
+    headerBg: 'from-[#2563eb] to-[#1e40af]',
+  },
+  'Club, Disco & Arcade': {
+    banner: 'Neon Disco Floors, DJ Decks, Jukeboxes, Smoke Machines, Laser Gates & Retro Arcade Cabinets.',
+    headerBg: 'from-[#7c3aed] to-[#4c1d95]',
+    tag: 'NEW',
+  },
+  'Beach, Tiki & Nature': {
+    banner: 'The Lido Sun Loungers, Tiki Bars, Flaming Torches, Waterfall Rocks, Duck Floats & Palms.',
+    headerBg: 'from-[#0d9488] to-[#115e59]',
+    tag: 'NEW',
+  },
+  'Trophies & Wall Decor': {
+    banner: 'Custom-engraved Gold/Silver/Bronze/Diamond Trophies, Wall Posters, Flags, Clocks &Plaques.',
+    headerBg: 'from-[#ca8a04] to-[#854d0e]',
+    tag: 'NEW',
+  },
+  'Rugs & Floor Mats': {
+    banner: 'Royal Red Carpets, Persian Rugs, Bearskin Rugs, Dance Floor Tiles, Ice Rinks & Cobblestones.',
+    headerBg: 'from-[#16a34a] to-[#15803d]',
   },
   'Mode & Pura': {
     banner: 'Brushed-steel Mode Bars, Aqua Pod Chairs, Iced Mini Fridges & Pura Couches.',
@@ -47,17 +82,14 @@ const SECTION_DESCRIPTIONS: Record<string, { banner: string; headerBg: string; t
   'Nature & Beach': {
     banner: 'The Lido Sun Loungers, Beach Parasols, Duck Floats, Tropical Palms & Pine Trees.',
     headerBg: 'from-[#0284c7] to-[#0369a1]',
-    tag: 'NEW',
   },
   'Club & Disco': {
     banner: 'Neon Disco Floors, Chrome Disco Balls, DJ Booths, Arcade Cabinets & Plasma TVs.',
     headerBg: 'from-[#7c3aed] to-[#4c1d95]',
-    tag: 'NEW',
   },
   'Pets & Trophies': {
     banner: 'Custom-engraved Gold/Silver/Bronze Trophies, Crimson Rugs, Pet Bowls & Fireplaces.',
     headerBg: 'from-[#16a34a] to-[#15803d]',
-    tag: 'NEW',
   },
   'Staff Super Rares': {
     banner: 'Ultra-rare LTD Glacial Thrones, Silver Dragons, Golden Frank & Velvet Stanchions.',

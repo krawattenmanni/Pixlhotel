@@ -116,13 +116,65 @@ export function getAllBadgeDefs(customBadges: CustomBadgeDef[] = []): BadgeDef[]
   return [...BADGE_CATALOGUE, ...customBadges.map(customBadgeToBadgeDef)];
 }
 
+const LEGACY_BADGE_CODE_TO_ID: Record<string, string> = {
+  HTL: 'badge_checkin',
+  ACH_LOGIN1: 'badge_checkin',
+  HC: 'badge_hc',
+  HC1: 'badge_hc',
+  ADM: 'badge_admin',
+  MOD: 'badge_mod',
+  EVT: 'badge_evt',
+  VIP: 'badge_vip',
+  LDO: 'badge_lido',
+  LDO1: 'badge_lido',
+  BNZ: 'badge_banzai',
+  BNZ1: 'badge_banzai',
+  DRG: 'badge_dragon',
+  DRG1: 'badge_dragon',
+  ROY: 'badge_throne',
+  THR1: 'badge_throne',
+  DJ: 'badge_dj',
+  DJ1: 'badge_dj',
+  CHT: 'badge_social',
+  ACH_CHAT1: 'badge_social',
+  STY: 'badge_stylist',
+  ACH_LOOK1: 'badge_stylist',
+  ARC: 'badge_architect',
+  ACH_ROOM1: 'badge_architect',
+  VCH: 'badge_voucher',
+  ACH_VOUCH: 'badge_voucher',
+  GLD: 'badge_gold',
+  TRD: 'badge_gold',
+  ACH_CRED1: 'badge_gold',
+  NEW: 'badge_new',
+  PRK1: 'badge_new',
+};
+
+export function resolveCanonicalBadgeId(badgeIdOrCode: string): string {
+  const trimmed = badgeIdOrCode.trim();
+  const upper = trimmed.toUpperCase();
+  if (LEGACY_BADGE_CODE_TO_ID[upper]) {
+    return LEGACY_BADGE_CODE_TO_ID[upper];
+  }
+  const byId = BADGE_CATALOGUE.find((b) => b.id === trimmed || b.id.toUpperCase() === upper);
+  if (byId) return byId.id;
+  const byCode = BADGE_CATALOGUE.find((b) => b.code.toUpperCase() === upper);
+  if (byCode) return byCode.id;
+  return trimmed;
+}
+
 export function findBadgeDefById(
   badgeId: string,
   customBadges: CustomBadgeDef[] = []
 ): BadgeDef | undefined {
-  const staticFound = BADGE_CATALOGUE.find((b) => b.id === badgeId);
+  const canonical = resolveCanonicalBadgeId(badgeId);
+  const staticFound = BADGE_CATALOGUE.find(
+    (b) => b.id === canonical || b.id === badgeId || b.code.toUpperCase() === badgeId.trim().toUpperCase()
+  );
   if (staticFound) return staticFound;
-  const customFound = customBadges.find((b) => b.id === badgeId);
+  const customFound = customBadges.find(
+    (b) => b.id === badgeId || b.code.toUpperCase() === badgeId.trim().toUpperCase()
+  );
   return customFound ? customBadgeToBadgeDef(customFound) : undefined;
 }
 

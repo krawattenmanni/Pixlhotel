@@ -540,12 +540,54 @@ export function groupPlacedItemsByRoom(
 export function mapBadgeCodeToCatalogId(codeOrId: string): string {
   const norm = codeOrId.trim();
   if (!norm) return '';
+  const upper = norm.toUpperCase();
+  const legacyMap: Record<string, string> = {
+    HTL: 'badge_checkin',
+    ACH_LOGIN1: 'badge_checkin',
+    HC: 'badge_hc',
+    HC1: 'badge_hc',
+    ADM: 'badge_admin',
+    MOD: 'badge_mod',
+    EVT: 'badge_evt',
+    VIP: 'badge_vip',
+    LDO: 'badge_lido',
+    LDO1: 'badge_lido',
+    BNZ: 'badge_banzai',
+    BNZ1: 'badge_banzai',
+    DRG: 'badge_dragon',
+    DRG1: 'badge_dragon',
+    ROY: 'badge_throne',
+    THR1: 'badge_throne',
+    DJ: 'badge_dj',
+    DJ1: 'badge_dj',
+    CHT: 'badge_social',
+    ACH_CHAT1: 'badge_social',
+    STY: 'badge_stylist',
+    ACH_LOOK1: 'badge_stylist',
+    ARC: 'badge_architect',
+    ACH_ROOM1: 'badge_architect',
+    VCH: 'badge_voucher',
+    ACH_VOUCH: 'badge_voucher',
+    GLD: 'badge_gold',
+    TRD: 'badge_gold',
+    ACH_CRED1: 'badge_gold',
+    NEW: 'badge_new',
+    PRK1: 'badge_new',
+  };
+  if (legacyMap[upper]) return legacyMap[upper];
   const direct = BADGE_CATALOGUE.find(
-    (b) => b.id === norm || b.code.toLowerCase() === norm.toLowerCase()
+    (b) => b.id === norm || b.id.toUpperCase() === upper || b.code.toUpperCase() === upper
   );
   if (direct) return direct.id;
-  if (norm.toUpperCase() === 'HC1') return 'badge_hc';
   return norm;
+}
+
+export function mapCatalogIdToBadgeCode(badgeIdOrCode: string): string {
+  const norm = badgeIdOrCode.trim();
+  const found = BADGE_CATALOGUE.find(
+    (b) => b.id === norm || b.code.toUpperCase() === norm.toUpperCase()
+  );
+  return found ? found.code.toUpperCase() : norm.toUpperCase();
 }
 
 export function mapUserBadgeRowToCustomBadge(
@@ -1031,10 +1073,10 @@ async function ensureCatalogSeededInSupabase(
       }
     }
 
-    // Seed missing items from CATALOG_ITEMS_SEED (or ensure newly introduced items like sticky_note exist)
+    // Seed missing items from CATALOG_ITEMS_SEED whenever < 100 items exist in the database
     const existingTypes = new Set(itemRows.map((it) => it.item_type));
     const missingItems = CATALOG_ITEMS_SEED.filter(
-      (seed) => (itemRows.length < 40 || seed.item_type === 'sticky_note') && !existingTypes.has(seed.item_type)
+      (seed) => (itemRows.length < 100 || !existingTypes.has(seed.item_type)) && !existingTypes.has(seed.item_type)
     ).map((seed) => ({
       page_id: seedToDbPageId.get(seed.page_id) ?? pageRows[0]?.id ?? seed.page_id,
       catalog_name: seed.catalog_name,
@@ -1059,10 +1101,10 @@ async function ensureCatalogSeededInSupabase(
     console.warn('[Supabase catalog] seed error:', err);
   }
 
-  const mappedPages = (pageRows.length > 0 ? pageRows.map(mapCatalogPageRow) : [...CATALOG_PAGES_SEED]).sort(
+  const mappedPages = (pageRows.length >= 10 ? pageRows.map(mapCatalogPageRow) : [...CATALOG_PAGES_SEED]).sort(
     (a, b) => a.order_num - b.order_num || a.id - b.id
   );
-  const mappedItems = itemRows.length > 0 ? itemRows.map(mapCatalogItemRow) : [...CATALOG_ITEMS_SEED];
+  const mappedItems = itemRows.length >= 100 ? itemRows.map(mapCatalogItemRow) : [...CATALOG_ITEMS_SEED];
 
   return { catalogPages: mappedPages, catalogItems: mappedItems };
 }
@@ -1198,6 +1240,8 @@ export async function registerUserInSupabase(params: {
   hcDays?: number;
 }): Promise<{ ok: boolean; user?: DbUserRow; message?: string }> {
   try {
+    const resolvedGender: 'M' | 'F' =
+      params.gender === 'F' || params.look.gender === 'F' ? 'F' : 'M';
     const { data, error } = await supabase
       .from('users')
       .insert({
@@ -1205,8 +1249,11 @@ export async function registerUserInSupabase(params: {
         password: params.password,
         mail: params.mail ?? `${params.username.toLowerCase()}@pixlhotel.ch`,
         motto: params.motto || 'New guest at PIXL Hotel!',
-        look: params.look,
-        gender: params.gender ?? 'M',
+        look: {
+          ...params.look,
+          gender: resolvedGender,
+        },
+        gender: resolvedGender,
         rank: params.rank ?? 1,
         credits: params.credits ?? 250,
         duckets: params.duckets ?? 150,
@@ -1535,9 +1582,10 @@ export async function insertUserBadgeInSupabase(params: {
   pixelData?: CustomBadgeDef | null;
 }): Promise<boolean> {
   try {
+    const resolvedCode = mapCatalogIdToBadgeCode(params.badgeCode);
     const { error } = await supabase.from('user_badges').insert({
       user_id: params.userId,
-      badge_id: params.badgeCode.toUpperCase(),
+      badge_id: resolvedCode,
       badge_slot: params.badgeSlot ?? 1,
       pixel_data: params.pixelData ? JSON.stringify(params.pixelData) : null,
     });
@@ -1550,6 +1598,17 @@ export async function insertUserBadgeInSupabase(params: {
     console.warn('[Supabase user_badges] insert unexpected:', err);
     return false;
   }
+}
+
+export async function awardBadgeInSupabase(
+  userId: number,
+  badgeIdOrCode: string
+): Promise<boolean> {
+  return insertUserBadgeInSupabase({
+    userId,
+    badgeCode: mapCatalogIdToBadgeCode(badgeIdOrCode),
+    badgeSlot: 1,
+  });
 }
 
 export async function insertUserPetInSupabase(params: {

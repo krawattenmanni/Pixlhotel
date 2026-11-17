@@ -765,9 +765,9 @@ test('The Lido & Rooftop Pool multi-level isometric heightmaps, pool ladders, di
   assert.deepEqual(backWater, foundWater);
 });
 
-test('52-item DB Catalogue seeds across 7 sections and 5-slot badge equipping work cleanly', () => {
-  assert.equal(CATALOG_PAGES_SEED.length, 7);
-  assert.ok(FURNI_CATALOGUE.length >= 52, `Expected >= 52 items, got ${FURNI_CATALOGUE.length}`);
+test('108-item DB Catalogue seeds across 10 sections, 64 shaped badges exist, and 5-slot badge equipping works cleanly', () => {
+  assert.equal(CATALOG_PAGES_SEED.length, 10);
+  assert.ok(FURNI_CATALOGUE.length >= 108, `Expected >= 108 items, got ${FURNI_CATALOGUE.length}`);
   assert.equal(CATALOG_ITEMS_SEED.length, FURNI_CATALOGUE.length);
 
   const playerWithMany = {
@@ -928,3 +928,52 @@ test('true realtime online player count deduplicates presence & DB, excludes ban
   assert.equal(zeroOnline, 0);
   assert.equal(formatOnlineCountLabel(zeroOnline), '0 PIXLs online now!');
 });
+
+import { BADGE_CATALOGUE, DEFAULT_LOOK } from './data';
+import {
+  FEMALE_STARTER_PRESETS,
+  MALE_STARTER_PRESETS,
+  WARDROBE_HAIR_STYLES,
+  WARDROBE_SHIRT_STYLES,
+  WARDROBE_ACCESSORIES,
+} from './wardrobeOptions';
+import { getLocalizedBadgeMeta, normalizeBadgeCategoryGroup, t } from './i18n';
+
+test('64 badges, expanded Female/Male wardrobe presets, and EN/DE i18n badge metadata work accurately', () => {
+  assert.equal(BADGE_CATALOGUE.length, 64);
+  assert.ok(WARDROBE_HAIR_STYLES.length >= 15);
+  assert.ok(WARDROBE_SHIRT_STYLES.length >= 14);
+  assert.ok(WARDROBE_ACCESSORIES.length >= 15);
+  assert.equal(FEMALE_STARTER_PRESETS[0].gender, 'F');
+  assert.equal(MALE_STARTER_PRESETS[0].gender, 'M');
+
+  // Registering with female look preserves gender: 'F'
+  const accounts = getInitialAccounts();
+  const regF = registerUser(
+    accounts,
+    'QueenPixie',
+    'pixie123',
+    'pixie123',
+    'Love the rooftop pool!',
+    { ...DEFAULT_LOOK, ...FEMALE_STARTER_PRESETS[0], gender: 'F' }
+  );
+  assert.equal(regF.ok, true);
+  assert.equal(regF.account?.playerState.look.gender, 'F');
+
+  // i18n EN and DE strings and badge metadata
+  assert.equal(t('en', 'newBadgeReceived'), 'New Badge Received!');
+  assert.equal(t('de', 'newBadgeReceived'), 'Neues Badge erhalten!');
+  assert.equal(normalizeBadgeCategoryGroup('Achievements'), 'Achievements');
+  assert.equal(normalizeBadgeCategoryGroup('Games & Rooms'), 'Games & Rooms');
+  assert.equal(normalizeBadgeCategoryGroup('Rares'), 'Rares');
+  assert.equal(normalizeBadgeCategoryGroup('Events & Seasonal'), 'Events & Seasonal');
+  assert.equal(normalizeBadgeCategoryGroup('Staff & VIP'), 'Staff & VIP');
+
+  const checkinBadge = BADGE_CATALOGUE.find((b) => b.id === 'badge_checkin')!;
+  const enMeta = getLocalizedBadgeMeta(checkinBadge, 'en');
+  const deMeta = getLocalizedBadgeMeta(checkinBadge, 'de');
+  assert.ok(enMeta.name.length > 0);
+  assert.ok(deMeta.name.length > 0);
+  assert.notEqual(enMeta.description, deMeta.description);
+});
+

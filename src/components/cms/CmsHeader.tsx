@@ -1,4 +1,5 @@
 import {
+  Award,
   Globe,
   LogOut,
   Shield,
@@ -10,7 +11,8 @@ import {
 } from 'lucide-react';
 import { getRankBadgeCode } from '../../game/accountsDb';
 import { formatOnlineCountLabel } from '../../game/clientFeatures';
-import type { AccountRank, CmsTab } from '../../game/types';
+import { t } from '../../game/i18n';
+import type { AccountRank, CmsTab, LanguageCode } from '../../game/types';
 import { PixelBadge } from '../PixelSpriteCanvas';
 
 interface CmsHeaderProps {
@@ -26,26 +28,37 @@ interface CmsHeaderProps {
   friendsCount?: number;
   muted?: boolean;
   onToggleMute?: () => void;
+  lang?: LanguageCode;
+  onChangeLang?: (lang: LanguageCode) => void;
   onSignOut: () => void;
 }
 
 const BASE_TABS: {
   id: CmsTab;
-  label: string;
-  icon: 'me' | 'community' | 'staff' | 'friends' | 'wardrobe' | 'shop';
+  labelKey:
+    | 'nav_me'
+    | 'nav_friends'
+    | 'nav_wardrobe'
+    | 'nav_community'
+    | 'nav_badges'
+    | 'nav_staff'
+    | 'nav_shop';
+  icon: 'me' | 'friends' | 'wardrobe' | 'community' | 'badges' | 'staff' | 'shop';
 }[] = [
-  { id: 'me', label: 'Me', icon: 'me' },
-  { id: 'community', label: 'Community', icon: 'community' },
-  { id: 'staff', label: 'Staff', icon: 'staff' },
-  { id: 'friends', label: 'Players', icon: 'friends' },
-  { id: 'wardrobe', label: 'Wardrobe', icon: 'wardrobe' },
-  { id: 'shop', label: 'Shop', icon: 'shop' },
+  { id: 'me', labelKey: 'nav_me', icon: 'me' },
+  { id: 'friends', labelKey: 'nav_friends', icon: 'friends' },
+  { id: 'wardrobe', labelKey: 'nav_wardrobe', icon: 'wardrobe' },
+  { id: 'community', labelKey: 'nav_community', icon: 'community' },
+  { id: 'badges', labelKey: 'nav_badges', icon: 'badges' },
+  { id: 'staff', labelKey: 'nav_staff', icon: 'staff' },
+  { id: 'shop', labelKey: 'nav_shop', icon: 'shop' },
 ];
 
 function TabIcon({ icon }: { icon: (typeof BASE_TABS)[number]['icon'] }) {
   const cls = 'h-3.5 w-3.5 shrink-0';
   if (icon === 'me') return <User className={cls} />;
   if (icon === 'community') return <Globe className={cls} />;
+  if (icon === 'badges') return <Award className={cls} />;
   if (icon === 'staff') return <ShieldCheck className={cls} />;
   if (icon === 'friends') return <Users className={cls} />;
   if (icon === 'wardrobe') return <Shirt className={cls} />;
@@ -63,6 +76,8 @@ export function CmsHeader({
   duckets = 0,
   hcDays = 0,
   friendsCount = 0,
+  lang = 'en',
+  onChangeLang,
   onSignOut,
 }: CmsHeaderProps) {
   const showHousekeeping = rank >= 4;
@@ -80,12 +95,12 @@ export function CmsHeader({
               ·
             </span>
             <span className="truncate font-semibold text-sky-100">
-              Welcome, <strong className="text-white">{username}</strong>
+              {t(lang, 'welcome_user')}, <strong className="text-white">{username}</strong>
             </span>
             {rankBadge && <PixelBadge code={rankBadge} />}
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             <div className="hidden items-center gap-2.5 sm:flex text-[11px] font-bold">
               <span className="inline-flex items-center gap-1 font-mono-num text-[#fde047]">
                 <span className="inline-block h-2.5 w-2.5 rounded-full border border-[#78350f] bg-[#ffd400]" />
@@ -106,15 +121,41 @@ export function CmsHeader({
               </span>
             </div>
 
+            {onChangeLang && (
+              <div
+                className="inline-flex items-center rounded-[2px] border border-[#000000] bg-[#0f2942] p-0.5 text-[10px] font-bold"
+                title="Switch Language (DE / EN)"
+              >
+                <button
+                  type="button"
+                  onClick={() => onChangeLang('en')}
+                  className={`px-1.5 py-0.2 rounded-[1px] cursor-pointer ${
+                    lang === 'en' ? 'bg-[#ffd400] text-black' : 'text-sky-200 hover:text-white'
+                  }`}
+                >
+                  EN
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onChangeLang('de')}
+                  className={`px-1.5 py-0.2 rounded-[1px] cursor-pointer ${
+                    lang === 'de' ? 'bg-[#ffd400] text-black' : 'text-sky-200 hover:text-white'
+                  }`}
+                >
+                  DE
+                </button>
+              </div>
+            )}
+
             <button
               type="button"
               onClick={onSignOut}
               aria-label="Logout / Switch Account"
-              title="Logout"
+              title={t(lang, 'sign_out')}
               className="inline-flex items-center gap-1 rounded-[2px] border border-[#000000] bg-[#245987] px-2 py-0.5 text-[10px] font-bold text-white hover:bg-[#2f6ea4] cursor-pointer"
             >
               <LogOut className="h-3 w-3" />
-              <span>Logout</span>
+              <span>{t(lang, 'sign_out')}</span>
             </button>
           </div>
         </div>
@@ -252,7 +293,7 @@ export function CmsHeader({
             onClick={onEnterHotel}
             className="habbo-btn-green px-3 py-1.5 font-pixel text-[10px] tracking-tight sm:px-4 sm:py-2 sm:text-xs sm:tracking-wide whitespace-nowrap shrink-0 cursor-pointer"
           >
-            ENTER HOTEL &raquo;
+            {t(lang, 'enter_hotel')} &raquo;
           </button>
         </div>
       </div>
@@ -269,6 +310,7 @@ export function CmsHeader({
               <button
                 key={tab.id}
                 type="button"
+                data-testid={`nav-${tab.id}-tab`}
                 onClick={() => onSelectTab(tab.id)}
                 className={`inline-flex items-center gap-1.5 rounded-t-[4px] border-t border-x border-[#000000] px-3 py-1.5 text-[11px] sm:px-4 sm:text-[12px] font-bold whitespace-nowrap shrink-0 cursor-pointer ${
                   active
@@ -277,7 +319,7 @@ export function CmsHeader({
                 }`}
               >
                 <TabIcon icon={tab.icon} />
-                <span>{tab.label}</span>
+                <span>{t(lang, tab.labelKey)}</span>
                 {tab.id === 'friends' && friendsCount > 0 && (
                   <span
                     className={`ml-0.5 rounded-[2px] border border-[#000000]/30 px-1 py-0.2 font-mono-num text-[10px] font-bold ${
@@ -304,7 +346,7 @@ export function CmsHeader({
               }`}
             >
               <Shield className={`h-3.5 w-3.5 ${activeTab === 'housekeeping' ? 'text-[#b91c1c]' : 'text-[#fde047]'}`} />
-              Housekeeping
+              {t(lang, 'nav_housekeeping')}
             </button>
           )}
         </div>
