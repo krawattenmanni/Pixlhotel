@@ -114,7 +114,7 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
               )}
             </button>
             <p className="mt-2 text-center text-[11px] text-[#475569]">
-              Updates immediately across HoloCMS and Hotel Client.
+              Updates immediately across your PIXL profile and inside the Hotel.
             </p>
           </div>
         </div>

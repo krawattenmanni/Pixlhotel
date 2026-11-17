@@ -20,6 +20,7 @@ import {
   type AdminUserEditPatch,
 } from './game/accountsDb';
 import { authenticateUser, registerUser, syncBadgesWithPlayer } from './game/auth';
+import { computeOnlinePlayerCount } from './game/clientFeatures';
 import { buildHotelPlayerDirectory, toggleFriend } from './game/friends';
 import {
   CATALOG_ITEMS_SEED,
@@ -175,10 +176,29 @@ export default function App() {
   roomFurniMapRef.current = roomFurniMap;
   const screenRef = useRef(screen);
   screenRef.current = screen;
+  const [presenceUsernames, setPresenceUsernames] = useState<string[]>([]);
+  const presenceSessionIdRef = useRef<string>(
+    `sess-${Math.random().toString(36).slice(2, 10)}-${Date.now()}`
+  );
   const syncChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const syncChannelSubscribedRef = useRef(false);
   const pendingUserWriteCountRef = useRef(0);
   const refreshTimerRef = useRef<number | null>(null);
+
+  const syncGlobalPresenceState = useCallback(() => {
+    const ch = syncChannelRef.current;
+    if (!ch) return;
+    const rawState = ch.presenceState<{ username?: string }>();
+    const names: string[] = [];
+    for (const metas of Object.values(rawState)) {
+      for (const meta of metas) {
+        if (meta && typeof meta.username === 'string' && meta.username.trim()) {
+          names.push(meta.username.trim());
+        }
+      }
+    }
+    setPresenceUsernames(names);
+  }, []);
 
   useEffect(() => {
     document.body.dataset.state = screen === 'hotel' ? 'playing' : screen;
@@ -232,7 +252,13 @@ export default function App() {
         if (matched.banned) {
           setScreen('auth');
         } else if (pendingUserWriteCountRef.current === 0) {
-          const synced = syncBadgesWithPlayer(matched.playerState);
+          const synced = syncBadgesWithPlayer({
+            ...matched.playerState,
+            currentRoomId:
+              currentScreen === 'hotel'
+                ? playerRef.current.currentRoomId
+                : matched.playerState.currentRoomId,
+          });
           playerRef.current = synced;
           setPlayer(synced);
         }
@@ -269,7 +295,21 @@ export default function App() {
     void refreshRetroSnapshot();
 
     const syncChannel = supabase
-      .channel('pixl-global-sync', { config: { broadcast: { self: false } } })
+      .channel('pixl-global-sync', {
+        config: {
+          broadcast: { self: false },
+          presence: { key: presenceSessionIdRef.current },
+        },
+      })
+      .on('presence', { event: 'sync' }, () => {
+        if (active) syncGlobalPresenceState();
+      })
+      .on('presence', { event: 'join' }, () => {
+        if (active) syncGlobalPresenceState();
+      })
+      .on('presence', { event: 'leave' }, () => {
+        if (active) syncGlobalPresenceState();
+      })
       .on('broadcast', { event: 'retro:sync' }, () => {
         if (active) scheduleRefresh();
       })
@@ -364,7 +404,17 @@ export default function App() {
         if (active) scheduleRefresh();
       })
       .subscribe((status) => {
-        syncChannelSubscribedRef.current = status === 'SUBSCRIBED';
+        const isSub = status === 'SUBSCRIBED';
+        syncChannelSubscribedRef.current = isSub;
+        if (isSub && screenRef.current !== 'auth') {
+          void syncChannel
+            .track({
+              username: playerRef.current.username,
+              sessionId: presenceSessionIdRef.current,
+              screen: screenRef.current,
+            })
+            .catch(() => {});
+        }
       });
 
     syncChannelRef.current = syncChannel;
@@ -378,7 +428,23 @@ export default function App() {
       }
       supabase.removeChannel(syncChannel);
     };
-  }, [refreshRetroSnapshot, scheduleRefresh]);
+  }, [refreshRetroSnapshot, scheduleRefresh, syncGlobalPresenceState]);
+
+  useEffect(() => {
+    const ch = syncChannelRef.current;
+    if (!ch || !syncChannelSubscribedRef.current) return;
+    if (screen === 'auth') {
+      void ch.untrack().catch(() => {});
+    } else {
+      void ch
+        .track({
+          username: player.username,
+          sessionId: presenceSessionIdRef.current,
+          screen,
+        })
+        .catch(() => {});
+    }
+  }, [screen, player.username]);
 
   // Keep current player changes persisted into accounts list and PostgreSQL `users`
   const updatePlayer = useCallback(
@@ -1430,6 +1496,34 @@ export default function App() {
         ...prev,
         [key]: [...(prev[key] ?? []), myMsg],
       }));
+      if (targetProfile.npcId) {
+        const npcRoom =
+          roomsRef.current.find((r) => r.id === targetProfile.roomId)?.name ?? 'the Hotel';
+        const lower = clean.toLowerCase();
+        let reply = `Sounds awesome! Come hang out in ${npcRoom}!`;
+        if (lower.includes('trade') || lower.includes('rare')) {
+          reply = `I'm always down to trade rares! Meet me in ${npcRoom} and click Trade.`;
+        } else if (lower.includes('hi') || lower.includes('hey') || lower.includes('hello')) {
+          reply = `Hey ${playerRef.current.username}! Great to hear from you on Console — how's your room coming along?`;
+        } else if (lower.includes('banzai') || lower.includes('game')) {
+          reply = `Let's play a 60s Battle Banzai round! Follow me when you're ready!`;
+        }
+        setTimeout(() => {
+          const replyMsg: ConsoleMessage = {
+            id: `pm-npc-${Date.now()}-${Math.random()}`,
+            sender: 'them',
+            senderName: targetProfile.name,
+            text: `${reply} — ${targetProfile.name}`,
+            time: 'Now',
+          };
+          setPmThreads((prev) => ({
+            ...prev,
+            [key]: [...(prev[key] ?? []), replyMsg],
+          }));
+          habboAudio.playConsoleMessage();
+        }, 450);
+        return;
+      }
       const ch = syncChannelRef.current;
       if (ch && syncChannelSubscribedRef.current) {
         ch.send({
@@ -1803,10 +1897,21 @@ export default function App() {
     [liveStaff, accounts, player.username]
   );
   const friendProfiles = directory.filter((p) => player.friendIds.includes(p.id));
+  const trueOnlineCount = useMemo(
+    () =>
+      computeOnlinePlayerCount({
+        accounts,
+        presenceUsernames,
+        isLoggedIn: screen !== 'auth',
+        currentUsername: player.username,
+      }),
+    [accounts, presenceUsernames, screen, player.username]
+  );
 
   if (screen === 'auth') {
     return (
       <AuthPortal
+        onlineCount={trueOnlineCount}
         onLogin={handleLogin}
         onRegister={handleRegister}
         onContinueAsGuest={handleContinueAsGuest}
@@ -1884,7 +1989,7 @@ export default function App() {
           setCmsTab(tab);
         }}
         onEnterHotel={() => handleEnterHotel()}
-        onlineCount={Math.max(1, accounts.filter((a) => a.online && !a.banned).length) + 140}
+        onlineCount={trueOnlineCount}
         username={player.username}
         rank={player.rank}
         credits={player.credits}
@@ -1894,7 +1999,8 @@ export default function App() {
         onSignOut={handleSignOut}
       />
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-3 py-4 sm:px-5 sm:py-5">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-0 sm:px-6 pb-6">
+        <div className="border-x border-b border-[#000000] bg-[#ffffff] px-3 py-4 sm:px-5 sm:py-5 shadow-[0_3px_0_rgba(0,36,70,0.16)]">
         {cmsTab === 'me' && (
           <MeDashboard
             player={player}
@@ -1948,7 +2054,11 @@ export default function App() {
         )}
 
         {cmsTab === 'staff' && (
-          <StaffTab staff={liveStaff} onFollowStaff={(roomId) => handleEnterHotel(roomId)} />
+          <StaffTab
+            staff={liveStaff}
+            customBadges={customBadges}
+            onFollowStaff={(roomId) => handleEnterHotel(roomId)}
+          />
         )}
 
         {cmsTab === 'shop' && (
@@ -1986,6 +2096,7 @@ export default function App() {
             onSendHotelAlert={handleSendHotelAlert}
           />
         )}
+        </div>
       </main>
 
       {hotelAlert && (
@@ -2076,7 +2187,7 @@ export default function App() {
           <rect x="1110" y="20" width="6" height="5" fill="#fef08a" />
         </svg>
         <div className="border-t-2 border-[#6a9fcc] bg-[#84bce9] py-3 text-center text-[11px] font-bold text-[#173d5e]">
-          PIXL Hotel Retro Portal · HoloCMS &amp; Shockwave 3/4 Isometric Pixel Client · &copy; 2009–2026 PIXLHotel
+          PIXL Hotel · Retro Pixel Resort &amp; Community · &copy; 2008–2026 PIXLHotel
         </div>
       </footer>
     </div>

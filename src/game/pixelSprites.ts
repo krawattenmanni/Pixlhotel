@@ -1,3 +1,4 @@
+import { normalizeBadgeSpriteKey } from './clientFeatures';
 import type {
   AvatarPose,
   BanzaiTileState,
@@ -34,7 +35,7 @@ function makeOffscreen(w: number, h: number): { canvas: HTMLCanvasElement; ctx: 
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
   ctx.imageSmoothingEnabled = false;
   return { canvas, ctx };
 }
@@ -2442,8 +2443,108 @@ export function drawPoolLaneBuoy(
   px(ctx, sx - 3, sy + 15 + bob, 6, 1, 'rgba(224,242,254,0.8)');
 }
 
+const TINY_PIXEL_FONT: Record<string, string[]> = {
+  A: ['010', '101', '111', '101', '101'],
+  D: ['110', '101', '101', '101', '110'],
+  M: ['101', '111', '111', '101', '101'],
+  H: ['101', '101', '111', '101', '101'],
+  C: ['011', '100', '100', '100', '011'],
+  V: ['101', '101', '101', '101', '010'],
+  I: ['111', '010', '010', '010', '111'],
+  P: ['110', '101', '110', '100', '100'],
+  $: ['0111', '1100', '0110', '0011', '1110'],
+};
+
+function drawTinyText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  color: string,
+  shadowColor?: string
+) {
+  let cx = x;
+  for (const ch of text) {
+    const glyph = TINY_PIXEL_FONT[ch];
+    if (!glyph) {
+      cx += 3;
+      continue;
+    }
+    const gw = glyph[0].length;
+    for (let ry = 0; ry < glyph.length; ry++) {
+      for (let rx = 0; rx < gw; rx++) {
+        if (glyph[ry][rx] === '1') {
+          if (shadowColor) px(ctx, cx + rx, y + ry + 1, 1, 1, shadowColor);
+          px(ctx, cx + rx, y + ry, 1, 1, color);
+        }
+      }
+    }
+    cx += gw + 1;
+  }
+}
+
+function finalizeShapedBadge40(
+  srcCanvas: HTMLCanvasElement,
+  unlocked: boolean
+): HTMLCanvasElement {
+  const W = 40;
+  const H = 40;
+  const { canvas: out, ctx: outCtx } = makeOffscreen(W, H);
+  const sCtx = srcCanvas.getContext('2d', { willReadFrequently: true })!;
+  const img = sCtx.getImageData(0, 0, W, H);
+  const data = img.data;
+
+  // Desaturate pixels cleanly when locked before drawing crisp #111111 outline
+  if (!unlocked) {
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] === 0) continue;
+      const lum = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+      const toned = Math.max(52, Math.min(182, Math.round(lum * 0.72 + 24)));
+      data[i] = Math.max(40, toned - 8);
+      data[i + 1] = toned;
+      data[i + 2] = Math.min(200, toned + 12);
+    }
+    sCtx.putImageData(img, 0, 0);
+  }
+
+  // 1px #111111 silhouette outline around any opaque pixel shape
+  const copy = data;
+  const outlineColor = unlocked ? '#111111' : '#1e293b';
+  outCtx.fillStyle = outlineColor;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const idx = (y * W + x) * 4;
+      if (copy[idx + 3] > 20) continue;
+      const hasNeighbor =
+        (x > 0 && copy[(y * W + (x - 1)) * 4 + 3] > 20) ||
+        (x < W - 1 && copy[(y * W + (x + 1)) * 4 + 3] > 20) ||
+        (y > 0 && copy[((y - 1) * W + x) * 4 + 3] > 20) ||
+        (y < H - 1 && copy[((y + 1) * W + x) * 4 + 3] > 20);
+      if (hasNeighbor) {
+        outCtx.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+
+  outCtx.drawImage(srcCanvas, 0, 0);
+
+  if (!unlocked) {
+    // Crisp mini corner padlock
+    px(outCtx, 27, 26, 11, 12, '#111111');
+    px(outCtx, 29, 23, 7, 4, '#111111');
+    px(outCtx, 30, 24, 5, 3, '#cbd5e1');
+    px(outCtx, 31, 25, 3, 2, '#111111');
+    px(outCtx, 28, 27, 9, 10, '#94a3b8');
+    px(outCtx, 28, 27, 9, 2, '#e2e8f0');
+    px(outCtx, 32, 30, 2, 4, '#1e293b');
+  }
+
+  return out;
+}
+
 /**
- * Renders an authentic 24x24 pixel-art Habbo badge (or custom 16x16 minted badge) onto an offscreen canvas.
+ * Renders an authentic 40x40 shaped Habbo pixel-art badge (with 1px #111111 outline,
+ * multi-tone metallic shading, specular glints, and custom 16x16 minting support).
  */
 export function getBadgeSprite(
   badgeId: string,
@@ -2453,174 +2554,426 @@ export function getBadgeSprite(
   const customMatch = customBadges.find((b) => b.id === badgeId);
   if (customMatch) {
     const hash = customMatch.pixels.map((p) => p ?? '_').join(',');
-    const cKey = `cbadge|${badgeId}|${unlocked ? '1' : '0'}|${hash}`;
+    const cKey = `cbadge40|${badgeId}|${unlocked ? '1' : '0'}|${hash}`;
     const cCached = spriteCache.get(cKey);
     if (cCached) return cCached;
 
-    const { canvas, ctx } = makeOffscreen(16, 16);
+    const { canvas: src, ctx: s } = makeOffscreen(40, 40);
     for (let y = 0; y < 16; y++) {
       for (let x = 0; x < 16; x++) {
         const col = customMatch.pixels[y * 16 + x];
         if (!col) continue;
-        px(ctx, x, y, 1, 1, unlocked ? col : '#64748b');
+        px(s, 4 + x * 2, 4 + y * 2, 2, 2, col);
       }
     }
-    spriteCache.set(cKey, canvas);
-    return canvas;
+    const out = finalizeShapedBadge40(src, unlocked);
+    spriteCache.set(cKey, out);
+    return out;
   }
 
-  const key = `badge|${badgeId}|${unlocked ? '1' : '0'}`;
+  const normalizedId = normalizeBadgeSpriteKey(badgeId);
+  const key = `badge40v2|${normalizedId}|${unlocked ? '1' : '0'}`;
   const cached = spriteCache.get(key);
   if (cached) return cached;
 
-  const { canvas, ctx } = makeOffscreen(24, 24);
+  const { canvas: src, ctx: s } = makeOffscreen(40, 40);
 
-  const bgMap: Record<string, [string, string, string]> = {
-    badge_checkin: ['#2b7de9', '#1e3a8a', '#fef08a'],
-    badge_hc: ['#eab308', '#854d0e', '#fef9c3'],
-    badge_stylist: ['#9333ea', '#581c87', '#f5d0fe'],
-    badge_social: ['#0d9488', '#115e59', '#99f6e4'],
-    badge_voucher: ['#e06d1b', '#7c2d12', '#fde68a'],
-    badge_dragon: ['#dc2626', '#7f1d1d', '#facc15'],
-    badge_architect: ['#16a34a', '#14532d', '#bbf7d0'],
-    badge_throne: ['#ca8a04', '#451a03', '#ffffff'],
-    badge_dj: ['#db2777', '#831843', '#fbcfe8'],
-    badge_admin: ['#991b1b', '#450a0a', '#fde047'],
-    badge_lido: ['#0284c7', '#0c4a6e', '#fef08a'],
-    badge_banzai: ['#4f46e5', '#1e1b4b', '#22d3ee'],
-    badge_vip: ['#f59e0b', '#78350f', '#ffffff'],
-    badge_mod: ['#475569', '#0f172a', '#fde047'],
-    badge_evt: ['#ec4899', '#831843', '#fef9c3'],
-    badge_gold: ['#d97706', '#451a03', '#fef08a'],
-    badge_new: ['#22c55e', '#14532d', '#ffffff'],
-  };
+  const GOLD_HI = '#fffbeb';
+  const GOLD_1 = '#ffd400';
+  const GOLD_2 = '#d97706';
+  const GOLD_3 = '#78350f';
 
-  const [rawBg, rawBorder, rawAccent] = bgMap[badgeId] ?? ['#475569', '#1e293b', '#e2e8f0'];
-  const bg = unlocked ? rawBg : '#64748b';
-  const border = unlocked ? rawBorder : '#334155';
-  const accent = unlocked ? rawAccent : '#94a3b8';
-  const hi = unlocked ? shadeHex(bg, 35) : '#94a3b8';
+  const SLV_HI = '#ffffff';
+  const SLV_1 = '#f8fafc';
+  const SLV_2 = '#94a3b8';
+  const SLV_3 = '#334155';
 
-  // Shield / Crest outer silhouette with 1px dark outline
-  px(ctx, 3, 1, 18, 22, OUTLINE);
-  px(ctx, 1, 3, 22, 18, OUTLINE);
-  px(ctx, 2, 2, 20, 20, border);
-  px(ctx, 3, 3, 18, 18, bg);
-  // Top highlight & inner bevel
-  px(ctx, 4, 3, 16, 2, hi);
-  px(ctx, 3, 4, 1, 15, hi);
-
-  // Bespoke 1px pixel emblem per badge
-  if (badgeId === 'badge_checkin') {
-    px(ctx, 6, 8, 5, 6, OUTLINE);
-    px(ctx, 7, 9, 3, 4, accent);
-    px(ctx, 8, 10, 1, 2, bg);
-    px(ctx, 11, 10, 7, 3, OUTLINE);
-    px(ctx, 11, 11, 6, 1, accent);
-    px(ctx, 14, 13, 2, 2, accent);
-    px(ctx, 16, 13, 1, 2, accent);
-  } else if (badgeId === 'badge_hc') {
-    px(ctx, 5, 7, 2, 10, accent);
-    px(ctx, 9, 7, 2, 10, accent);
-    px(ctx, 7, 11, 2, 2, accent);
-    px(ctx, 13, 7, 5, 2, accent);
-    px(ctx, 13, 9, 2, 6, accent);
-    px(ctx, 13, 15, 5, 2, accent);
-  } else if (badgeId === 'badge_stylist') {
-    px(ctx, 11, 5, 2, 2, accent);
-    px(ctx, 6, 8, 12, 4, accent);
-    px(ctx, 8, 11, 8, 7, accent);
-    px(ctx, 10, 9, 4, 2, bg);
-  } else if (badgeId === 'badge_social') {
-    px(ctx, 5, 6, 14, 9, OUTLINE);
-    px(ctx, 6, 7, 12, 7, '#ffffff');
-    px(ctx, 8, 15, 3, 3, '#ffffff');
-    px(ctx, 8, 10, 2, 2, border);
-    px(ctx, 11, 10, 2, 2, border);
-    px(ctx, 14, 10, 2, 2, border);
-  } else if (badgeId === 'badge_voucher') {
-    px(ctx, 6, 9, 12, 9, accent);
-    px(ctx, 5, 8, 14, 3, '#ffffff');
-    px(ctx, 11, 6, 2, 12, border);
-    px(ctx, 8, 6, 3, 2, '#ffffff');
-    px(ctx, 13, 6, 3, 2, '#ffffff');
-  } else if (badgeId === 'badge_dragon') {
-    px(ctx, 10, 5, 4, 3, accent);
-    px(ctx, 8, 8, 8, 5, '#f97316');
-    px(ctx, 6, 12, 12, 6, accent);
-    px(ctx, 9, 14, 6, 4, '#ffffff');
-  } else if (badgeId === 'badge_architect') {
-    px(ctx, 6, 12, 12, 6, accent);
-    px(ctx, 6, 15, 12, 1, border);
-    px(ctx, 11, 12, 1, 3, border);
-    px(ctx, 9, 6, 6, 4, '#ffffff');
-    px(ctx, 11, 9, 2, 4, '#fde047');
-  } else if (badgeId === 'badge_throne') {
-    px(ctx, 6, 9, 12, 8, '#fde047');
-    px(ctx, 6, 7, 2, 3, '#fef08a');
-    px(ctx, 11, 6, 2, 4, '#fef08a');
-    px(ctx, 16, 7, 2, 3, '#fef08a');
-    px(ctx, 11, 12, 2, 2, '#dc2626');
-  } else if (badgeId === 'badge_dj') {
-    px(ctx, 6, 6, 12, 12, '#0f172a');
-    px(ctx, 8, 8, 8, 8, '#334155');
-    px(ctx, 10, 10, 4, 4, accent);
-    px(ctx, 11, 11, 2, 2, '#0f172a');
-  } else if (badgeId === 'badge_admin') {
-    px(ctx, 8, 5, 8, 3, '#fde047');
-    px(ctx, 10, 8, 4, 3, '#ffffff');
-    px(ctx, 10, 11, 4, 5, accent);
-    px(ctx, 11, 16, 2, 3, accent);
-    px(ctx, 9, 12, 1, 3, accent);
-    px(ctx, 14, 12, 1, 3, accent);
-  } else if (badgeId === 'badge_lido') {
-    // Sunny yellow rubber duck / lifebuoy icon
-    px(ctx, 7, 8, 10, 8, accent);
-    px(ctx, 12, 5, 5, 4, accent);
-    px(ctx, 17, 7, 2, 2, '#f97316');
-    px(ctx, 5, 16, 14, 3, '#7dd3fc');
-  } else if (badgeId === 'badge_banzai') {
-    px(ctx, 6, 6, 5, 5, '#ec4899');
-    px(ctx, 13, 6, 5, 5, '#22d3ee');
-    px(ctx, 6, 13, 5, 5, '#facc15');
-    px(ctx, 13, 13, 5, 5, '#4ade80');
-  } else if (badgeId === 'badge_vip') {
-    px(ctx, 10, 5, 4, 3, accent);
-    px(ctx, 8, 8, 8, 8, '#fef08a');
-    px(ctx, 6, 10, 12, 4, '#ffffff');
-  } else if (badgeId === 'badge_mod') {
-    // Classic Habbo Moderator Silver Shield
-    px(ctx, 6, 6, 12, 9, '#e2e8f0');
-    px(ctx, 8, 15, 8, 3, '#cbd5e1');
-    px(ctx, 10, 18, 4, 1, '#94a3b8');
-    px(ctx, 11, 8, 2, 7, '#0f172a');
-    px(ctx, 9, 10, 6, 2, '#0f172a');
-  } else if (badgeId === 'badge_evt') {
-    // Star Trophy Sparkle
-    px(ctx, 11, 5, 2, 14, accent);
-    px(ctx, 5, 11, 14, 2, accent);
-    px(ctx, 8, 8, 8, 8, '#ffffff');
-  } else if (badgeId === 'badge_gold') {
-    // Solid Gold Bar stack
-    px(ctx, 6, 12, 12, 5, accent);
-    px(ctx, 8, 8, 8, 4, '#ffffff');
-  } else if (badgeId === 'badge_new') {
-    // Welcome Star
-    px(ctx, 11, 5, 2, 12, accent);
-    px(ctx, 7, 9, 10, 4, accent);
-    px(ctx, 9, 14, 6, 2, '#fef08a');
+  if (normalizedId === 'badge_admin') {
+    // Ornate Gold & Crimson Winged Staff Shield with tiny pixel crown + ADM ribbon
+    // Left & right feathered gold wings
+    for (let i = 0; i < 4; i++) {
+      const wy = 11 + i * 3;
+      px(s, 2 + i * 2, wy, 10 - i * 2, 3, GOLD_1);
+      px(s, 2 + i * 2, wy, 8 - i * 2, 1, GOLD_HI);
+      px(s, 2 + i * 2, wy + 2, 9 - i * 2, 1, GOLD_2);
+      px(s, 28, wy, 10 - i * 2, 3, GOLD_1);
+      px(s, 29, wy, 8 - i * 2, 1, GOLD_HI);
+      px(s, 28, wy + 2, 9 - i * 2, 1, GOLD_2);
+    }
+    // Tiny pixel crown on top
+    px(s, 14, 3, 2, 4, GOLD_1);
+    px(s, 19, 2, 2, 5, GOLD_1);
+    px(s, 24, 3, 2, 4, GOLD_1);
+    px(s, 14, 6, 12, 3, GOLD_2);
+    px(s, 15, 6, 10, 1, GOLD_HI);
+    px(s, 19, 7, 2, 2, '#ef4444');
+    // Shield outer gold frame
+    px(s, 10, 9, 20, 16, GOLD_2);
+    px(s, 12, 25, 16, 4, GOLD_2);
+    px(s, 15, 29, 10, 3, GOLD_3);
+    px(s, 18, 32, 4, 2, GOLD_3);
+    px(s, 11, 10, 18, 14, GOLD_1);
+    px(s, 11, 10, 18, 2, GOLD_HI);
+    // Crimson shield core
+    px(s, 13, 12, 14, 11, '#b91c1c');
+    px(s, 15, 23, 10, 4, '#991b1b');
+    px(s, 17, 27, 6, 2, '#7f1d1d');
+    px(s, 14, 13, 4, 8, '#ef4444');
+    px(s, 14, 13, 2, 2, '#ffffff');
+    // Bold pixel ADM ribbon across shield bottom
+    px(s, 9, 20, 22, 9, '#78350f');
+    px(s, 10, 21, 20, 7, GOLD_1);
+    px(s, 10, 21, 20, 1, GOLD_HI);
+    drawTinyText(s, 'ADM', 14, 22, '#7f1d1d', '#fef08a');
+  } else if (normalizedId === 'badge_mod') {
+    // Silver & Royal Blue Shield Crest with crossed pixel sword/keys bevels
+    // Crossed sword hilts sticking out top-left & top-right
+    px(s, 6, 6, 5, 3, GOLD_1);
+    px(s, 8, 5, 2, 5, GOLD_2);
+    px(s, 29, 6, 5, 3, GOLD_1);
+    px(s, 30, 5, 2, 5, GOLD_2);
+    px(s, 9, 9, 4, 4, SLV_1);
+    px(s, 27, 9, 4, 4, SLV_1);
+    // Shield outer silver rim
+    px(s, 9, 8, 22, 15, SLV_2);
+    px(s, 11, 23, 18, 5, SLV_2);
+    px(s, 14, 28, 12, 4, SLV_3);
+    px(s, 17, 32, 6, 3, SLV_3);
+    px(s, 10, 9, 20, 13, SLV_1);
+    px(s, 10, 9, 10, 2, SLV_HI);
+    // Royal blue inner crest
+    px(s, 12, 11, 16, 11, '#1d4ed8');
+    px(s, 14, 22, 12, 4, '#1e40af');
+    px(s, 16, 26, 8, 4, '#1e3a8a');
+    px(s, 18, 30, 4, 2, '#172554');
+    // Diagonal gleaming silver sword blades inside shield
+    for (let i = 0; i < 12; i++) {
+      px(s, 14 + i, 13 + i, 2, 2, SLV_HI);
+      px(s, 24 - i, 13 + i, 2, 2, SLV_1);
+    }
+    // Center sapphire/gold emblem
+    px(s, 18, 17, 4, 4, GOLD_1);
+    px(s, 19, 18, 2, 2, '#ffffff');
+  } else if (normalizedId === 'badge_evt') {
+    // Gold Starburst Trophy Medallion with twin crimson ribbons
+    // Twin bottom tails
+    px(s, 11, 26, 6, 10, '#b91c1c');
+    px(s, 12, 27, 2, 7, '#ef4444');
+    px(s, 11, 35, 3, 2, '#991b1b');
+    px(s, 23, 26, 6, 10, '#b91c1c');
+    px(s, 24, 27, 2, 7, '#ef4444');
+    px(s, 26, 35, 3, 2, '#991b1b');
+    // 8-point starburst rays
+    px(s, 18, 3, 4, 30, GOLD_2);
+    px(s, 5, 16, 30, 4, GOLD_2);
+    px(s, 9, 7, 22, 22, GOLD_1);
+    px(s, 7, 11, 26, 14, GOLD_1);
+    px(s, 11, 5, 18, 26, GOLD_1);
+    // Trophy cup silhouette inside medallion
+    px(s, 13, 11, 14, 7, GOLD_3);
+    px(s, 14, 12, 12, 6, GOLD_HI);
+    px(s, 15, 13, 10, 5, GOLD_1);
+    px(s, 11, 12, 2, 4, GOLD_1);
+    px(s, 27, 12, 2, 4, GOLD_1);
+    px(s, 16, 18, 8, 3, GOLD_2);
+    px(s, 18, 21, 4, 3, GOLD_2);
+    px(s, 15, 24, 10, 3, GOLD_3);
+    px(s, 16, 13, 2, 3, '#ffffff');
+  } else if (normalizedId === 'badge_hc') {
+    // Ornate Gold & Orange HC Clover/Crown Shield with embossed pixel HC lettering
+    // Crown/Clover crest lobes on top
+    px(s, 15, 4, 10, 5, GOLD_1);
+    px(s, 16, 4, 8, 2, GOLD_HI);
+    px(s, 8, 8, 8, 7, GOLD_1);
+    px(s, 24, 8, 8, 7, GOLD_1);
+    px(s, 9, 9, 5, 2, GOLD_HI);
+    px(s, 25, 9, 5, 2, GOLD_HI);
+    // Shield body
+    px(s, 7, 11, 26, 15, GOLD_2);
+    px(s, 9, 26, 22, 5, GOLD_2);
+    px(s, 13, 31, 14, 3, GOLD_3);
+    px(s, 17, 34, 6, 2, GOLD_3);
+    // Inner orange-amber enamel
+    px(s, 9, 13, 22, 12, '#ea580c');
+    px(s, 11, 25, 18, 4, '#c2410c');
+    px(s, 15, 29, 10, 3, '#9a3412');
+    // Shiny bevel rim & corner glints
+    px(s, 9, 11, 22, 2, GOLD_HI);
+    px(s, 10, 14, 2, 2, '#ffffff');
+    // Bold embossed pixel HC
+    px(s, 12, 15, 3, 11, GOLD_3);
+    px(s, 18, 15, 3, 11, GOLD_3);
+    px(s, 15, 19, 3, 3, GOLD_3);
+    px(s, 22, 15, 7, 11, GOLD_3);
+    px(s, 12, 14, 3, 10, GOLD_HI);
+    px(s, 18, 14, 3, 10, GOLD_HI);
+    px(s, 15, 18, 3, 3, GOLD_1);
+    px(s, 22, 14, 7, 3, GOLD_HI);
+    px(s, 22, 17, 3, 5, GOLD_1);
+    px(s, 22, 21, 7, 3, GOLD_1);
+  } else if (normalizedId === 'badge_vip') {
+    // Purple & Gold Jeweled Royal Crown with red/cyan pixel gems
+    // Crown base velvet & gold band
+    px(s, 5, 13, 4, 13, GOLD_1);
+    px(s, 11, 9, 4, 17, GOLD_1);
+    px(s, 18, 5, 4, 21, GOLD_1);
+    px(s, 25, 9, 4, 17, GOLD_1);
+    px(s, 31, 13, 4, 13, GOLD_1);
+    // Velvet purple interior arches
+    px(s, 8, 16, 24, 10, '#7e22ce');
+    px(s, 12, 13, 16, 5, '#9333ea');
+    // Crown pearls & specular highlights
+    px(s, 6, 11, 3, 3, GOLD_HI);
+    px(s, 12, 7, 3, 3, GOLD_HI);
+    px(s, 18, 3, 4, 3, GOLD_HI);
+    px(s, 25, 7, 3, 3, GOLD_HI);
+    px(s, 31, 11, 3, 3, GOLD_HI);
+    // Thick gold rim base
+    px(s, 5, 25, 30, 8, GOLD_2);
+    px(s, 6, 26, 28, 5, GOLD_1);
+    px(s, 6, 26, 28, 1, GOLD_HI);
+    px(s, 7, 32, 26, 2, GOLD_3);
+    // Ruby & cyan pixel gems
+    px(s, 10, 27, 3, 3, '#ef4444');
+    px(s, 10, 27, 1, 1, '#ffffff');
+    px(s, 18, 26, 4, 4, '#22d3ee');
+    px(s, 18, 26, 1, 1, '#ffffff');
+    px(s, 27, 27, 3, 3, '#ef4444');
+    px(s, 27, 27, 1, 1, '#ffffff');
+    px(s, 19, 17, 2, 3, '#facc15');
+  } else if (normalizedId === 'badge_dragon') {
+    // Detailed Roaring Fire Dragon Head silhouette with scales & pixel flame
+    // Neck & armored bronze/crimson scales
+    px(s, 6, 21, 11, 15, '#991b1b');
+    px(s, 8, 18, 12, 16, '#dc2626');
+    px(s, 7, 23, 3, 11, '#f97316');
+    px(s, 9, 25, 5, 3, GOLD_1);
+    px(s, 9, 30, 5, 3, GOLD_1);
+    // Curved golden horns on back of skull
+    px(s, 7, 7, 5, 4, GOLD_1);
+    px(s, 5, 5, 4, 4, GOLD_HI);
+    px(s, 11, 10, 5, 8, GOLD_2);
+    px(s, 15, 6, 4, 6, GOLD_1);
+    px(s, 16, 4, 3, 3, GOLD_HI);
+    // Dragon skull & upper jaw
+    px(s, 12, 12, 14, 9, '#ef4444');
+    px(s, 13, 12, 12, 3, '#f87171');
+    px(s, 22, 14, 8, 5, '#dc2626');
+    // Fierce glowing gold eye
+    px(s, 17, 15, 4, 3, '#111111');
+    px(s, 18, 15, 2, 2, GOLD_HI);
+    // Open lower jaw + white fangs
+    px(s, 18, 23, 11, 4, '#991b1b');
+    px(s, 24, 19, 2, 2, '#ffffff');
+    px(s, 27, 19, 2, 2, '#ffffff');
+    px(s, 25, 22, 2, 2, '#ffffff');
+    // Roaring pixel fire breath!
+    px(s, 28, 17, 6, 6, '#f97316');
+    px(s, 31, 15, 6, 8, GOLD_1);
+    px(s, 34, 13, 4, 6, GOLD_HI);
+    px(s, 30, 19, 3, 3, '#ffffff');
+  } else if (normalizedId === 'badge_lido') {
+    // Circular Tropical Sun, Blue Wave & Golden Rubber Duck Medallion with palm fronds
+    // Circular rim
+    px(s, 11, 4, 18, 32, GOLD_2);
+    px(s, 7, 7, 26, 26, GOLD_2);
+    px(s, 4, 11, 32, 18, GOLD_2);
+    px(s, 11, 5, 18, 30, GOLD_1);
+    px(s, 8, 8, 24, 24, GOLD_1);
+    px(s, 6, 11, 28, 18, GOLD_1);
+    // Sky interior
+    px(s, 11, 7, 18, 18, '#38bdf8');
+    px(s, 8, 10, 24, 15, '#38bdf8');
+    // Tropical sun
+    px(s, 22, 9, 6, 6, '#fef08a');
+    px(s, 23, 10, 4, 4, '#ffffff');
+    // Palm fronds on left edge
+    px(s, 8, 13, 6, 2, '#16a34a');
+    px(s, 7, 15, 4, 2, '#22c55e');
+    px(s, 9, 17, 2, 7, '#854d0e');
+    // Blue ocean waves at bottom
+    px(s, 8, 24, 24, 7, '#0284c7');
+    px(s, 11, 29, 18, 4, '#0369a1');
+    px(s, 9, 24, 5, 2, '#bae6fd');
+    px(s, 20, 25, 6, 2, '#bae6fd');
+    // Golden rubber duck floating in center
+    px(s, 14, 19, 11, 7, '#facc15');
+    px(s, 15, 19, 9, 2, '#fef9c3');
+    px(s, 20, 13, 6, 6, '#facc15');
+    px(s, 26, 15, 3, 2, '#f97316');
+    px(s, 23, 14, 1, 2, '#111111');
+  } else if (normalizedId === 'badge_banzai') {
+    // Glowing Cyan & Magenta Neon Banzai Orb / Lightning Bolt crest
+    // Octagonal dark neon frame
+    px(s, 12, 4, 16, 32, '#1e1b4b');
+    px(s, 7, 8, 26, 24, '#1e1b4b');
+    px(s, 4, 13, 32, 14, '#1e1b4b');
+    // Neon outer rim split magenta/cyan
+    px(s, 12, 5, 8, 2, '#ec4899');
+    px(s, 20, 5, 8, 2, '#22d3ee');
+    px(s, 6, 13, 2, 14, '#ec4899');
+    px(s, 32, 13, 2, 14, '#22d3ee');
+    // Inner glowing orb core
+    px(s, 9, 9, 22, 22, '#312e81');
+    px(s, 12, 10, 16, 10, '#db2777');
+    px(s, 12, 20, 16, 10, '#0891b2');
+    // Crisp high-voltage electric lightning bolt cutting across
+    px(s, 21, 7, 5, 6, '#fef08a');
+    px(s, 16, 12, 8, 6, '#ffffff');
+    px(s, 13, 17, 13, 4, '#22d3ee');
+    px(s, 18, 21, 7, 6, '#fef08a');
+    px(s, 15, 27, 5, 6, '#ffffff');
+  } else if (normalizedId === 'badge_architect') {
+    // Golden Isometric Tile & Blueprint Compass emblem
+    // Isometric gold/teal diamond floor tile base
+    for (let dy = 0; dy < 8; dy++) {
+      const halfW = 3 + dy * 2;
+      px(s, 20 - halfW, 17 + dy, halfW * 2, 1, dy % 2 === 0 ? '#16a34a' : '#22c55e');
+      px(s, 20 - halfW, 31 - dy, halfW * 2, 1, '#15803d');
+    }
+    px(s, 6, 24, 28, 3, GOLD_2);
+    px(s, 8, 23, 24, 2, GOLD_1);
+    // Golden architect drafting compass standing over the isometric tile
+    px(s, 18, 4, 4, 4, GOLD_HI);
+    px(s, 16, 8, 8, 4, GOLD_1);
+    for (let i = 0; i < 14; i++) {
+      px(s, 17 - Math.floor(i * 0.5), 12 + i, 3, 2, GOLD_1);
+      px(s, 20 + Math.floor(i * 0.5), 12 + i, 3, 2, GOLD_2);
+    }
+    px(s, 13, 18, 14, 2, SLV_1);
+    px(s, 19, 10, 2, 2, '#ef4444');
+  } else if (normalizedId === 'badge_stylist') {
+    // Shaped Pixel Sunglasses & Diamond Star badge
+    // Sparkling pink/cyan diamond star behind sunglasses
+    px(s, 18, 3, 4, 16, '#f472b6');
+    px(s, 14, 7, 12, 8, '#ec4899');
+    px(s, 18, 5, 4, 6, '#ffffff');
+    // Cool angular retro pixel sunglasses
+    px(s, 4, 15, 32, 4, '#18181b');
+    px(s, 5, 16, 13, 10, '#18181b');
+    px(s, 22, 16, 13, 10, '#18181b');
+    px(s, 7, 26, 9, 3, '#18181b');
+    px(s, 24, 26, 9, 3, '#18181b');
+    // Glossy cyan & purple gradient lenses with white diagonal pixel glint
+    px(s, 7, 18, 9, 7, '#0284c7');
+    px(s, 24, 18, 9, 7, '#7c3aed');
+    px(s, 8, 19, 3, 2, '#ffffff');
+    px(s, 10, 21, 2, 2, '#bae6fd');
+    px(s, 25, 19, 3, 2, '#ffffff');
+    px(s, 27, 21, 2, 2, '#e9d5ff');
+    // Gold bridge accent
+    px(s, 18, 16, 4, 2, GOLD_1);
+  } else if (normalizedId === 'badge_gold') {
+    // Overflowing Gold Coin Sack with $ pixel emblem
+    // Tied sack top ruffles
+    px(s, 13, 5, 14, 5, '#d97706');
+    px(s, 15, 4, 10, 3, '#fbbf24');
+    px(s, 14, 10, 12, 3, '#b91c1c'); // crimson tie ribbon
+    // Fat bulging burlap/gold sack body
+    px(s, 8, 13, 24, 18, '#b45309');
+    px(s, 6, 17, 28, 12, '#d97706');
+    px(s, 9, 31, 22, 4, '#92400e');
+    px(s, 10, 15, 16, 12, '#f59e0b');
+    // Gold coins spilling out top & front
+    px(s, 26, 26, 9, 8, GOLD_1);
+    px(s, 27, 26, 6, 2, GOLD_HI);
+    px(s, 23, 29, 8, 7, GOLD_2);
+    px(s, 24, 29, 5, 2, GOLD_1);
+    px(s, 5, 28, 7, 7, GOLD_1);
+    px(s, 6, 28, 4, 2, GOLD_HI);
+    // Crisp $ pixel emblem in center of sack
+    drawTinyText(s, '$', 17, 19, GOLD_HI, '#78350f');
+  } else if (normalizedId === 'badge_checkin') {
+    // Classic Habbo Miniature Golden Hotel Tower silhouette against sky-blue crest
+    // Sky-blue circular crest backdrop behind tower
+    px(s, 9, 8, 22, 24, '#0284c7');
+    px(s, 6, 12, 28, 16, '#38bdf8');
+    px(s, 11, 6, 18, 28, '#38bdf8');
+    // Classic Habbo miniature golden hotel tower
+    px(s, 17, 3, 6, 3, '#ef4444'); // rooftop beacon
+    px(s, 14, 6, 12, 27, GOLD_2);
+    px(s, 15, 7, 10, 25, GOLD_1);
+    px(s, 15, 7, 3, 25, GOLD_HI);
+    // Side hotel wings
+    px(s, 9, 16, 5, 17, '#ea580c');
+    px(s, 26, 16, 5, 17, '#c2410c');
+    // Glowing hotel windows
+    for (let wy = 10; wy <= 24; wy += 4) {
+      px(s, 17, wy, 2, 2, '#fef08a');
+      px(s, 21, wy, 2, 2, '#bae6fd');
+    }
+    px(s, 11, 19, 2, 3, '#fef08a');
+    px(s, 27, 19, 2, 3, '#fef08a');
+    // Hotel entrance awning
+    px(s, 17, 29, 6, 4, '#1e3a8a');
+    px(s, 16, 28, 8, 2, '#ffffff');
+  } else if (normalizedId === 'badge_social') {
+    // Double Speech-Bubble with Crimson Heart
+    px(s, 5, 7, 24, 17, '#0d9488');
+    px(s, 7, 8, 20, 14, '#ffffff');
+    px(s, 10, 24, 5, 4, '#ffffff');
+    px(s, 17, 14, 18, 14, '#0f766e');
+    px(s, 19, 15, 14, 11, '#99f6e4');
+    px(s, 27, 28, 4, 4, '#99f6e4');
+    // Pixel heart inside bubble
+    px(s, 12, 12, 4, 3, '#ef4444');
+    px(s, 18, 12, 4, 3, '#ef4444');
+    px(s, 11, 14, 12, 4, '#ef4444');
+    px(s, 13, 18, 8, 3, '#dc2626');
+    px(s, 15, 21, 4, 2, '#dc2626');
+    px(s, 13, 13, 2, 1, '#ffffff');
+  } else if (normalizedId === 'badge_voucher') {
+    // Gift Box with Golden Ribbon Bow
+    px(s, 11, 6, 7, 5, GOLD_1);
+    px(s, 22, 6, 7, 5, GOLD_1);
+    px(s, 17, 8, 6, 4, GOLD_HI);
+    px(s, 6, 12, 28, 6, '#ef4444');
+    px(s, 8, 18, 24, 16, '#dc2626');
+    px(s, 17, 12, 6, 22, GOLD_1);
+    px(s, 18, 12, 2, 22, GOLD_HI);
+  } else if (normalizedId === 'badge_throne') {
+    // 24K Gilded Royal Throne silhouette
+    px(s, 11, 4, 18, 18, GOLD_2);
+    px(s, 13, 6, 14, 14, GOLD_1);
+    px(s, 15, 8, 10, 12, '#991b1b');
+    px(s, 18, 11, 4, 4, GOLD_HI);
+    px(s, 7, 18, 26, 7, GOLD_1);
+    px(s, 9, 20, 22, 5, '#dc2626');
+    px(s, 8, 25, 24, 5, GOLD_2);
+    px(s, 9, 30, 5, 6, GOLD_3);
+    px(s, 26, 30, 5, 6, GOLD_3);
+  } else if (normalizedId === 'badge_dj') {
+    // Vinyl Turntable + Neon Headphones Crest
+    px(s, 10, 6, 20, 6, '#ec4899');
+    px(s, 6, 11, 6, 13, '#db2777');
+    px(s, 28, 11, 6, 13, '#db2777');
+    px(s, 11, 12, 18, 20, '#0f172a');
+    px(s, 13, 14, 14, 16, '#334155');
+    px(s, 16, 17, 8, 8, '#ec4899');
+    px(s, 19, 20, 2, 2, '#ffffff');
+    px(s, 14, 15, 3, 2, '#ffffff');
+  } else if (normalizedId === 'badge_new') {
+    // Emerald Four-Leaf Clover / Park Crest
+    px(s, 12, 5, 16, 10, '#22c55e');
+    px(s, 6, 12, 12, 12, '#16a34a');
+    px(s, 22, 12, 12, 12, '#22c55e');
+    px(s, 12, 20, 16, 10, '#15803d');
+    px(s, 18, 28, 4, 8, '#166534');
+    px(s, 15, 13, 10, 10, '#bbf7d0');
+    px(s, 18, 16, 4, 4, '#ffffff');
+  } else {
+    // Ornate Star Shield fallback for any unknown ID
+    px(s, 10, 6, 20, 20, '#2b6ca3');
+    px(s, 12, 26, 16, 5, '#1d4e78');
+    px(s, 16, 31, 8, 3, '#1d4e78');
+    px(s, 18, 11, 4, 12, GOLD_1);
+    px(s, 14, 15, 12, 4, GOLD_1);
+    px(s, 19, 16, 2, 2, '#ffffff');
   }
 
-  if (!unlocked) {
-    // Subtle dark lock overlay in bottom-right corner
-    px(ctx, 15, 14, 7, 8, OUTLINE);
-    px(ctx, 16, 16, 5, 5, '#cbd5e1');
-    px(ctx, 17, 13, 3, 3, '#cbd5e1');
-    px(ctx, 18, 14, 1, 2, OUTLINE);
-  }
-
-  spriteCache.set(key, canvas);
-  return canvas;
+  const out = finalizeShapedBadge40(src, unlocked);
+  spriteCache.set(key, out);
+  return out;
 }
 
 /**

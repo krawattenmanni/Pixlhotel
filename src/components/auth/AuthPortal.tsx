@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Ban, KeyRound, UserPlus } from 'lucide-react';
+import { formatOnlineCountLabel } from '../../game/clientFeatures';
 import {
   ADMIN_PLAYER_STATE,
   BADGE_CATALOGUE,
@@ -11,6 +12,7 @@ import type { HairStyle, LookConfig } from '../../game/types';
 import { PixelAvatarCanvas, PixelBadgeSprite } from '../PixelSpriteCanvas';
 
 interface AuthPortalProps {
+  onlineCount?: number;
   onLogin: (
     username: string,
     password: string
@@ -34,7 +36,12 @@ const QUICK_HAIRS: { id: HairStyle; label: string }[] = [
   { id: 'long', label: 'Long' },
 ];
 
-export function AuthPortal({ onLogin, onRegister, onContinueAsGuest }: AuthPortalProps) {
+export function AuthPortal({
+  onlineCount = 0,
+  onLogin,
+  onRegister,
+  onContinueAsGuest,
+}: AuthPortalProps) {
   const [loginName, setLoginName] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginFeedback, setLoginFeedback] = useState<{
@@ -138,9 +145,18 @@ export function AuthPortal({ onLogin, onRegister, onContinueAsGuest }: AuthPorta
               <h1 className="font-pixel text-sm sm:text-base text-[#0f3454]">
                 Make friends, build rooms, collect rares!
               </h1>
-              <p className="text-[11px] font-bold text-[#1d4e78]">
-                Authentic 2009 HoloCMS &amp; Shockwave Isometric Hotel Client
-              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <p className="text-[11px] font-bold text-[#1d4e78]">
+                  Welcome to PIXL Hotel — check in now!
+                </p>
+                <span
+                  data-testid="auth-online-count-label"
+                  className="inline-flex items-center gap-1.5 rounded-[3px] border border-[#000000] bg-white px-2 py-0.5 text-[10px] font-bold text-[#0f3454]"
+                >
+                  <span className="inline-block h-2 w-2 rounded-[1px] border border-[#14532d] bg-[#22c55e]" />
+                  {formatOnlineCountLabel(onlineCount)}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -157,68 +173,88 @@ export function AuthPortal({ onLogin, onRegister, onContinueAsGuest }: AuthPorta
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 space-y-5">
         <div className="grid grid-cols-1 gap-5 md:grid-cols-12">
           {/* SIGN IN BOX */}
-          <section className="habbo-box md:col-span-6">
-            <div className="habbo-box-header habbo-header-blue flex items-center gap-2">
-              <KeyRound className="h-3.5 w-3.5 text-[#ffd400]" />
-              Sign In to PIXL Hotel
+          <section className="habbo-box md:col-span-6 flex flex-col justify-between">
+            <div>
+              <div className="habbo-box-header habbo-header-blue flex items-center gap-2">
+                <KeyRound className="h-3.5 w-3.5 text-[#ffd400]" />
+                Sign In to PIXL Hotel
+              </div>
+
+              <form onSubmit={handleLoginSubmit} className="p-4 space-y-3.5">
+                <div>
+                  <label htmlFor="login-username" className="block text-[11px] font-bold text-[#1f2937]">
+                    PIXL Name
+                  </label>
+                  <input
+                    id="login-username"
+                    type="text"
+                    autoComplete="username"
+                    value={loginName}
+                    onChange={(e) => setLoginName(e.target.value)}
+                    placeholder="e.g. PixelHero"
+                    className="mt-1 w-full rounded-[2px] border border-[#000000] bg-white px-2.5 py-1.5 text-[12px] font-bold text-[#111827] focus:border-[#2b6ca3] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="login-password" className="block text-[11px] font-bold text-[#1f2937]">
+                    Password
+                  </label>
+                  <input
+                    id="login-password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="Enter your password..."
+                    className="mt-1 w-full rounded-[2px] border border-[#000000] bg-white px-2.5 py-1.5 text-[12px] font-bold text-[#111827] focus:border-[#2b6ca3] focus:outline-none"
+                  />
+                </div>
+
+                {loginFeedback && (
+                  <div
+                    role="alert"
+                    data-testid={loginFeedback.banned ? 'login-ban-alert' : 'login-feedback'}
+                    className={`flex items-start gap-2 rounded-[2px] border px-3 py-2 text-[11px] font-bold ${
+                      loginFeedback.ok
+                        ? 'border-[#1f4f09] bg-[#ecfdf5] text-[#14532d]'
+                        : loginFeedback.banned
+                        ? 'border-[#000000] bg-[#9e1b1b] text-white'
+                        : 'border-[#7f1d1d] bg-[#fef2f2] text-[#991b1b]'
+                    }`}
+                  >
+                    {loginFeedback.banned && <Ban className="h-4 w-4 shrink-0 text-[#fde047] mt-0.5" />}
+                    <span>{loginFeedback.text}</span>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loggingIn}
+                  className="habbo-btn-green w-full py-2 font-pixel text-xs cursor-pointer disabled:opacity-60"
+                >
+                  {loggingIn ? 'Signing In...' : 'Sign In to Hotel'}
+                </button>
+              </form>
             </div>
 
-            <form onSubmit={handleLoginSubmit} className="p-4 space-y-3.5">
-              <div>
-                <label htmlFor="login-username" className="block text-[11px] font-bold text-[#1f2937]">
-                  PIXL Name
-                </label>
-                <input
-                  id="login-username"
-                  type="text"
-                  autoComplete="username"
-                  value={loginName}
-                  onChange={(e) => setLoginName(e.target.value)}
-                  placeholder="e.g. PixelHero"
-                  className="mt-1 w-full rounded-[2px] border border-[#000000] bg-white px-2.5 py-1.5 text-[12px] font-bold text-[#111827] focus:border-[#2b6ca3] focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="login-password" className="block text-[11px] font-bold text-[#1f2937]">
-                  Password
-                </label>
-                <input
-                  id="login-password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  placeholder="Enter your password..."
-                  className="mt-1 w-full rounded-[2px] border border-[#000000] bg-white px-2.5 py-1.5 text-[12px] font-bold text-[#111827] focus:border-[#2b6ca3] focus:outline-none"
-                />
-              </div>
-
-              {loginFeedback && (
-                <div
-                  role="alert"
-                  data-testid={loginFeedback.banned ? 'login-ban-alert' : 'login-feedback'}
-                  className={`flex items-start gap-2 rounded-[2px] border px-3 py-2 text-[11px] font-bold ${
-                    loginFeedback.ok
-                      ? 'border-[#1f4f09] bg-[#ecfdf5] text-[#14532d]'
-                      : loginFeedback.banned
-                      ? 'border-[#000000] bg-[#9e1b1b] text-white'
-                      : 'border-[#7f1d1d] bg-[#fef2f2] text-[#991b1b]'
-                  }`}
-                >
-                  {loginFeedback.banned && <Ban className="h-4 w-4 shrink-0 text-[#fde047] mt-0.5" />}
-                  <span>{loginFeedback.text}</span>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={loggingIn}
-                className="habbo-btn-green w-full py-2 font-pixel text-xs cursor-pointer disabled:opacity-60"
-              >
-                {loggingIn ? 'Signing In...' : 'Sign In to Hotel'}
-              </button>
-            </form>
+            <div className="mx-4 mb-4 rounded-[2px] border border-[#cbd5e1] bg-[#f4f8fc] p-3 text-[11px] text-[#334155] space-y-1.5">
+              <p className="font-bold text-[#1d4e78]">What&apos;s Waiting Inside Today:</p>
+              <ul className="space-y-1 text-[11px]">
+                <li className="flex items-center gap-2">
+                  <span className="inline-block h-2 w-2 bg-[#0284c7] shrink-0" />
+                  <span><strong>The Lido &amp; Rooftop Pool</strong> — change swimwear &amp; dive in!</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="inline-block h-2 w-2 bg-[#d97706] shrink-0" />
+                  <span><strong>52+ Furni &amp; Rares</strong> — Thrones, Dragon Lamps &amp; Battle Banzai.</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="inline-block h-2 w-2 bg-[#16a34a] shrink-0" />
+                  <span><strong>Live Friends &amp; Badges</strong> — earn crests, adopt pets, and design custom suites.</span>
+                </li>
+              </ul>
+            </div>
           </section>
 
           {/* REGISTRATION BOX */}

@@ -79,7 +79,7 @@ export function WardrobeModal({
           <span className="inline-flex items-center gap-1.5 text-[12px] font-bold">
             Change Your Looks
             {isHcMember && (
-              <span className="inline-flex items-center gap-0.5 border border-[#000000] bg-[#eab308] px-1.5 py-0.5 font-pixel text-[8px] text-[#1c1917] rounded-[2px]">
+              <span className="inline-flex items-center gap-0.5 border border-[#000000] bg-[#eab308] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#1c1917] rounded-[2px]">
                 <Crown className="h-2.5 w-2.5" /> HC ACTIVE
               </span>
             )}
@@ -102,7 +102,7 @@ export function WardrobeModal({
               type="button"
               onClick={() => setActiveTab(t.id)}
               data-testid={`wardrobe-tab-${t.id}`}
-              className={`border border-b-0 border-[#000000] px-2.5 py-1 text-[11px] font-bold cursor-pointer rounded-t-[3px] ${
+              className={`border border-b-0 border-[#000000] px-2 py-1 text-[10px] font-bold cursor-pointer rounded-t-[3px] whitespace-nowrap ${
                 activeTab === t.id
                   ? 'bg-[#ececec] text-[#111827] -mb-px pb-1.5'
                   : 'bg-[#4b708f] text-white hover:bg-[#5c84a6]'
@@ -154,7 +154,7 @@ export function WardrobeModal({
                 onSaveLook(draft);
                 onClose();
               }}
-              className="habbo-btn-green mt-2 w-full py-2 font-pixel text-[11px] cursor-pointer"
+              className="habbo-btn-green mt-2 w-full py-2 text-xs font-bold uppercase tracking-wide cursor-pointer"
             >
               Save Changes
             </button>

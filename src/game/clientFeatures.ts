@@ -251,3 +251,92 @@ export const WALL_THEME_OPTIONS: { id: RoomWallTheme; label: string }[] = [
   { id: 'nightsky', label: 'Starlight Sky' },
   { id: 'neon', label: 'Cyber Neon' },
 ];
+
+export const DEFAULT_PLAYER_TAGS = ['rares', 'lido', 'trading', 'hc', 'banzai'];
+
+export function normalizePlayerTag(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '')
+    .slice(0, 18);
+}
+
+export function addPlayerTag(tags: string[], rawTag: string, maxTags = 12): string[] {
+  const cleaned = normalizePlayerTag(rawTag);
+  if (cleaned.length < 2) return tags;
+  if (tags.includes(cleaned)) return tags;
+  if (tags.length >= maxTags) return tags;
+  return [...tags, cleaned];
+}
+
+export function removePlayerTag(tags: string[], targetTag: string): string[] {
+  const cleaned = normalizePlayerTag(targetTag);
+  return tags.filter((t) => t !== cleaned);
+}
+
+export function normalizeBadgeSpriteKey(badgeId: string): string {
+  const key = badgeId.trim();
+  const upper = key.toUpperCase();
+  const aliasMap: Record<string, string> = {
+    ADM: 'badge_admin',
+    MOD: 'badge_mod',
+    EVT: 'badge_evt',
+    HC: 'badge_hc',
+    HC1: 'badge_hc',
+    VIP: 'badge_vip',
+    DRG: 'badge_dragon',
+    LDO: 'badge_lido',
+    BNZ: 'badge_banzai',
+    ARC: 'badge_architect',
+    STY: 'badge_stylist',
+    TRD: 'badge_gold',
+    GLD: 'badge_gold',
+    HTL: 'badge_checkin',
+    NEW: 'badge_checkin',
+    CHT: 'badge_social',
+    VCH: 'badge_voucher',
+    ROY: 'badge_throne',
+    DJ: 'badge_dj',
+  };
+  return aliasMap[upper] ?? key;
+}
+
+export function computeOnlinePlayerCount(params: {
+  accounts: { username: string; online: boolean; banned: boolean }[];
+  presenceUsernames: string[];
+  isLoggedIn: boolean;
+  currentUsername?: string;
+}): number {
+  const bannedSet = new Set(
+    params.accounts.filter((a) => a.banned).map((a) => a.username.trim().toLowerCase())
+  );
+  const onlineSet = new Set<string>();
+  for (const acc of params.accounts) {
+    if (acc.online && !acc.banned && acc.username.trim()) {
+      onlineSet.add(acc.username.trim().toLowerCase());
+    }
+  }
+  for (const uname of params.presenceUsernames) {
+    const clean = uname.trim().toLowerCase();
+    if (clean && !bannedSet.has(clean)) {
+      onlineSet.add(clean);
+    }
+  }
+  if (params.isLoggedIn) {
+    if (params.currentUsername?.trim()) {
+      const me = params.currentUsername.trim().toLowerCase();
+      if (!bannedSet.has(me)) onlineSet.add(me);
+    }
+    return Math.max(1, onlineSet.size);
+  }
+  return onlineSet.size;
+}
+
+export function formatOnlineCountLabel(onlineCount: number): string {
+  return onlineCount === 1
+    ? '1 PIXL online now!'
+    : `${onlineCount} PIXLs online now!`;
+}
+
+

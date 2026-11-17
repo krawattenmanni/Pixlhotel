@@ -67,7 +67,7 @@ export function BadgesPage({ player, customBadges = [], onEquipBadge }: BadgesPa
               <p className="text-[11px] font-bold text-[#475569]">
                 Active Equipped Slots ({equippedList.length}/5) — Click any badge to inspect!
               </p>
-              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 {Array.from({ length: 5 }).map((_, slotIdx) => {
                   const slotId = equippedList[slotIdx];
                   const slotDef = slotId ? findBadgeDefById(slotId, customBadges) : null;
@@ -78,14 +78,14 @@ export function BadgesPage({ player, customBadges = [], onEquipBadge }: BadgesPa
                       disabled={!slotId}
                       onClick={() => slotId && setInspectBadgeId(slotId)}
                       title={slotDef ? `${slotDef.name} [${slotDef.code}]` : 'Empty badge slot'}
-                      className={`flex h-9 w-9 items-center justify-center rounded-[2px] border ${
+                      className={`flex h-12 w-12 items-center justify-center rounded-[2px] border ${
                         slotId
-                          ? 'border-[#000000] bg-[#dbeafe] cursor-pointer hover:bg-[#bfdbfe]'
+                          ? 'border-[#000000] bg-gradient-to-b from-[#dbeafe] to-[#eff6ff] cursor-pointer hover:from-[#bfdbfe]'
                           : 'border-[#cbd5e1] bg-[#f8fafc] cursor-default'
                       }`}
                     >
                       {slotId ? (
-                        <PixelBadgeSprite badgeId={slotId} unlocked size={26} customBadges={customBadges} />
+                        <PixelBadgeSprite badgeId={slotId} unlocked size={40} customBadges={customBadges} />
                       ) : (
                         <span className="text-[9px] font-bold text-[#94a3b8]">#{slotIdx + 1}</span>
                       )}
@@ -172,7 +172,7 @@ export function BadgesPage({ player, customBadges = [], onEquipBadge }: BadgesPa
                   <PixelBadgeSprite
                     badgeId={badge.id}
                     unlocked={isUnlocked}
-                    size={42}
+                    size={40}
                     customBadges={customBadges}
                   />
                 </button>

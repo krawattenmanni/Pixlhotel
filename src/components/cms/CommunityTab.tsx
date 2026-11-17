@@ -18,7 +18,12 @@ import type {
   RareValueItem,
   UserAccount,
 } from '../../game/types';
-import { FurniPreviewImg, PixelBadge, PixelHeadCanvas } from '../PixelSpriteCanvas';
+import {
+  FurniPreviewImg,
+  PixelBadge,
+  PixelBadgeSprite,
+  PixelHeadCanvas,
+} from '../PixelSpriteCanvas';
 import { BadgesPage } from './BadgesPage';
 
 interface CommunityTabProps {
@@ -160,14 +165,22 @@ export function CommunityTab({
                         </p>
                       </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <span className="inline-flex items-center gap-1 font-mono-num text-[13px] font-bold text-[#92400e]">
-                        <Coins className="h-3.5 w-3.5 text-[#d97706]" />
-                        {acc.playerState.credits.toLocaleString()}c
-                      </span>
-                      <p className="font-mono-num text-[10px] font-bold text-[#64748b]">
-                        {acc.playerState.hcDays}d HC
-                      </p>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <PixelBadgeSprite
+                        badgeId={acc.playerState.equippedBadgeId}
+                        unlocked
+                        size={32}
+                        customBadges={customBadges}
+                      />
+                      <div className="text-right">
+                        <span className="inline-flex items-center gap-1 font-mono-num text-[13px] font-bold text-[#92400e]">
+                          <Coins className="h-3.5 w-3.5 text-[#d97706]" />
+                          {acc.playerState.credits.toLocaleString()}c
+                        </span>
+                        <p className="font-mono-num text-[10px] font-bold text-[#64748b]">
+                          {acc.playerState.hcDays}d HC
+                        </p>
+                      </div>
                     </div>
                   </div>
                 );
@@ -214,15 +227,23 @@ export function CommunityTab({
                         <p className="truncate text-[10px] text-[#475569]">{rankMeta.label}</p>
                       </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <span className="inline-flex items-center gap-1 font-mono-num text-[12px] font-bold text-[#1d4e78]">
-                        <Award className="h-3.5 w-3.5 text-[#d97706]" />
-                        {acc.playerState.unlockedBadges.length} badges
-                      </span>
-                      <p className="inline-flex items-center justify-end gap-1 w-full font-mono-num text-[10px] font-bold text-[#64748b]">
-                        <Sparkles className="h-2.5 w-2.5 text-[#7c3aed]" />
-                        {acc.playerState.duckets.toLocaleString()}d
-                      </p>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <PixelBadgeSprite
+                        badgeId={acc.playerState.equippedBadgeId}
+                        unlocked
+                        size={32}
+                        customBadges={customBadges}
+                      />
+                      <div className="text-right">
+                        <span className="inline-flex items-center gap-1 font-mono-num text-[12px] font-bold text-[#1d4e78]">
+                          <Award className="h-3.5 w-3.5 text-[#d97706]" />
+                          {acc.playerState.unlockedBadges.length} badges
+                        </span>
+                        <p className="inline-flex items-center justify-end gap-1 w-full font-mono-num text-[10px] font-bold text-[#64748b]">
+                          <Sparkles className="h-2.5 w-2.5 text-[#7c3aed]" />
+                          {acc.playerState.duckets.toLocaleString()}d
+                        </p>
+                      </div>
                     </div>
                   </div>
                 );

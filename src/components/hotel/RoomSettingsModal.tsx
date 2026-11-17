@@ -202,7 +202,7 @@ export function RoomSettingsModal({
           <button
             type="submit"
             data-testid="room-settings-save"
-            className="habbo-btn-green w-full py-2 font-pixel text-xs cursor-pointer"
+            className="habbo-btn-green w-full py-2 text-xs font-bold tracking-wide uppercase cursor-pointer"
           >
             Save Room Settings
           </button>

@@ -855,5 +855,76 @@ test('furni stacking (z-height), moving, 20x sticky_note pack, sticky extra_data
   assert.deepEqual(parsedDoorbell.rights, ['HelperUser']);
 });
 
+import {
+  addPlayerTag,
+  computeOnlinePlayerCount,
+  DEFAULT_PLAYER_TAGS,
+  formatOnlineCountLabel,
+  normalizeBadgeSpriteKey,
+  removePlayerTag,
+} from './clientFeatures';
 
+test('player tags normalize, deduplicate, cap, and remove cleanly', () => {
+  let tags = [...DEFAULT_PLAYER_TAGS];
+  tags = addPlayerTag(tags, '  Rooftop!! ');
+  assert.ok(tags.includes('rooftop'));
 
+  // Duplicate or too-short tags ignored
+  const afterDup = addPlayerTag(tags, 'ROOFTOP');
+  assert.equal(afterDup.length, tags.length);
+  const afterShort = addPlayerTag(tags, 'a');
+  assert.equal(afterShort.length, tags.length);
+
+  tags = removePlayerTag(tags, 'Rooftop');
+  assert.equal(tags.includes('rooftop'), false);
+});
+
+test('badge alias normalizer maps classic 3-letter codes to shaped sprite keys', () => {
+  assert.equal(normalizeBadgeSpriteKey('ADM'), 'badge_admin');
+  assert.equal(normalizeBadgeSpriteKey('mod'), 'badge_mod');
+  assert.equal(normalizeBadgeSpriteKey('EVT'), 'badge_evt');
+  assert.equal(normalizeBadgeSpriteKey('HC1'), 'badge_hc');
+  assert.equal(normalizeBadgeSpriteKey('HC'), 'badge_hc');
+  assert.equal(normalizeBadgeSpriteKey('LDO'), 'badge_lido');
+  assert.equal(normalizeBadgeSpriteKey('BNZ'), 'badge_banzai');
+  assert.equal(normalizeBadgeSpriteKey('DRG'), 'badge_dragon');
+  assert.equal(normalizeBadgeSpriteKey('TRD'), 'badge_gold');
+  assert.equal(normalizeBadgeSpriteKey('NEW'), 'badge_checkin');
+  assert.equal(normalizeBadgeSpriteKey('custom-99'), 'custom-99');
+});
+
+test('true realtime online player count deduplicates presence & DB, excludes banned, and has no +140 offset', () => {
+  const accounts = [
+    { username: 'Krawattenmanni', online: true, banned: false },
+    { username: 'RetroNova', online: true, banned: true }, // banned -> excluded
+    { username: 'BaristaMarco', online: false, banned: false },
+  ];
+
+  // Logged out, 1 valid online DB user + 1 extra non-banned presence user
+  const loggedOutCount = computeOnlinePlayerCount({
+    accounts,
+    presenceUsernames: ['krawattenmanni', 'BaristaMarco', 'RetroNova'],
+    isLoggedIn: false,
+  });
+  assert.equal(loggedOutCount, 2);
+  assert.equal(formatOnlineCountLabel(loggedOutCount), '2 PIXLs online now!');
+
+  // Logged in with 0 DB online & 0 presence still gives minimum 1
+  const soloLoggedIn = computeOnlinePlayerCount({
+    accounts: [{ username: 'PixelGuest', online: false, banned: false }],
+    presenceUsernames: [],
+    isLoggedIn: true,
+    currentUsername: 'PixelGuest',
+  });
+  assert.equal(soloLoggedIn, 1);
+  assert.equal(formatOnlineCountLabel(soloLoggedIn), '1 PIXL online now!');
+
+  // Logged out with nobody online gives 0
+  const zeroOnline = computeOnlinePlayerCount({
+    accounts: [{ username: 'OfflineUser', online: false, banned: false }],
+    presenceUsernames: [],
+    isLoggedIn: false,
+  });
+  assert.equal(zeroOnline, 0);
+  assert.equal(formatOnlineCountLabel(zeroOnline), '0 PIXLs online now!');
+});

@@ -269,21 +269,21 @@ export function PlayersFriendsTab({
                 </span>
               </div>
 
-              <div className="relative overflow-hidden bg-gradient-to-b from-[#2b6ca3] via-[#539bd3] to-[#87c3ee] p-4 text-white border-b border-[#000000]">
+              <div className="relative overflow-hidden bg-gradient-to-b from-[#55b7f7] via-[#9bd6fb] to-[#e6dcc6] p-4 border-b border-[#000000]">
                 <div className="flex items-center gap-4">
-                  <div className="flex flex-col items-center justify-end rounded-[3px] border border-[#000000] bg-[#163653]/80 px-4 pt-3.5 pb-2 shrink-0">
+                  <div className="flex flex-col items-center justify-end rounded-[3px] border border-[#000000] bg-gradient-to-b from-[#bae6fd] to-[#d6cab1] px-4 pt-3.5 pb-2 shrink-0">
                     <PixelAvatarCanvas
                       look={selectedProfile.look}
                       dir={0}
                       pose="wave"
                       scale={2}
                     />
-                    <div className="mt-1 h-2 w-20 rounded-[1px] bg-[#0d2236] border border-[#3a709c]" />
+                    <div className="mt-1 h-2 w-20 rounded-[1px] bg-[#94a3b8] border border-[#000000]" />
                   </div>
 
                   <div className="min-w-0 flex-1 space-y-2">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <h2 className="font-pixel text-lg text-white drop-shadow-[0_2px_0_rgba(0,0,0,0.45)] break-words">
+                      <h2 className="font-pixel text-lg text-[#0f3454] drop-shadow-[1px_1px_0_#ffffff] break-words">
                         {selectedProfile.name}
                       </h2>
                       {selectedProfile.roleBadge && (
@@ -291,7 +291,7 @@ export function PlayersFriendsTab({
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1.5 text-[11px] font-bold">
+                    <div className="inline-flex items-center gap-1.5 rounded-[2px] border border-[#000000]/40 bg-white/90 px-2 py-0.5 text-[11px] font-bold text-[#0f3454]">
                       <span
                         className={`inline-block h-2.5 w-2.5 rounded-[1px] border ${
                           selectedProfile.online
@@ -364,7 +364,7 @@ export function PlayersFriendsTab({
                       This citizen hasn&apos;t displayed any badges yet.
                     </p>
                   ) : (
-                    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                    <div className="flex flex-wrap gap-2">
                       {selectedProfile.badges.slice(0, 5).map((badgeId) => {
                         const def = findBadgeDefById(badgeId, customBadges);
                         if (!def) return null;
@@ -373,18 +373,18 @@ export function PlayersFriendsTab({
                             key={badgeId}
                             type="button"
                             onClick={() => setInspectBadgeId(def.id)}
-                            title={`${def.name} — Click for details`}
-                            className="flex items-center gap-2 rounded-[2px] border border-[#000000] bg-[#f8fafc] p-1.5 text-left hover:bg-[#dbeafe] cursor-pointer"
+                            title={`${def.name} [${def.code}] — Click for details`}
+                            className="flex items-center gap-2 rounded-[2px] border border-[#000000] bg-[#f8fafc] px-2 py-1.5 text-left hover:bg-[#dbeafe] cursor-pointer"
                           >
                             <PixelBadgeSprite
                               badgeId={def.id}
                               unlocked
-                              size={30}
+                              size={36}
                               customBadges={customBadges}
                             />
                             <div className="min-w-0">
                               <p className="font-pixel text-[9px] text-[#111827]">{def.code}</p>
-                              <p className="truncate text-[10px] font-bold text-[#475569]">
+                              <p className="max-w-[92px] truncate text-[10px] font-bold text-[#475569]">
                                 {def.name}
                               </p>
                             </div>

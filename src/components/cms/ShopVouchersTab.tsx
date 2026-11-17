@@ -127,12 +127,12 @@ export function ShopVouchersTab({
               <ShoppingBag className="h-3.5 w-3.5 text-[#fef08a]" />
               PIXL Web Furni Catalogue ({mergedItems.length} items)
             </span>
-            <div className="flex items-center gap-3 text-[11px]">
-              <span className="inline-flex items-center gap-1 font-mono-num">
+            <div className="flex items-center gap-3 rounded-[2px] border border-[#000000] bg-[#2b2d31] px-2.5 py-0.5 text-[11px]">
+              <span className="inline-flex items-center gap-1 font-mono-num text-[#fde047]">
                 <Coins className="h-3.5 w-3.5 text-[#ffd400]" /> {player.credits}c
               </span>
-              <span className="inline-flex items-center gap-1 font-mono-num">
-                <Sparkles className="h-3.5 w-3.5 text-[#e9d5ff]" /> {player.duckets}d
+              <span className="inline-flex items-center gap-1 font-mono-num text-[#e9d5ff]">
+                <Sparkles className="h-3.5 w-3.5 text-[#c084fc]" /> {player.duckets}d
               </span>
             </div>
           </div>
@@ -271,40 +271,48 @@ export function ShopVouchersTab({
             Redeem PIXL Voucher
           </div>
           <div className="p-3.5 space-y-2.5">
-            <p className="text-[11px] text-[#475569]">
-              Tap a promo chip below or enter a voucher code manually:
-            </p>
-            <div className="grid grid-cols-2 gap-1.5">
-              {PROMO_CHIPS.map((v) => {
-                const claimed =
-                  player.redeemedVouchers.includes(v.code) ||
-                  (v.code === 'PIXL2026' && player.redeemedVouchers.includes('PIXLHOTEL'));
-                return (
-                  <button
-                    key={v.code}
-                    type="button"
-                    disabled={claimed}
-                    onClick={() => {
-                      const res = onRedeemVoucher(v.code);
-                      setStatusMsg({ ok: res.ok, text: res.message });
-                    }}
-                    className={`flex flex-col items-start rounded-[2px] border px-2 py-1 text-left ${
-                      claimed
-                        ? 'border-[#cbd5e1] bg-[#ecfdf5] text-[#15803d] cursor-default'
-                        : 'border-[#000000] bg-[#f8fafc] hover:bg-[#fffbeb] cursor-pointer'
-                    }`}
-                  >
-                    <span className="inline-flex items-center gap-1 font-mono-num text-[11px] font-bold text-[#111827]">
-                      {v.code}
-                      {claimed && <Check className="h-3 w-3 text-[#15803d]" />}
-                    </span>
-                    <span className="text-[10px] font-semibold text-[#475569]">
-                      {claimed ? 'Claimed' : v.reward}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            {player.rank >= 4 ? (
+              <>
+                <p className="text-[11px] text-[#475569]">
+                  Staff promo test chips or enter a voucher code manually:
+                </p>
+                <div className="grid grid-cols-2 gap-1.5" data-testid="staff-promo-chips">
+                  {PROMO_CHIPS.map((v) => {
+                    const claimed =
+                      player.redeemedVouchers.includes(v.code) ||
+                      (v.code === 'PIXL2026' && player.redeemedVouchers.includes('PIXLHOTEL'));
+                    return (
+                      <button
+                        key={v.code}
+                        type="button"
+                        disabled={claimed}
+                        onClick={() => {
+                          const res = onRedeemVoucher(v.code);
+                          setStatusMsg({ ok: res.ok, text: res.message });
+                        }}
+                        className={`flex flex-col items-start rounded-[2px] border px-2 py-1 text-left ${
+                          claimed
+                            ? 'border-[#cbd5e1] bg-[#ecfdf5] text-[#15803d] cursor-default'
+                            : 'border-[#000000] bg-[#f8fafc] hover:bg-[#fffbeb] cursor-pointer'
+                        }`}
+                      >
+                        <span className="inline-flex items-center gap-1 font-mono-num text-[11px] font-bold text-[#111827]">
+                          {v.code}
+                          {claimed && <Check className="h-3 w-3 text-[#15803d]" />}
+                        </span>
+                        <span className="text-[10px] font-semibold text-[#475569]">
+                          {claimed ? 'Claimed' : v.reward}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <p className="text-[11px] text-[#475569]">
+                Have an event or gift voucher? Enter your code below to claim Credits, Duckets, or rares:
+              </p>
+            )}
             <form onSubmit={handleRedeem} className="flex gap-1.5">
               <input
                 type="text"
@@ -331,7 +339,7 @@ export function ShopVouchersTab({
           <div className="divide-y divide-[#cbd5e1] max-h-96 overflow-y-auto">
             {player.inventory.length === 0 ? (
               <p className="p-3.5 text-[11px] text-[#64748b]">
-                Your inventory is empty. Buy furni or redeem DRAGON!
+                Your inventory is empty. Browse the PIXL Catalogue to decorate your room!
               </p>
             ) : (
               player.inventory.map((entry) => {

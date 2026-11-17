@@ -54,12 +54,12 @@ export function BadgeInfoModal({
         </div>
 
         <div className="p-3.5 space-y-3 bg-[#ececec]">
-          <div className="flex items-start gap-3 border border-[#b5b5b5] bg-white p-3 rounded-[3px]">
-            <div className="flex h-14 w-14 items-center justify-center border border-[#000000] bg-[#dbeafe] shrink-0 rounded-[2px]">
+          <div className="flex items-start gap-3.5 border border-[#b5b5b5] bg-white p-3 rounded-[3px]">
+            <div className="flex h-24 w-24 items-center justify-center border border-[#000000] bg-gradient-to-b from-[#d8ebfc] to-[#eef7ff] shrink-0 rounded-[2px] shadow-[inset_0_1px_0_#ffffff]">
               <PixelBadgeSprite
                 badgeId={def.id}
                 unlocked={unlocked}
-                size={40}
+                size={80}
                 customBadges={customBadges}
               />
             </div>
@@ -70,7 +70,7 @@ export function BadgeInfoModal({
                 </span>
                 <span className="text-[10px] font-bold text-[#555555]">{def.category}</span>
               </div>
-              <h3 className="mt-1 text-[13px] font-bold text-[#111827] leading-tight">
+              <h3 className="mt-1 text-[14px] font-bold text-[#111827] leading-tight">
                 {def.name}
               </h3>
               <p className="mt-1 text-[11px] text-[#374151] leading-snug">{def.description}</p>
@@ -94,10 +94,10 @@ export function BadgeInfoModal({
               >
                 {equipped ? (
                   <>
-                    <Check className="h-3 w-3" /> Equipped in Slot
+                    <Check className="h-3 w-3" /> Unequip Badge
                   </>
                 ) : (
-                  'Toggle Badge Slot'
+                  'Equip Badge'
                 )}
               </button>
             )}

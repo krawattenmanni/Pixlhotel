@@ -146,49 +146,46 @@ export function FriendsConsoleModal({
 
     if (onSendPm) {
       onSendPm(selected, text);
+      return;
     }
 
-    if (selected.npcId || !onSendPm) {
-      const targetId = selected.id;
-      const targetName = selected.name;
-      const targetRoom = selectedRoomName ?? 'the Hotel';
-      const myMsg: ConsoleMessage = {
-        id: `me-${Date.now()}`,
-        sender: 'me',
-        senderName: player.username,
-        text,
+    const targetId = selected.id;
+    const targetName = selected.name;
+    const targetRoom = selectedRoomName ?? 'the Hotel';
+    const myMsg: ConsoleMessage = {
+      id: `me-${Date.now()}`,
+      sender: 'me',
+      senderName: player.username,
+      text,
+      time: 'Now',
+    };
+    setLocalNpcThreads((prev) => ({
+      ...prev,
+      [targetId]: [...(prev[targetId] ?? activeThread), myMsg],
+    }));
+    setTimeout(() => {
+      const lower = text.toLowerCase();
+      let reply = `Sounds awesome! Come hang out in ${targetRoom}!`;
+      if (lower.includes('trade') || lower.includes('rare')) {
+        reply = `I'm always down to trade rares! Meet me in ${targetRoom} and click Trade.`;
+      } else if (lower.includes('hi') || lower.includes('hey') || lower.includes('hello')) {
+        reply = `Hey ${player.username}! Great to hear from you on Console — how's your room coming along?`;
+      } else if (lower.includes('banzai') || lower.includes('game')) {
+        reply = `Let's play a 60s Battle Banzai round! Follow me when you're ready!`;
+      }
+      const replyMsg: ConsoleMessage = {
+        id: `them-${Date.now()}`,
+        sender: 'them',
+        senderName: targetName,
+        text: `${reply} — ${targetName}`,
         time: 'Now',
       };
-      if (!onSendPm) {
-        setLocalNpcThreads((prev) => ({
-          ...prev,
-          [targetId]: [...(prev[targetId] ?? activeThread), myMsg],
-        }));
-      }
-      setTimeout(() => {
-        const lower = text.toLowerCase();
-        let reply = `Sounds awesome! Come hang out in ${targetRoom}!`;
-        if (lower.includes('trade') || lower.includes('rare')) {
-          reply = `I'm always down to trade rares! Meet me in ${targetRoom} and click Trade.`;
-        } else if (lower.includes('hi') || lower.includes('hey') || lower.includes('hello')) {
-          reply = `Hey ${player.username}! Great to hear from you on Console — how's your room coming along?`;
-        } else if (lower.includes('banzai') || lower.includes('game')) {
-          reply = `Let's play a 60s Battle Banzai round! Follow me when you're ready!`;
-        }
-        const replyMsg: ConsoleMessage = {
-          id: `them-${Date.now()}`,
-          sender: 'them',
-          senderName: targetName,
-          text: `${reply} — ${targetName}`,
-          time: 'Now',
-        };
-        setLocalNpcThreads((prev) => ({
-          ...prev,
-          [targetId]: [...(prev[targetId] ?? []), replyMsg],
-        }));
-        habboAudio.playConsoleMessage();
-      }, 500);
-    }
+      setLocalNpcThreads((prev) => ({
+        ...prev,
+        [targetId]: [...(prev[targetId] ?? []), replyMsg],
+      }));
+      habboAudio.playConsoleMessage();
+    }, 500);
   };
 
   const renderPersonRow = (person: PlayerProfileRecord) => {
@@ -197,17 +194,22 @@ export function FriendsConsoleModal({
     const pendingOut = outgoingIds.includes(person.id);
     const pRoomName = person.roomId ? rooms.find((r) => r.id === person.roomId)?.name : null;
 
+    const rowBg =
+      selected?.id === person.id
+        ? 'bg-[#fef3c7]'
+        : 'hover:bg-[#fefce8]';
+
     return (
-      <button
+      <div
         key={person.id}
-        type="button"
-        onClick={() => setSelectedId(person.id)}
-        className={`flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left cursor-pointer ${
-          selected?.id === person.id ? 'bg-[#fef3c7]' : 'hover:bg-[#f3f4f6]'
-        }`}
+        className={`flex w-full items-center justify-between gap-2 px-2.5 py-2 ${rowBg}`}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="relative border border-[#8f8f8f] bg-[#dbeafe] p-0.5 shrink-0 rounded-[2px]">
+        <button
+          type="button"
+          onClick={() => setSelectedId(person.id)}
+          className="flex flex-1 items-center gap-2 min-w-0 text-left cursor-pointer"
+        >
+          <div className="relative border border-[#a16207] bg-[#fef9c3] p-0.5 shrink-0 rounded-[2px]">
             <PixelHeadCanvas look={person.look} size={28} />
             <span
               className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 border border-[#000000] rounded-full ${
@@ -225,14 +227,23 @@ export function FriendsConsoleModal({
               {person.online && pRoomName ? `In ${pRoomName}` : person.motto}
             </p>
           </div>
-        </div>
+        </button>
         <div className="flex items-center gap-1 shrink-0">
           {person.online && person.roomId && friended && (
-            <span className="border border-[#15803d] bg-[#dcfce7] px-1 py-0.5 text-[9px] font-bold text-[#14532d] rounded-[2px]">
-              ON
-            </span>
+            <button
+              type="button"
+              onClick={() => {
+                habboAudio.playUiClick();
+                onFollowRoom(person.roomId!);
+                onClose();
+              }}
+              className="habbo-btn-blue inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold cursor-pointer"
+              title={`Follow ${person.name} to ${pRoomName ?? 'room'}`}
+            >
+              <DoorOpen className="h-2.5 w-2.5" /> Follow
+            </button>
           )}
-          {friended && <UserCheck className="h-3.5 w-3.5 text-[#166534]" />}
+          {friended && !person.online && <UserCheck className="h-3.5 w-3.5 text-[#166534]" />}
           {pendingIn && (
             <span className="border border-[#d97706] bg-[#fef3c7] px-1 py-0.5 text-[9px] font-bold text-[#92400e] rounded-[2px]">
               REQ
@@ -242,24 +253,28 @@ export function FriendsConsoleModal({
             <span className="text-[9px] font-bold text-[#6b7280]">Sent</span>
           )}
         </div>
-      </button>
+      </div>
     );
   };
 
   return (
     <div
       className="pointer-events-auto fixed inset-x-4 top-14 mx-auto z-40 max-w-2xl client-window overflow-hidden"
+      style={{ backgroundColor: '#fefce8' }}
       role="dialog"
-      aria-label="Friends & Players Console"
+      aria-label="Habbo Console — Friends"
       data-testid="friends-console-modal"
     >
       <div
-        className="client-window-bar flex items-center justify-between px-3 py-1.5"
-        style={{ background: 'linear-gradient(180deg, #f58220 0%, #c85808 100%)' }}
+        className="client-window-bar flex items-center justify-between px-3 py-1.5 border-b border-[#000000]"
+        style={{
+          background: 'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)',
+          boxShadow: 'inset 0 1px 0 #fde68a',
+        }}
       >
         <span className="inline-flex items-center gap-2 font-pixel text-[11px] text-white">
           <Users className="h-3.5 w-3.5 text-[#fef08a]" />
-          PIXL Console &amp; Instant Messenger
+          Habbo Console &mdash; Friends
         </span>
         <button
           type="button"
@@ -271,10 +286,10 @@ export function FriendsConsoleModal({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-12 max-h-[74vh] bg-[#ececec]">
+      <div className="grid grid-cols-1 md:grid-cols-12 max-h-[74vh] bg-[#fefce8]">
         {/* Left List: Friends (Online/Offline) & Search/Requests */}
-        <div className="border-b md:border-b-0 md:border-r border-[#8f8f8f] md:col-span-6 flex flex-col">
-          <div className="p-2.5 border-b border-[#b5b5b5] space-y-2 bg-[#e0e0e0]">
+        <div className="border-b md:border-b-0 md:border-r border-[#ca8a04] md:col-span-6 flex flex-col">
+          <div className="p-2.5 border-b border-[#d97706]/50 space-y-2 bg-[#fef9c3]">
             <div className="relative">
               <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#475569]" />
               <input
@@ -292,7 +307,7 @@ export function FriendsConsoleModal({
                 data-testid="console-tab-friends"
                 onClick={() => setLeftTab('friends')}
                 className={`px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
-                  leftTab === 'friends' ? 'habbo-btn-blue' : 'habbo-btn-silver'
+                  leftTab === 'friends' ? 'habbo-btn-gold' : 'habbo-btn-silver'
                 }`}
               >
                 Friends ({acceptedFriends.length})
@@ -302,7 +317,7 @@ export function FriendsConsoleModal({
                 data-testid="console-tab-search"
                 onClick={() => setLeftTab('search')}
                 className={`px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
-                  leftTab === 'search' ? 'habbo-btn-blue' : 'habbo-btn-silver'
+                  leftTab === 'search' ? 'habbo-btn-gold' : 'habbo-btn-silver'
                 }`}
               >
                 Search &amp; Requests
@@ -311,7 +326,7 @@ export function FriendsConsoleModal({
             </div>
           </div>
 
-          <div className="overflow-y-auto max-h-64 md:max-h-80 bg-white divide-y divide-[#d4d4d4]">
+          <div className="overflow-y-auto max-h-64 md:max-h-80 bg-[#fffef5] divide-y divide-[#e5e7eb]">
             {leftTab === 'friends' ? (
               acceptedFriends.length === 0 ? (
                 <p className="p-4 text-center text-[11px] text-[#4b5563]">
@@ -388,7 +403,7 @@ export function FriendsConsoleModal({
                   </div>
                 )}
 
-                <div className="bg-[#e0f2fe] px-2.5 py-1 text-[10px] font-bold uppercase text-[#075985] border-b border-[#bae6fd]">
+                <div className="bg-[#fef9c3] px-2.5 py-1 text-[10px] font-bold uppercase text-[#78350f] border-b border-[#fde68a]">
                   Registered PIXL Citizens ({searchResults.length})
                 </div>
                 <div className="divide-y divide-[#e5e7eb]">
@@ -400,10 +415,10 @@ export function FriendsConsoleModal({
         </div>
 
         {/* Right Profile & Instant Messenger Panel */}
-        <div className="p-3 md:col-span-6 overflow-y-auto bg-[#f4f4f4] flex flex-col justify-between">
+        <div className="p-3 md:col-span-6 overflow-y-auto bg-[#ececec] flex flex-col justify-between">
           {selected && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between gap-1.5 border-b border-[#b5b5b5] pb-2">
+              <div className="flex items-center justify-between gap-1.5 border-b border-[#ca8a04]/40 pb-2">
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
@@ -423,7 +438,7 @@ export function FriendsConsoleModal({
                     }`}
                   >
                     <MessageSquare className="h-3 w-3" />
-                    Private Chat
+                    1:1 Private Chat
                   </button>
                 </div>
               </div>

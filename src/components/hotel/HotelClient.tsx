@@ -18,12 +18,12 @@ import {
   Send,
   Settings,
   ShieldAlert,
+  Shirt,
   ShoppingBag,
-  Smile,
   Sparkles,
   Terminal,
   ThumbsUp,
-  User,
+  Users,
   Utensils,
   Volume2,
   VolumeX,
@@ -3179,7 +3179,7 @@ export function HotelClient({
         {statusToast && (
           <div
             role="status"
-            className="pointer-events-none fixed top-16 left-1/2 z-30 -translate-x-1/2 border border-black bg-[#fef08a] px-3.5 py-1 text-[11px] font-bold text-[#111827] rounded-[2px]"
+            className="pointer-events-none fixed bottom-16 left-1/2 z-30 -translate-x-1/2 border border-black bg-[#fef08a] px-3.5 py-1 text-[11px] font-bold text-[#111827] rounded-[2px] shadow-md"
           >
             {statusToast}
           </div>
@@ -3571,11 +3571,11 @@ export function HotelClient({
                     habboAudio.playWindowToggle(!showWardrobeModal);
                     setShowWardrobeModal((v) => !v);
                   }}
-                  title="Me / Change Looks"
-                  aria-label="Me / Change Looks"
+                  title="Change Looks (Wardrobe)"
+                  aria-label="Change Looks"
                   className={`habbo-dock-btn px-2 py-1 ${showWardrobeModal ? 'habbo-dock-btn-active' : ''}`}
                 >
-                  <User className="h-3.5 w-3.5 text-[#f9a8d4]" />
+                  <Shirt className="h-3.5 w-3.5 text-[#f9a8d4]" />
                   <span className="hidden lg:inline">Looks</span>
                 </button>
                 <button
@@ -3601,22 +3601,22 @@ export function HotelClient({
                     setShowFriendsConsole((v) => !v);
                     onClearUnreadPms?.();
                   }}
-                  title="Console / Friends & Messages"
-                  aria-label="Console"
+                  title="Habbo Console — Friends & Messages"
+                  aria-label="Friends Console"
                   className={`habbo-dock-btn px-2 py-1 relative ${
                     unreadPmCount > 0
-                      ? 'animate-pulse border-[#f97316] bg-[#ea580c] text-white'
+                      ? 'animate-pulse !border-[#f97316] !bg-[#ea580c] !text-white'
                       : showFriendsConsole
-                      ? 'habbo-dock-btn-active'
-                      : ''
+                      ? '!border-[#facc15] !bg-[#a16207] !text-[#fef08a]'
+                      : '!border-[#ca8a04] !bg-[#854d0e]/60 !text-[#fde047] hover:!bg-[#a16207]/75'
                   }`}
                 >
-                  <Smile
+                  <Users
                     className={`h-3.5 w-3.5 ${
-                      unreadPmCount > 0 ? 'text-white' : 'text-[#facc15]'
+                      unreadPmCount > 0 ? 'text-white' : 'text-[#fde047]'
                     }`}
                   />
-                  <span className="hidden md:inline">Console</span>
+                  <span className="hidden md:inline">Friends</span>
                   {unreadPmCount > 0 && (
                     <span className="ml-0.5 rounded-[2px] bg-[#000000] px-1 text-[9px] font-bold text-[#fde047]">
                       {unreadPmCount}
@@ -3949,7 +3949,6 @@ export function HotelClient({
           customBadges={customBadges}
           pmThreads={pmThreads}
           onSendPm={(targetProfile, text) => {
-            habboAudio.playChatPop('whisper');
             onSendPm?.(targetProfile, text);
           }}
           onFriendAction={onFriendAction}

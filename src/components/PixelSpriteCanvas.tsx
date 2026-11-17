@@ -237,7 +237,7 @@ export function PixelBadge({
 export function PixelBadgeSprite({
   badgeId,
   unlocked = true,
-  size = 48,
+  size = 40,
   customBadges = [],
   className = '',
 }: {
