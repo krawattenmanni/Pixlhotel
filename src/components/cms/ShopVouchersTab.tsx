@@ -67,13 +67,13 @@ export function ShopVouchersTab({
           key: `${it.id}-${it.item_type}`,
           pageId: it.page_id,
           furniId: it.item_type,
-          name: it.catalog_name || def.name,
-          description: def.description,
-          category: def.category,
+          name: it.catalog_name || def?.name || it.item_type,
+          description: def?.description ?? 'Classic PIXL Hotel furni item.',
+          category: def?.category ?? 'decor',
           costCredits: it.cost_credits,
           costDuckets: it.cost_duckets,
-          isRare: def.isRare,
-          isLtd: def.isLtd,
+          isRare: def?.isRare ?? false,
+          isLtd: def?.isLtd ?? false,
         };
       });
   }, [catalogItems, visiblePages]);
@@ -336,11 +336,12 @@ export function ShopVouchersTab({
             ) : (
               player.inventory.map((entry) => {
                 const def = findFurniDef(entry.furniId);
+                const itemName = def?.name ?? entry.furniId;
                 return (
                   <div key={entry.furniId} className="flex items-center justify-between gap-2.5 p-2.5">
                     <div className="flex items-center gap-2">
-                      <FurniPreviewImg itemType={entry.furniId} alt={def.name} size={34} />
-                      <span className="text-[11px] font-bold text-[#111827]">{def.name}</span>
+                      <FurniPreviewImg itemType={entry.furniId} alt={itemName} size={34} />
+                      <span className="text-[11px] font-bold text-[#111827]">{itemName}</span>
                     </div>
                     <span className="font-mono-num text-[11px] font-bold text-[#1d4e78]">
                       x{entry.quantity}

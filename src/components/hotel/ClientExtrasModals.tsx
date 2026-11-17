@@ -20,9 +20,9 @@ import {
   type CarryItemId,
   type MoodlightConfig,
 } from '../../game/clientFeatures';
-import { FURNI_CATALOGUE } from '../../game/data';
+import { findFurniDef } from '../../game/data';
 import type { PlacedFurni, RoomFloorTheme, RoomWallTheme } from '../../game/types';
-import { PixelFurniCanvas } from '../PixelSpriteCanvas';
+import { FurniPreviewImg } from '../PixelSpriteCanvas';
 
 interface MoodlightModalProps {
   moodlight: MoodlightConfig;
@@ -48,29 +48,32 @@ export function MoodlightModal({
       data-testid="moodlight-modal"
       role="dialog"
       aria-label="Room Moodlight & Theme Dimmer"
-      className="pointer-events-auto fixed inset-x-4 top-16 mx-auto z-40 max-w-md client-window overflow-hidden"
+      className="pointer-events-auto fixed inset-x-4 top-14 mx-auto z-40 max-w-md client-window overflow-hidden"
     >
-      <div className="client-window-bar flex items-center justify-between bg-gradient-to-b from-[#4f46e5] to-[#312e81] px-3.5 py-2 text-white">
-        <span className="inline-flex items-center gap-2 font-pixel text-xs">
-          <Lightbulb className="h-4 w-4 text-[#fde047]" />
+      <div
+        className="client-window-bar flex items-center justify-between px-3 py-1.5 text-white"
+        style={{ background: 'linear-gradient(180deg, #4f46e5 0%, #312e81 100%)' }}
+      >
+        <span className="inline-flex items-center gap-2 font-pixel text-[11px]">
+          <Lightbulb className="h-3.5 w-3.5 text-[#fde047]" />
           Room Dimmer (Moodlight) &amp; Architecture
         </span>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close Moodlight Modal"
-          className="rounded border border-white/30 bg-black/25 p-1 hover:bg-black/45 cursor-pointer"
+          className="client-close-btn"
         >
-          <X className="h-3.5 w-3.5" />
+          <X className="h-3 w-3" />
         </button>
       </div>
 
-      <div className="p-4 space-y-4 max-h-[75vh] overflow-y-auto bg-[#f8fafc]">
+      <div className="p-3.5 space-y-3.5 max-h-[75vh] overflow-y-auto bg-[#ececec]">
         {/* Power Switch */}
-        <div className="flex items-center justify-between rounded-md border border-stone-300 bg-white p-3">
+        <div className="flex items-center justify-between border border-[#b5b5b5] bg-white p-2.5 rounded-[2px]">
           <div>
-            <p className="text-xs font-extrabold text-slate-900">Moodlight Dimmer Switch</p>
-            <p className="text-[11px] text-slate-600">
+            <p className="text-[11px] font-bold text-[#111827]">Moodlight Dimmer Switch</p>
+            <p className="text-[10px] text-[#4b5563]">
               {moodlight.enabled
                 ? `Active: ${moodlight.colorName} (${Math.round(moodlight.intensity * 100)}%)`
                 : 'Currently Off — standard room lighting'}
@@ -80,10 +83,8 @@ export function MoodlightModal({
             type="button"
             data-testid="moodlight-power-btn"
             onClick={() => onChangeMoodlight({ ...moodlight, enabled: !moodlight.enabled })}
-            className={`rounded px-3.5 py-1.5 font-pixel text-xs cursor-pointer ${
-              moodlight.enabled
-                ? 'habbo-btn-green'
-                : 'border-2 border-slate-700 bg-slate-800 text-white hover:bg-slate-700'
+            className={`px-3 py-1 font-pixel text-[10px] cursor-pointer ${
+              moodlight.enabled ? 'habbo-btn-green' : 'habbo-btn-silver'
             }`}
           >
             {moodlight.enabled ? 'ON' : 'OFF'}
@@ -92,8 +93,8 @@ export function MoodlightModal({
 
         {/* Color Presets */}
         <div>
-          <p className="text-xs font-extrabold text-slate-800 mb-2">Moodlight Color Presets</p>
-          <div className="grid grid-cols-3 gap-2">
+          <p className="text-[11px] font-bold text-[#1f2937] mb-1.5">Moodlight Color Presets</p>
+          <div className="grid grid-cols-3 gap-1.5">
             {MOODLIGHT_PRESETS.map((preset) => {
               const active = moodlight.colorHex === preset.hex;
               return (
@@ -109,17 +110,17 @@ export function MoodlightModal({
                       colorName: preset.name,
                     })
                   }
-                  className={`flex items-center gap-2 rounded border p-2 text-left text-xs font-bold cursor-pointer ${
+                  className={`flex items-center gap-1.5 border p-1.5 text-left text-[11px] font-bold cursor-pointer rounded-[2px] ${
                     active
-                      ? 'border-slate-950 bg-indigo-50 ring-2 ring-indigo-500'
-                      : 'border-stone-300 bg-white hover:bg-stone-100'
+                      ? 'border-[#1d4e78] bg-[#dbeafe]'
+                      : 'border-[#b5b5b5] bg-white hover:bg-[#f3f4f6]'
                   }`}
                 >
                   <span
-                    className="h-4 w-4 rounded-sm border border-black/40 shrink-0"
+                    className="h-3.5 w-3.5 border border-black shrink-0"
                     style={{ backgroundColor: preset.hex }}
                   />
-                  <span className="truncate text-[11px] text-slate-900">{preset.name}</span>
+                  <span className="truncate text-[10px] text-[#111827]">{preset.name}</span>
                 </button>
               );
             })}
@@ -127,10 +128,10 @@ export function MoodlightModal({
         </div>
 
         {/* Dimmer Intensity & Scope */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="rounded border border-stone-300 bg-white p-2.5">
-            <p className="text-[11px] font-extrabold text-slate-700 mb-1.5">Dimmer Intensity</p>
-            <div className="flex items-center gap-1.5">
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <div className="border border-[#b5b5b5] bg-white p-2 rounded-[2px]">
+            <p className="text-[10px] font-bold text-[#374151] mb-1">Dimmer Intensity</p>
+            <div className="flex items-center gap-1">
               {[
                 { label: 'Subtle', val: 0.22 },
                 { label: 'Medium', val: 0.36 },
@@ -142,10 +143,10 @@ export function MoodlightModal({
                   onClick={() =>
                     onChangeMoodlight({ ...moodlight, enabled: true, intensity: opt.val })
                   }
-                  className={`flex-1 rounded border py-1 text-[11px] font-bold cursor-pointer ${
+                  className={`flex-1 py-1 text-[10px] font-bold cursor-pointer ${
                     Math.abs(moodlight.intensity - opt.val) < 0.04
-                      ? 'border-indigo-700 bg-indigo-600 text-white'
-                      : 'border-stone-300 bg-stone-50 text-slate-700'
+                      ? 'habbo-btn-blue'
+                      : 'habbo-btn-silver'
                   }`}
                 >
                   {opt.label}
@@ -154,18 +155,16 @@ export function MoodlightModal({
             </div>
           </div>
 
-          <div className="rounded border border-stone-300 bg-white p-2.5">
-            <p className="text-[11px] font-extrabold text-slate-700 mb-1.5">Lighting Scope</p>
-            <div className="flex items-center gap-1.5">
+          <div className="border border-[#b5b5b5] bg-white p-2 rounded-[2px]">
+            <p className="text-[10px] font-bold text-[#374151] mb-1">Lighting Scope</p>
+            <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() =>
                   onChangeMoodlight({ ...moodlight, enabled: true, backgroundOnly: false })
                 }
-                className={`flex-1 rounded border py-1 text-[11px] font-bold cursor-pointer ${
-                  !moodlight.backgroundOnly
-                    ? 'border-indigo-700 bg-indigo-600 text-white'
-                    : 'border-stone-300 bg-stone-50 text-slate-700'
+                className={`flex-1 py-1 text-[10px] font-bold cursor-pointer ${
+                  !moodlight.backgroundOnly ? 'habbo-btn-blue' : 'habbo-btn-silver'
                 }`}
               >
                 Full Room
@@ -175,10 +174,8 @@ export function MoodlightModal({
                 onClick={() =>
                   onChangeMoodlight({ ...moodlight, enabled: true, backgroundOnly: true })
                 }
-                className={`flex-1 rounded border py-1 text-[11px] font-bold cursor-pointer ${
-                  moodlight.backgroundOnly
-                    ? 'border-indigo-700 bg-indigo-600 text-white'
-                    : 'border-stone-300 bg-stone-50 text-slate-700'
+                className={`flex-1 py-1 text-[10px] font-bold cursor-pointer ${
+                  moodlight.backgroundOnly ? 'habbo-btn-blue' : 'habbo-btn-silver'
                 }`}
               >
                 Walls Only
@@ -188,23 +185,21 @@ export function MoodlightModal({
         </div>
 
         {/* Room Floor & Wall Theme Customizer */}
-        <div className="border-t border-stone-300 pt-3 space-y-2.5">
-          <p className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-            <Palette className="h-3.5 w-3.5 text-[#235c8a]" />
+        <div className="border-t border-[#b5b5b5] pt-2.5 space-y-2">
+          <p className="text-[11px] font-bold text-[#111827] flex items-center gap-1.5">
+            <Palette className="h-3.5 w-3.5 text-[#1d4e78]" />
             Room Floor &amp; Wall Surface Customizer
           </p>
           <div>
-            <p className="text-[11px] font-bold text-slate-600 mb-1">Flooring Style</p>
-            <div className="flex flex-wrap gap-1.5">
+            <p className="text-[10px] font-bold text-[#4b5563] mb-1">Flooring Style</p>
+            <div className="flex flex-wrap gap-1">
               {FLOOR_THEME_OPTIONS.map((f) => (
                 <button
                   key={f.id}
                   type="button"
                   onClick={() => onChangeFloorTheme(f.id)}
-                  className={`rounded border px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
-                    floorTheme === f.id
-                      ? 'border-[#235c8a] bg-[#235c8a] text-white'
-                      : 'border-stone-300 bg-white text-slate-700 hover:bg-stone-100'
+                  className={`px-2 py-1 text-[10px] font-bold cursor-pointer ${
+                    floorTheme === f.id ? 'habbo-btn-blue' : 'habbo-btn-silver'
                   }`}
                 >
                   {f.label}
@@ -213,17 +208,15 @@ export function MoodlightModal({
             </div>
           </div>
           <div>
-            <p className="text-[11px] font-bold text-slate-600 mb-1">Wallpaper Theme</p>
-            <div className="flex flex-wrap gap-1.5">
+            <p className="text-[10px] font-bold text-[#4b5563] mb-1">Wallpaper Theme</p>
+            <div className="flex flex-wrap gap-1">
               {WALL_THEME_OPTIONS.map((w) => (
                 <button
                   key={w.id}
                   type="button"
                   onClick={() => onChangeWallTheme(w.id)}
-                  className={`rounded border px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
-                    wallTheme === w.id
-                      ? 'border-[#235c8a] bg-[#235c8a] text-white'
-                      : 'border-stone-300 bg-white text-slate-700 hover:bg-stone-100'
+                  className={`px-2 py-1 text-[10px] font-bold cursor-pointer ${
+                    wallTheme === w.id ? 'habbo-btn-blue' : 'habbo-btn-silver'
                   }`}
                 >
                   {w.label}
@@ -244,9 +237,9 @@ interface TraxmachineModalProps {
 }
 
 const TRAX_DISCS = [
-  { index: 0, title: 'Sunset Club Mammoth', genre: 'Retro Synth Groove · 120 BPM', color: '#ec4899' },
-  { index: 1, title: 'Battle Banzai Electro', genre: 'Arcade Chiptune Bass · 132 BPM', color: '#06b6d4' },
-  { index: 2, title: 'Cozy Welcome Lounge', genre: 'Chill Pixel Bossa · 108 BPM', color: '#eab308' },
+  { index: 0, title: 'Sunset Club Mammoth', genre: 'Rhodes Lounge Groove · 98 BPM', color: '#ec4899' },
+  { index: 1, title: 'Battle Banzai Lounge', genre: 'Slap-Bass & Rhodes · 98 BPM', color: '#06b6d4' },
+  { index: 2, title: 'Cozy Welcome Lobby', genre: 'Chill Pixel Bossa · 98 BPM', color: '#eab308' },
 ];
 
 export function TraxmachineModal({
@@ -259,26 +252,29 @@ export function TraxmachineModal({
       data-testid="traxmachine-modal"
       role="dialog"
       aria-label="PIXL Traxmachine & Jukebox"
-      className="pointer-events-auto fixed inset-x-4 top-16 mx-auto z-40 max-w-md client-window overflow-hidden"
+      className="pointer-events-auto fixed inset-x-4 top-14 mx-auto z-40 max-w-md client-window overflow-hidden"
     >
-      <div className="client-window-bar flex items-center justify-between bg-gradient-to-b from-[#db2777] to-[#831843] px-3.5 py-2 text-white">
-        <span className="inline-flex items-center gap-2 font-pixel text-xs">
-          <Disc className="h-4 w-4 text-[#fde047]" />
+      <div
+        className="client-window-bar flex items-center justify-between px-3 py-1.5 text-white"
+        style={{ background: 'linear-gradient(180deg, #db2777 0%, #831843 100%)' }}
+      >
+        <span className="inline-flex items-center gap-2 font-pixel text-[11px]">
+          <Disc className="h-3.5 w-3.5 text-[#fde047]" />
           PIXL Traxmachine &amp; Jukebox
         </span>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close Traxmachine"
-          className="rounded border border-white/30 bg-black/25 p-1 hover:bg-black/45 cursor-pointer"
+          className="client-close-btn"
         >
-          <X className="h-3.5 w-3.5" />
+          <X className="h-3 w-3" />
         </button>
       </div>
 
-      <div className="p-4 space-y-3 bg-[#f8fafc]">
-        <p className="text-xs text-slate-600">
-          Select a Trax cartridge below to spin live procedural chiptune music in the room:
+      <div className="p-3.5 space-y-2.5 bg-[#ececec]">
+        <p className="text-[11px] text-[#374151]">
+          Select a Trax cartridge below to spin warm Rhodes lounge music in the room:
         </p>
 
         <div className="space-y-2">
@@ -287,22 +283,20 @@ export function TraxmachineModal({
             return (
               <div
                 key={disc.index}
-                className={`flex items-center justify-between gap-3 rounded-md border p-3 ${
-                  playing
-                    ? 'border-pink-500 bg-pink-50/90'
-                    : 'border-stone-300 bg-white'
+                className={`flex items-center justify-between gap-3 border p-2.5 rounded-[2px] ${
+                  playing ? 'border-[#be185d] bg-[#fdf2f8]' : 'border-[#b5b5b5] bg-white'
                 }`}
               >
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <div
-                    className="flex h-10 w-10 items-center justify-center rounded-md border border-black/30 text-white shrink-0"
+                    className="flex h-9 w-9 items-center justify-center border border-black text-white shrink-0 rounded-[2px]"
                     style={{ backgroundColor: disc.color }}
                   >
-                    <Music className="h-5 w-5" />
+                    <Music className="h-4 w-4" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-xs font-extrabold text-slate-900 truncate">{disc.title}</p>
-                    <p className="text-[11px] text-slate-500">{disc.genre}</p>
+                    <p className="text-[11px] font-bold text-[#111827] truncate">{disc.title}</p>
+                    <p className="text-[10px] text-[#4b5563]">{disc.genre}</p>
                   </div>
                 </div>
 
@@ -310,10 +304,8 @@ export function TraxmachineModal({
                   type="button"
                   data-testid={`trax-play-${disc.index}`}
                   onClick={() => onSelectTrack(playing ? null : disc.index)}
-                  className={`inline-flex items-center gap-1 rounded px-3 py-1.5 text-xs font-extrabold cursor-pointer shrink-0 ${
-                    playing
-                      ? 'border border-rose-700 bg-rose-600 text-white hover:bg-rose-700'
-                      : 'habbo-btn-green'
+                  className={`inline-flex items-center gap-1 px-3 py-1 text-[11px] font-bold cursor-pointer shrink-0 ${
+                    playing ? 'habbo-btn-red' : 'habbo-btn-green'
                   }`}
                 >
                   {playing ? (
@@ -351,13 +343,17 @@ interface CommandsAndFurniModalProps {
 }
 
 const QUICK_COMMANDS: { cmd: string; desc: string }[] = [
+  { cmd: ':chooser', desc: 'Open Room Users Chooser window' },
+  { cmd: ':furni', desc: 'Open Room Furni Chooser (:furni)' },
   { cmd: ':sit', desc: 'Sit down on current floor tile' },
-  { cmd: ':dance', desc: 'Start PIXL club dance groove' },
-  { cmd: ':wave', desc: 'Wave hello to everyone in the room' },
+  { cmd: ':lay', desc: 'Lie down flat on floor or bed' },
+  { cmd: ':dance 1', desc: 'Classic Hop dance (try :dance 1–4)' },
+  { cmd: ':dance 2', desc: 'Pogo Mogo dance groove' },
+  { cmd: ':sign heart', desc: 'Hold a glowing Heart sign for 5s' },
+  { cmd: ':sign 10', desc: 'Hold a 10/10 score sign (:sign 1–10)' },
+  { cmd: ':drink', desc: 'Grab a chilled drink hand item' },
   { cmd: ':moonwalk', desc: 'Toggle backwards Moonwalk stride' },
   { cmd: ':roll', desc: 'Roll a 1–6 lucky dice number in chat' },
-  { cmd: ':moodlight', desc: 'Toggle Room Dimmer / Moodlight' },
-  { cmd: ':furni', desc: 'Open Room Furni Chooser (:furni)' },
   { cmd: ':pickall', desc: 'Pick up all furni in your private room' },
 ];
 
@@ -380,32 +376,33 @@ export function CommandsAndFurniModal({
       data-testid="commands-furni-modal"
       role="dialog"
       aria-label="PIXL Commands, Handitems & Furni Chooser"
-      className="pointer-events-auto fixed inset-x-4 top-16 mx-auto z-40 max-w-lg client-window overflow-hidden"
+      className="pointer-events-auto fixed inset-x-4 top-14 mx-auto z-40 max-w-lg client-window overflow-hidden"
     >
-      <div className="client-window-bar flex items-center justify-between bg-gradient-to-b from-[#0d9488] to-[#115e59] px-3.5 py-2 text-white">
-        <span className="inline-flex items-center gap-2 font-pixel text-xs">
-          <Terminal className="h-4 w-4 text-[#fef08a]" />
+      <div
+        className="client-window-bar flex items-center justify-between px-3 py-1.5 text-white"
+        style={{ background: 'linear-gradient(180deg, #0d9488 0%, #115e59 100%)' }}
+      >
+        <span className="inline-flex items-center gap-2 font-pixel text-[11px]">
+          <Terminal className="h-3.5 w-3.5 text-[#fef08a]" />
           PIXL Client Tools — :commands, Handitems &amp; :furni
         </span>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close PIXL Client Tools"
-          className="rounded border border-white/30 bg-black/25 p-1 hover:bg-black/45 cursor-pointer"
+          className="client-close-btn"
         >
-          <X className="h-3.5 w-3.5" />
+          <X className="h-3 w-3" />
         </button>
       </div>
 
       {/* Sub-tabs */}
-      <div className="flex items-center gap-2 border-b border-stone-300 bg-stone-200 px-3.5 py-2">
+      <div className="flex items-center gap-1.5 border-b border-[#8f8f8f] bg-[#d4d4d4] px-3 py-2">
         <button
           type="button"
           onClick={() => onChangeSubTab('commands')}
-          className={`inline-flex items-center gap-1.5 rounded px-3 py-1 text-xs font-extrabold cursor-pointer ${
-            activeSubTab === 'commands'
-              ? 'bg-[#0f3454] text-white'
-              : 'border border-stone-300 bg-white text-slate-700'
+          className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
+            activeSubTab === 'commands' ? 'habbo-btn-blue' : 'habbo-btn-silver'
           }`}
         >
           <Sparkles className="h-3.5 w-3.5" />
@@ -415,10 +412,8 @@ export function CommandsAndFurniModal({
           type="button"
           data-testid="furni-chooser-tab-btn"
           onClick={() => onChangeSubTab('furni')}
-          className={`inline-flex items-center gap-1.5 rounded px-3 py-1 text-xs font-extrabold cursor-pointer ${
-            activeSubTab === 'furni'
-              ? 'bg-[#0f3454] text-white'
-              : 'border border-stone-300 bg-white text-slate-700'
+          className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
+            activeSubTab === 'furni' ? 'habbo-btn-blue' : 'habbo-btn-silver'
           }`}
         >
           <ListFilter className="h-3.5 w-3.5" />
@@ -426,13 +421,13 @@ export function CommandsAndFurniModal({
         </button>
       </div>
 
-      <div className="p-4 max-h-[70vh] overflow-y-auto bg-[#f8fafc] space-y-4">
+      <div className="p-3.5 max-h-[70vh] overflow-y-auto bg-[#ececec] space-y-3.5">
         {activeSubTab === 'commands' ? (
           <>
             {/* Carry Items / Handitems */}
             <div>
-              <p className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5 mb-2">
-                <Coffee className="h-3.5 w-3.5 text-amber-700" />
+              <p className="text-[11px] font-bold text-[#111827] flex items-center gap-1.5 mb-1.5">
+                <Coffee className="h-3.5 w-3.5 text-[#b45309]" />
                 Carry Drink / Handitem (Visible in Avatar Hand)
               </p>
               <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
@@ -444,17 +439,17 @@ export function CommandsAndFurniModal({
                       type="button"
                       data-testid={`carry-item-btn-${item.id}`}
                       onClick={() => onSelectCarryItem(item.id)}
-                      className={`flex items-center gap-2 rounded border px-2.5 py-1.5 text-xs font-bold cursor-pointer ${
+                      className={`flex items-center gap-1.5 border px-2 py-1 text-[11px] font-bold cursor-pointer rounded-[2px] ${
                         active
-                          ? 'border-amber-600 bg-amber-100 text-amber-950'
-                          : 'border-stone-300 bg-white text-slate-800 hover:bg-stone-100'
+                          ? 'border-[#b45309] bg-[#fef3c7] text-[#78350f]'
+                          : 'border-[#8f8f8f] bg-white text-[#111827] hover:bg-[#f3f4f6]'
                       }`}
                     >
                       <span
-                        className="h-3 w-3 rounded-full border border-black/30 shrink-0"
+                        className="h-3 w-3 border border-black shrink-0"
                         style={{ backgroundColor: item.color }}
                       />
-                      <span className="truncate text-[11px]">{item.name}</span>
+                      <span className="truncate text-[10px]">{item.name}</span>
                     </button>
                   );
                 })}
@@ -463,12 +458,12 @@ export function CommandsAndFurniModal({
 
             {/* Classic Chat Commands */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-extrabold text-slate-800">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[11px] font-bold text-[#111827]">
                   Classic Chat Commands (Click or Type in Chat)
                 </p>
                 {moonwalk && (
-                  <span className="rounded bg-purple-100 px-2 py-0.5 text-[10px] font-extrabold text-purple-800">
+                  <span className="border border-[#6b21a8] bg-[#f3e8ff] px-2 py-0.5 text-[10px] font-bold text-[#581c87] rounded-[2px]">
                     Moonwalk ON
                   </span>
                 )}
@@ -480,11 +475,11 @@ export function CommandsAndFurniModal({
                     type="button"
                     data-testid={`quick-cmd-${c.cmd.slice(1)}`}
                     onClick={() => onRunCommand(c.cmd)}
-                    className="flex items-center justify-between gap-2 rounded border border-stone-300 bg-white px-3 py-2 text-left hover:border-[#0d9488] hover:bg-teal-50/40 cursor-pointer"
+                    className="flex items-center justify-between gap-2 border border-[#8f8f8f] bg-white px-2.5 py-1.5 text-left hover:border-[#0d9488] hover:bg-[#f0fdfa] cursor-pointer rounded-[2px]"
                   >
                     <div>
-                      <p className="font-mono-num text-xs font-extrabold text-[#0d9488]">{c.cmd}</p>
-                      <p className="text-[11px] text-slate-600">{c.desc}</p>
+                      <p className="font-mono-num text-[11px] font-bold text-[#0f766e]">{c.cmd}</p>
+                      <p className="text-[10px] text-[#4b5563]">{c.desc}</p>
                     </div>
                   </button>
                 ))}
@@ -493,28 +488,28 @@ export function CommandsAndFurniModal({
           </>
         ) : (
           <div className="space-y-2" data-testid="furni-chooser-list">
-            <p className="text-xs text-slate-600">
+            <p className="text-[11px] text-[#374151]">
               All furniture placed in this room. Click <strong>Toggle</strong> to activate lamps/dice/TVs or manage items:
             </p>
             {placedFurni.length === 0 ? (
-              <p className="rounded border border-stone-300 bg-white p-4 text-center text-xs text-slate-500">
+              <p className="border border-[#b5b5b5] bg-white p-4 text-center text-[11px] text-[#4b5563] rounded-[2px]">
                 No furniture placed in this room yet.
               </p>
             ) : (
-              <div className="divide-y divide-stone-200 rounded border border-stone-300 bg-white">
+              <div className="divide-y divide-[#d4d4d4] border border-[#8f8f8f] bg-white rounded-[2px]">
                 {placedFurni.map((item) => {
-                  const def = FURNI_CATALOGUE.find((f) => f.id === item.furniId);
+                  const def = findFurniDef(item.furniId);
                   if (!def) return null;
                   return (
                     <div
                       key={item.uid}
-                      className="flex items-center justify-between gap-2 px-3 py-2 text-xs"
+                      className="flex items-center justify-between gap-2 px-3 py-2 text-[11px]"
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <PixelFurniCanvas furniId={item.furniId} size={32} />
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FurniPreviewImg itemType={item.furniId} alt={def.name} size={32} />
                         <div className="min-w-0">
-                          <p className="font-extrabold text-slate-900 truncate">{def.name}</p>
-                          <p className="font-mono-num text-[10px] text-slate-500">
+                          <p className="font-bold text-[#111827] truncate">{def.name}</p>
+                          <p className="font-mono-num text-[10px] text-[#4b5563]">
                             Tile ({item.x}, {item.y}) · Dir {item.dir} · State {item.state}
                           </p>
                         </div>
@@ -523,7 +518,7 @@ export function CommandsAndFurniModal({
                         <button
                           type="button"
                           onClick={() => onToggleFurni(item.uid, item.state === 1 ? 0 : 1)}
-                          className="rounded border border-stone-300 bg-stone-50 px-2 py-1 text-[10px] font-bold text-slate-700 hover:bg-stone-100 cursor-pointer"
+                          className="habbo-btn-silver px-2 py-0.5 text-[10px] font-bold cursor-pointer"
                         >
                           Toggle
                         </button>
@@ -533,14 +528,14 @@ export function CommandsAndFurniModal({
                               type="button"
                               onClick={() => onRotateFurni(item.uid)}
                               title="Rotate"
-                              className="rounded border border-stone-300 bg-stone-50 p-1 text-slate-700 hover:bg-stone-100 cursor-pointer"
+                              className="habbo-btn-silver p-1 cursor-pointer"
                             >
                               <RotateCcw className="h-3 w-3" />
                             </button>
                             <button
                               type="button"
                               onClick={() => onPickupFurni(item.uid)}
-                              className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700 hover:bg-rose-100 cursor-pointer"
+                              className="habbo-btn-red px-2 py-0.5 text-[10px] font-bold cursor-pointer"
                             >
                               Pick Up
                             </button>

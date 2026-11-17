@@ -1,25 +1,25 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Coins, Crown, Flame, PawPrint, Sparkles, Star, Trophy, X } from 'lucide-react';
 import {
-  Armchair,
-  Coins,
-  Crown,
-  Flame,
-  Lamp,
-  Layers,
-  PawPrint,
-  Sparkles,
-  Star,
-  Table2,
-  Trophy,
-  X,
-} from 'lucide-react';
-import { FURNI_CATALOGUE } from '../../game/data';
+  CATALOG_ITEMS_SEED,
+  CATALOG_PAGES_SEED,
+  findFurniDef,
+  FURNI_CATALOGUE,
+} from '../../game/data';
 import { PET_CATALOGUE } from '../../game/pets';
-import type { FurniCategory, FurniItemDef, PetSpecies, PlayerState } from '../../game/types';
-import { PixelFurniCanvas, PixelPetCanvas } from '../PixelSpriteCanvas';
+import type {
+  CatalogEntryView,
+  CatalogItemRow,
+  CatalogPageRow,
+  PetSpecies,
+  PlayerState,
+} from '../../game/types';
+import { FurniPreviewImg, PixelPetCanvas } from '../PixelSpriteCanvas';
 
 interface CatalogueModalProps {
   player: PlayerState;
+  catalogPages?: CatalogPageRow[];
+  catalogItems?: CatalogItemRow[];
   onBuy: (
     furniId: string,
     quantity?: number,
@@ -29,297 +29,279 @@ interface CatalogueModalProps {
   onClose: () => void;
 }
 
-type CatalogueSectionId =
-  | 'front'
-  | 'rares'
-  | 'hc'
-  | 'trophies'
-  | 'pets'
-  | 'seating'
-  | 'tables'
-  | 'lighting'
-  | 'decor';
-
-interface CatalogueSectionDef {
-  id: CatalogueSectionId;
-  label: string;
-  tag?: 'NEW' | 'RARE' | 'HC';
-  headerBg: string;
-  tagline: string;
-  bannerDesc: string;
-  icon: 'star' | 'flame' | 'crown' | 'trophy' | 'pets' | 'chair' | 'table' | 'lamp' | 'decor';
-  filter: (item: FurniItemDef) => boolean;
-}
-
-const SECTIONS: CatalogueSectionDef[] = [
-  {
-    id: 'front',
-    label: 'Front Page',
-    tag: 'NEW',
-    headerBg: 'from-[#0d9488] to-[#0f766e]',
-    tagline: 'PIXL Catalogue — Furni & Rares!',
-    bannerDesc:
-      'Hot pixel arrivals: PIXL Pets, Engraved Gold/Silver/Bronze Trophies, Petal Patches & Arcade Cabinets!',
-    icon: 'star',
-    filter: () => true,
-  },
-  {
-    id: 'pets',
-    label: 'Pets & Dragons',
-    tag: 'NEW',
-    headerBg: 'from-[#16a34a] to-[#15803d]',
-    tagline: 'Adopt a Pixel Pet Companion!',
-    bannerDesc:
-      'Golden Terriers, Tabby Kittens & Baby Fire Dragons roam your room and obey chat commands (sit, lay, jump, speak)!',
-    icon: 'pets',
-    filter: () => false,
-  },
-  {
-    id: 'trophies',
-    label: 'Engraved Trophies',
-    tag: 'NEW',
-    headerBg: 'from-[#ca8a04] to-[#854d0e]',
-    tagline: 'Custom Engraved PIXL Trophies',
-    bannerDesc:
-      'Inscribe your own dedication on Gold, Silver & Bronze Trophies—click any placed trophy to read its plaque!',
-    icon: 'trophy',
-    filter: (item) => item.category === 'trophies' || item.engravable === true,
-  },
-  {
-    id: 'rares',
-    label: 'Rares & Vault',
-    tag: 'RARE',
-    headerBg: 'from-[#b91c1c] to-[#7f1d1d]',
-    tagline: 'Limited Hotel Vault Rares',
-    bannerDesc:
-      'Collector Thrones, Fire Dragon Lamps, Red Amber Lamps, Golden Fountains & Petal Patches.',
-    icon: 'flame',
-    filter: (item) => item.category === 'rares' || item.isRare === true,
-  },
-  {
-    id: 'hc',
-    label: 'PIXL Club (HC)',
-    tag: 'HC',
+const SECTION_DESCRIPTIONS: Record<string, { banner: string; headerBg: string; tag?: string }> = {
+  'HC Classics': {
+    banner: 'Iconic velvet HC Club Sofas, Imperial Teleporters, Mahogany Desks & Oil Lamps.',
     headerBg: 'from-[#d97706] to-[#92400e]',
-    tagline: 'PIXL Club Luxury Couture',
-    bannerDesc:
-      'Exclusive scarlet velvet HC Sofas, Imperial Teleporters & Majestic Walnut seating.',
-    icon: 'crown',
-    filter: (item) => item.hcOnly === true || item.id === 'hc_sofa' || item.id === 'majestic_chair',
+    tag: 'HC',
   },
-  {
-    id: 'seating',
-    label: 'Seating & Sofas',
-    headerBg: 'from-[#2563eb] to-[#1d4ed8]',
-    tagline: 'Chairs, Pods & Lounge Sofas',
-    bannerDesc:
-      'Clickable sittable sofas and chairs—Mode Black, Aqua Pods, Lodge Benches & Club Sofas.',
-    icon: 'chair',
-    filter: (item) => item.category === 'seating',
+  'Rares & Dragons': {
+    banner: 'Collector Thrones, Fire & Jade Dragon Lamps, Red Amber Lamps & Petal Patches.',
+    headerBg: 'from-[#b91c1c] to-[#7f1d1d]',
+    tag: 'RARE',
   },
-  {
-    id: 'tables',
-    label: 'Tables & Bars',
-    headerBg: 'from-[#475569] to-[#334155]',
-    tagline: 'Mode Bars, Tables & Fridges',
-    bannerDesc:
-      'Build your own cafe or suite bar with Mode Counters, Area Tables & Iced Mini Fridges.',
-    icon: 'table',
-    filter: (item) => item.category === 'tables',
+  'Mode & Pura': {
+    banner: 'Brushed-steel Mode Bars, Aqua Pod Chairs, Iced Mini Fridges & Pura Couches.',
+    headerBg: 'from-[#2b6ca3] to-[#1d4e78]',
   },
-  {
-    id: 'lighting',
-    label: 'Lighting & Tech',
+  'Nature & Beach': {
+    banner: 'The Lido Sun Loungers, Beach Parasols, Duck Floats, Tropical Palms & Pine Trees.',
+    headerBg: 'from-[#0284c7] to-[#0369a1]',
     tag: 'NEW',
-    headerBg: 'from-[#7c3aed] to-[#5b21b6]',
-    tagline: 'Arcade, Plasma TV & Disco',
-    bannerDesc:
-      'Animated pixel machines, Neon Banzai Barriers, Disco Floors, Lava Lamps & Retro Jukeboxes.',
-    icon: 'lamp',
-    filter: (item) => item.category === 'lighting' || item.id === 'jukebox',
   },
-  {
-    id: 'decor',
-    label: 'Plants, Rugs & Decor',
-    headerBg: 'from-[#15803d] to-[#166534]',
-    tagline: 'Garden Turf, Rugs & Hearths',
-    bannerDesc:
-      'Walkable Crimson Carpets, Tropical Palms, Zen Bonsais & crackling Lodge Fireplaces.',
-    icon: 'decor',
-    filter: (item) =>
-      (item.category as FurniCategory) === 'decor' || item.id === 'petal_patch',
+  'Club & Disco': {
+    banner: 'Neon Disco Floors, Chrome Disco Balls, DJ Booths, Arcade Cabinets & Plasma TVs.',
+    headerBg: 'from-[#7c3aed] to-[#4c1d95]',
+    tag: 'NEW',
   },
-];
+  'Pets & Trophies': {
+    banner: 'Custom-engraved Gold/Silver/Bronze Trophies, Crimson Rugs, Pet Bowls & Fireplaces.',
+    headerBg: 'from-[#16a34a] to-[#15803d]',
+    tag: 'NEW',
+  },
+  'Staff Super Rares': {
+    banner: 'Ultra-rare LTD Glacial Thrones, Silver Dragons, Golden Frank & Velvet Stanchions.',
+    headerBg: 'from-[#4b708f] to-[#1e293b]',
+    tag: 'LTD',
+  },
+};
 
-function SectionIcon({ icon }: { icon: CatalogueSectionDef['icon'] }) {
-  const cls = 'h-3.5 w-3.5 shrink-0';
-  if (icon === 'star') return <Star className={cls} />;
-  if (icon === 'pets') return <PawPrint className={cls} />;
-  if (icon === 'trophy') return <Trophy className={cls} />;
-  if (icon === 'flame') return <Flame className={cls} />;
-  if (icon === 'crown') return <Crown className={cls} />;
-  if (icon === 'chair') return <Armchair className={cls} />;
-  if (icon === 'table') return <Table2 className={cls} />;
-  if (icon === 'lamp') return <Lamp className={cls} />;
-  return <Layers className={cls} />;
-}
+export function CatalogueModal({
+  player,
+  catalogPages,
+  catalogItems,
+  onBuy,
+  onBuyPet,
+  onClose,
+}: CatalogueModalProps) {
+  const pages = useMemo(() => {
+    const src = catalogPages && catalogPages.length > 0 ? catalogPages : CATALOG_PAGES_SEED;
+    return src.filter((p) => p.visible && p.min_rank <= player.rank);
+  }, [catalogPages, player.rank]);
 
-export function CatalogueModal({ player, onBuy, onBuyPet, onClose }: CatalogueModalProps) {
-  const [sectionId, setSectionId] = useState<CatalogueSectionId>('front');
-  const [selectedId, setSelectedId] = useState<string>(FURNI_CATALOGUE[0].id);
+  const allEntries = useMemo<CatalogEntryView[]>(() => {
+    const rawItems = catalogItems && catalogItems.length > 0 ? catalogItems : CATALOG_ITEMS_SEED;
+    return rawItems.map((row) => {
+      const def = findFurniDef(row.item_type);
+      return {
+        dbId: row.id,
+        pageId: row.page_id,
+        furniId: def?.id ?? row.item_type,
+        catalogName: row.catalog_name,
+        description: def?.description ?? 'Classic PIXL Hotel catalog item ready for your suite.',
+        costCredits: row.cost_credits,
+        costDuckets: row.cost_duckets,
+        amount: row.amount || 1,
+        category: def?.category ?? 'decor',
+        isRare: def?.isRare,
+        isLtd: def?.isLtd,
+        hcOnly: def?.hcOnly,
+        engravable: def?.engravable,
+      };
+    });
+  }, [catalogItems]);
+
+  const [selectedTab, setSelectedTab] = useState<'page' | 'pets'>('page');
+  const [activePageId, setActivePageId] = useState<number>(() => pages[0]?.id ?? 1);
+  const [selectedFurniId, setSelectedFurniId] = useState<string>(
+    () => allEntries.find((e) => e.pageId === (pages[0]?.id ?? 1))?.furniId ?? FURNI_CATALOGUE[0].id
+  );
   const [selectedSpecies, setSelectedSpecies] = useState<PetSpecies>('golden_terrier');
   const [petName, setPetName] = useState('Bello');
   const [engravingText, setEngravingText] = useState('');
   const [quantity, setQuantity] = useState<number>(1);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const activeSection = SECTIONS.find((s) => s.id === sectionId) ?? SECTIONS[0];
-  const isPetsSection = sectionId === 'pets';
-  const items = FURNI_CATALOGUE.filter(activeSection.filter);
-  const selected = items.find((i) => i.id === selectedId) ?? items[0] ?? FURNI_CATALOGUE[0];
+  const activePage = pages.find((p) => p.id === activePageId) ?? pages[0] ?? CATALOG_PAGES_SEED[0];
+  const pageItems = allEntries.filter((e) => e.pageId === activePage.id);
+  const selectedEntry =
+    pageItems.find((e) => e.furniId === selectedFurniId) ?? pageItems[0] ?? allEntries[0];
   const selectedPet = PET_CATALOGUE.find((p) => p.species === selectedSpecies) ?? PET_CATALOGUE[0];
+  const meta = SECTION_DESCRIPTIONS[activePage.caption] ?? {
+    banner: 'Browse official PIXL Hotel furniture and collector items.',
+    headerBg: 'from-[#4b708f] to-[#365672]',
+  };
 
   const handlePurchase = () => {
-    if (isPetsSection) {
+    if (selectedTab === 'pets') {
       if (!onBuyPet) return;
       const res = onBuyPet(selectedPet.species, petName);
       setFeedback({ ok: res.ok, text: res.message });
       return;
     }
-    if (!selected) return;
+    if (!selectedEntry) return;
     const res = onBuy(
-      selected.id,
+      selectedEntry.furniId,
       quantity,
-      selected.engravable ? engravingText : undefined
+      selectedEntry.engravable ? engravingText : undefined
     );
     setFeedback({ ok: res.ok, text: res.message });
-    if (res.ok && selected.engravable) setEngravingText('');
+    if (res.ok && selectedEntry.engravable) setEngravingText('');
   };
 
   return (
     <div
-      className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-black/55 p-2.5 sm:p-4"
+      className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-black/55 p-2 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-label="PIXL Catalogue"
+      data-testid="client-catalogue-modal"
     >
-      {/* Classic PIXL Cream-Beige Catalogue Window */}
-      <div className="w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-lg border-2 border-[#1b1922] bg-[#ece8dc] shadow-[0_14px_38px_rgba(0,0,0,0.65)]">
-        {/* Authentic PIXL Charcoal Window Bar */}
-        <div className="flex items-center justify-between border-b-2 border-[#1b1922] bg-gradient-to-b from-[#45484d] to-[#2b2d31] px-3.5 py-2 text-white">
-          <div className="flex items-center gap-2.5">
-            <span className="rounded border border-[#854d0e] bg-[#facc15] px-1.5 py-0.5 font-pixel text-[10px] text-[#1b1922]">
+      {/* Classic Habbo #ececec Window with 1px black border + bevel */}
+      <div className="client-window w-full max-w-4xl max-h-[92vh] overflow-y-auto">
+        <div className="client-window-bar flex items-center justify-between px-3 py-1.5">
+          <div className="flex items-center gap-2">
+            <span className="border border-[#000000] bg-[#facc15] px-1.5 py-0.5 font-pixel text-[9px] text-[#111827] rounded-[2px]">
               SHOP
             </span>
-            <span className="font-pixel text-sm tracking-wide">PIXL Catalogue</span>
+            <span className="text-[12px] font-bold">PIXL Hotel Catalogue ({allEntries.length} items)</span>
           </div>
 
-          <div className="flex items-center gap-3 text-xs">
-            <span className="inline-flex items-center gap-1 rounded border border-black/40 bg-black/35 px-2 py-0.5 font-mono-num text-[#ffd400]">
-              <Coins className="h-3.5 w-3.5" /> {player.credits}
+          <div className="flex items-center gap-2 text-[11px]">
+            <span className="inline-flex items-center gap-1 border border-[#000000] bg-[#1e293b] px-2 py-0.5 font-mono-num font-bold text-[#ffd400] rounded-[2px]">
+              <Coins className="h-3 w-3" /> {player.credits}
             </span>
-            <span className="inline-flex items-center gap-1 rounded border border-black/40 bg-black/35 px-2 py-0.5 font-mono-num text-[#d8b4fe]">
-              <Sparkles className="h-3.5 w-3.5" /> {player.duckets}
+            <span className="inline-flex items-center gap-1 border border-[#000000] bg-[#1e293b] px-2 py-0.5 font-mono-num font-bold text-[#d8b4fe] rounded-[2px]">
+              <Sparkles className="h-3 w-3" /> {player.duckets}
             </span>
             <button
               type="button"
               onClick={onClose}
               aria-label="Close Catalogue"
-              className="rounded border border-white/30 bg-[#b91c1c] p-1 hover:bg-[#dc2626] cursor-pointer"
+              className="client-close-btn"
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-3 w-3" />
             </button>
           </div>
         </div>
 
-        {/* Classic Two-Pane Book Layout */}
         <div className="grid grid-cols-1 md:grid-cols-12">
-          {/* LEFT PANE: CATALOGUE NAVIGATION TREE */}
-          <aside className="border-b-2 md:border-b-0 md:border-r-2 border-[#b5afa0] bg-[#dfd9c8] p-2.5 md:col-span-4 flex flex-col justify-between">
+          {/* LEFT PANE: 7 DATABASE SECTIONS + PETS ADOPTION TAB */}
+          <aside className="border-b md:border-b-0 md:border-r border-[#999999] bg-[#dfdfdf] p-2.5 md:col-span-4 flex flex-col justify-between">
             <div>
-              <p className="px-2 pb-2 text-[11px] font-extrabold uppercase tracking-wider text-[#57534e]">
-                Browse Sections
+              <p className="px-1 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-[#374151]">
+                Catalogue Sections ({pages.length})
               </p>
               <nav aria-label="Catalogue sections" className="space-y-1">
-                {SECTIONS.map((sec) => {
-                  const active = sec.id === sectionId;
+                {pages.map((pg) => {
+                  const active = selectedTab === 'page' && activePage.id === pg.id;
+                  const count = allEntries.filter((e) => e.pageId === pg.id).length;
+                  const sMeta = SECTION_DESCRIPTIONS[pg.caption];
                   return (
                     <button
-                      key={sec.id}
+                      key={pg.id}
                       type="button"
-                      data-testid={`cat-section-${sec.id}`}
+                      data-testid={`cat-page-${pg.id}`}
                       onClick={() => {
-                        setSectionId(sec.id);
+                        setSelectedTab('page');
+                        setActivePageId(pg.id);
                         setFeedback(null);
-                        if (sec.id === 'pets') {
-                          setSelectedSpecies('golden_terrier');
-                          setPetName('Bello');
-                        } else {
-                          const firstMatch = FURNI_CATALOGUE.find(sec.filter);
-                          if (firstMatch) setSelectedId(firstMatch.id);
-                        }
+                        const first = allEntries.find((e) => e.pageId === pg.id);
+                        if (first) setSelectedFurniId(first.furniId);
                       }}
-                      className={`flex w-full items-center justify-between gap-2 rounded border px-2.5 py-2 text-left text-xs font-bold cursor-pointer transition-colors ${
+                      className={`flex w-full items-center justify-between gap-2 border px-2 py-1.5 text-left text-[11px] font-bold cursor-pointer rounded-[2px] ${
                         active
-                          ? 'border-[#1d4ed8] bg-[#2b7de9] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]'
-                          : 'border-[#c4bead] bg-[#f7f4ec] text-slate-800 hover:bg-white'
+                          ? 'border-[#000000] bg-[#2b6ca3] text-white'
+                          : 'border-[#a3a3a3] bg-[#ffffff] text-[#111827] hover:bg-[#eef6fd]'
                       }`}
                     >
-                      <span className="inline-flex items-center gap-2 truncate">
-                        <SectionIcon icon={sec.icon} />
-                        <span className="truncate">{sec.label}</span>
+                      <span className="inline-flex items-center gap-1.5 truncate">
+                        {sMeta?.tag === 'RARE' || sMeta?.tag === 'LTD' ? (
+                          <Flame className="h-3.5 w-3.5 shrink-0 text-[#f59e0b]" />
+                        ) : sMeta?.tag === 'HC' ? (
+                          <Crown className="h-3.5 w-3.5 shrink-0 text-[#eab308]" />
+                        ) : pg.caption.includes('Trophies') ? (
+                          <Trophy className="h-3.5 w-3.5 shrink-0 text-[#d97706]" />
+                        ) : (
+                          <Star className="h-3.5 w-3.5 shrink-0 text-[#38bdf8]" />
+                        )}
+                        <span className="truncate">{pg.caption}</span>
                       </span>
-                      {sec.tag && (
+                      <span className="flex items-center gap-1 shrink-0">
+                        {sMeta?.tag && (
+                          <span
+                            className={`border border-[#000000] px-1 py-0.5 font-pixel text-[7px] leading-none rounded-[2px] ${
+                              sMeta.tag === 'RARE' || sMeta.tag === 'LTD'
+                                ? 'bg-[#b91c1c] text-white'
+                                : sMeta.tag === 'HC'
+                                ? 'bg-[#eab308] text-[#111827]'
+                                : 'bg-[#3d8b18] text-white'
+                            }`}
+                          >
+                            {sMeta.tag}
+                          </span>
+                        )}
                         <span
-                          className={`rounded px-1.5 py-0.5 font-pixel text-[8px] leading-none ${
-                            sec.tag === 'RARE'
-                              ? 'bg-[#dc2626] text-white'
-                              : sec.tag === 'HC'
-                              ? 'bg-[#eab308] text-[#1c1917]'
-                              : 'bg-[#16a34a] text-white'
+                          className={`font-mono-num text-[10px] ${
+                            active ? 'text-[#dbeafe]' : 'text-[#64748b]'
                           }`}
                         >
-                          {sec.tag}
+                          ({count})
                         </span>
-                      )}
+                      </span>
                     </button>
                   );
                 })}
+
+                <button
+                  type="button"
+                  data-testid="cat-section-pets"
+                  onClick={() => {
+                    setSelectedTab('pets');
+                    setFeedback(null);
+                  }}
+                  className={`flex w-full items-center justify-between gap-2 border px-2 py-1.5 text-left text-[11px] font-bold cursor-pointer rounded-[2px] ${
+                    selectedTab === 'pets'
+                      ? 'border-[#000000] bg-[#3d8b18] text-white'
+                      : 'border-[#a3a3a3] bg-[#ffffff] text-[#111827] hover:bg-[#ecfdf5]'
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    <PawPrint className="h-3.5 w-3.5 shrink-0 text-[#f59e0b]" />
+                    Adopt a Pet
+                  </span>
+                  <span className="border border-[#000000] bg-[#5bb52c] px-1 py-0.5 font-pixel text-[7px] text-white rounded-[2px]">
+                    PETS
+                  </span>
+                </button>
               </nav>
             </div>
 
-            {/* Classic PIXL Purse Note at bottom-left */}
-            <div className="mt-4 rounded border border-[#b5afa0] bg-[#f7f4ec] p-2.5 text-[11px] text-slate-700">
-              <p className="font-extrabold text-slate-900">Your PIXL Purse</p>
-              <p className="mt-0.5">
-                Furni goes directly to your <strong>Inventory</strong>. Adopted <strong>Pets</strong> join you straight inside the room!
+            <div className="mt-3 border border-[#999999] bg-[#ffffff] p-2 text-[11px] text-[#374151] rounded-[2px]">
+              <p className="font-bold text-[#111827]">Classic Catalogue Info</p>
+              <p className="mt-0.5 leading-snug">
+                Purchased furni goes to your <strong>Inventory</strong>. Adopted pets appear straight inside your current room!
               </p>
             </div>
           </aside>
 
-          {/* RIGHT PANE: SECTION BANNER + ITEM GRID + STAGE PREVIEW */}
-          <div className="p-3.5 md:col-span-8 space-y-3">
-            {/* Classic Habbo Section Promo Header Banner */}
+          {/* RIGHT PANE: BANNER + ITEM GRID + PREVIEW */}
+          <div className="p-3 md:col-span-8 space-y-2.5 bg-[#ececec]">
             <div
-              className={`relative overflow-hidden rounded border-2 border-[#1b1922] bg-gradient-to-r ${activeSection.headerBg} px-4 py-3 text-white shadow-inner`}
+              className={`border border-[#000000] bg-gradient-to-r ${
+                selectedTab === 'pets' ? 'from-[#5bb52c] to-[#3d8b18]' : meta.headerBg
+              } px-3.5 py-2.5 text-white rounded-[2px]`}
             >
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <h2 className="font-pixel text-sm sm:text-base drop-shadow-[0_2px_0_rgba(0,0,0,0.45)]">
-                    {activeSection.tagline}
+                  <h2 className="font-pixel text-sm leading-tight">
+                    {selectedTab === 'pets' ? 'Adopt a PIXL Pet!' : activePage.caption}
                   </h2>
-                  <p className="mt-0.5 text-xs text-white/90">{activeSection.bannerDesc}</p>
+                  <p className="mt-0.5 text-[11px] text-white/95">
+                    {selectedTab === 'pets'
+                      ? 'Golden Terriers, Tabby Kittens & Baby Fire Dragons roam and obey chat commands (sit, lay, jump, speak)!'
+                      : meta.banner}
+                  </p>
                 </div>
-                <span className="hidden sm:inline-block rounded border border-white/40 bg-black/25 px-2.5 py-1 font-mono-num text-xs font-bold shrink-0">
-                  {isPetsSection ? `${PET_CATALOGUE.length} pets` : `${items.length} items`}
+                <span className="hidden sm:inline-block border border-[#000000] bg-black/35 px-2 py-0.5 font-mono-num text-[11px] font-bold shrink-0 rounded-[2px]">
+                  {selectedTab === 'pets' ? `${PET_CATALOGUE.length} pets` : `${pageItems.length} items`}
                 </span>
               </div>
             </div>
 
-            {/* PETS SELECTION OR FURNI SELECTION */}
-            {isPetsSection ? (
+            {selectedTab === 'pets' ? (
               <>
-                <div className="grid grid-cols-3 gap-2 rounded border border-[#c4bead] bg-[#d5cfc0] p-2">
+                <div className="grid grid-cols-3 gap-2 border border-[#999999] bg-[#d4d4d4] p-2 rounded-[2px]">
                   {PET_CATALOGUE.map((pet) => {
                     const active = selectedSpecies === pet.species;
                     return (
@@ -338,17 +320,17 @@ export function CatalogueModal({ player, onBuy, onBuyPet, onClose }: CatalogueMo
                           );
                           setFeedback(null);
                         }}
-                        className={`flex flex-col items-center justify-between rounded border-2 p-2.5 text-center cursor-pointer transition-all ${
+                        className={`flex flex-col items-center justify-between border p-2 text-center cursor-pointer rounded-[2px] ${
                           active
-                            ? 'border-[#1d4ed8] bg-white shadow-[0_0_0_2px_#93c5fd]'
-                            : 'border-[#b5afa0] bg-[#f9f7f2] hover:bg-white'
+                            ? 'border-[#000000] bg-[#ffffff] ring-2 ring-[#2b6ca3]'
+                            : 'border-[#999999] bg-[#f7f7f7] hover:bg-white'
                         }`}
                       >
-                        <PixelPetCanvas species={pet.species} size={52} />
-                        <span className="mt-1 w-full truncate text-[11px] font-extrabold text-slate-900">
+                        <PixelPetCanvas species={pet.species} size={48} />
+                        <span className="mt-1 w-full truncate text-[11px] font-bold text-[#111827]">
                           {pet.name}
                         </span>
-                        <span className="mt-0.5 font-mono-num text-[10px] font-extrabold text-amber-800">
+                        <span className="mt-0.5 font-mono-num text-[10px] font-bold text-[#b45309]">
                           {pet.costCredits}c
                         </span>
                       </button>
@@ -356,20 +338,16 @@ export function CatalogueModal({ player, onBuy, onBuyPet, onClose }: CatalogueMo
                   })}
                 </div>
 
-                {/* Pet Pedestal Showcase + Custom Pet Name */}
-                <div className="rounded border-2 border-[#b5afa0] bg-white p-3">
+                <div className="border border-[#999999] bg-[#ffffff] p-3 rounded-[2px]">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                    <div className="relative flex h-28 w-full sm:w-32 items-center justify-center rounded border-2 border-[#8eb5d3] bg-gradient-to-b from-[#1e3a5f] to-[#2e5d8c] shrink-0 overflow-hidden">
-                      <PixelPetCanvas species={selectedPet.species} size={74} />
+                    <div className="flex h-24 w-full sm:w-28 items-center justify-center border border-[#000000] bg-[#1d4e78] shrink-0 rounded-[2px]">
+                      <PixelPetCanvas species={selectedPet.species} size={68} />
                     </div>
                     <div className="flex-1 min-w-0 space-y-2">
-                      <h3 className="text-base font-extrabold text-slate-900">{selectedPet.name}</h3>
-                      <p className="text-xs leading-relaxed text-slate-600">
-                        {selectedPet.description}
-                      </p>
-
+                      <h3 className="text-[13px] font-bold text-[#111827]">{selectedPet.name}</h3>
+                      <p className="text-[11px] text-[#4b5563]">{selectedPet.description}</p>
                       <div>
-                        <label htmlFor="cat-pet-name" className="block text-[11px] font-extrabold text-slate-700">
+                        <label htmlFor="cat-pet-name" className="block text-[11px] font-bold text-[#111827]">
                           Custom Pet Name
                         </label>
                         <input
@@ -380,31 +358,29 @@ export function CatalogueModal({ player, onBuy, onBuyPet, onClose }: CatalogueMo
                           value={petName}
                           onChange={(e) => setPetName(e.target.value)}
                           placeholder="Name your pet..."
-                          className="mt-1 w-full rounded border-2 border-[#c4bead] bg-[#faf8f4] px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:border-[#2b7de9] focus:outline-none"
+                          className="mt-1 w-full border border-[#6b7280] bg-white px-2.5 py-1 text-xs font-bold text-[#111827] focus:border-[#2b6ca3] focus:outline-none rounded-[2px]"
                         />
                       </div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                        <span className="inline-flex items-center gap-1 font-mono-num text-xs font-extrabold text-amber-700">
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                        <span className="inline-flex items-center gap-1 font-mono-num text-xs font-bold text-[#b45309]">
                           <Coins className="h-3.5 w-3.5" /> {selectedPet.costCredits} Credits
                         </span>
                         <button
                           type="button"
                           data-testid="cat-adopt-pet-btn"
                           onClick={handlePurchase}
-                          className="habbo-btn-green rounded px-5 py-2 font-pixel text-xs cursor-pointer"
+                          className="habbo-btn-green px-4 py-1.5 font-pixel text-[11px] cursor-pointer"
                         >
                           Adopt Pet
                         </button>
                       </div>
-
                       {feedback && (
                         <p
                           role="status"
-                          className={`rounded border px-2.5 py-1 text-[11px] font-bold ${
+                          className={`border px-2.5 py-1 text-[11px] font-bold rounded-[2px] ${
                             feedback.ok
-                              ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                              : 'border-rose-300 bg-rose-50 text-rose-800'
+                              ? 'border-[#16a34a] bg-[#f0fdf4] text-[#14532d]'
+                              : 'border-[#dc2626] bg-[#fef2f2] text-[#7f1d1d]'
                           }`}
                         >
                           {feedback.text}
@@ -416,43 +392,52 @@ export function CatalogueModal({ player, onBuy, onBuyPet, onClose }: CatalogueMo
               </>
             ) : (
               <>
-                {/* Item Selection Grid */}
-                <div className="grid max-h-52 grid-cols-3 gap-2 overflow-y-auto rounded border border-[#c4bead] bg-[#d5cfc0] p-2 sm:grid-cols-4">
-                  {items.map((item) => {
-                    const active = selected?.id === item.id;
+                {/* Item Grid using real PNG FurniPreviewImg */}
+                <div className="grid max-h-52 grid-cols-3 gap-1.5 overflow-y-auto border border-[#999999] bg-[#d4d4d4] p-2 sm:grid-cols-4 rounded-[2px]">
+                  {pageItems.map((item) => {
+                    const active = selectedEntry?.furniId === item.furniId;
                     return (
                       <button
-                        key={item.id}
+                        key={`${item.pageId}-${item.furniId}-${item.dbId ?? ''}`}
                         type="button"
-                        data-testid={`cat-item-${item.id}`}
+                        data-testid={`cat-item-${item.furniId}`}
                         onClick={() => {
-                          setSelectedId(item.id);
+                          setSelectedFurniId(item.furniId);
                           setQuantity(1);
                           setFeedback(null);
                         }}
-                        className={`relative flex flex-col items-center justify-between rounded border-2 p-2 text-center cursor-pointer transition-all ${
+                        className={`relative flex flex-col items-center justify-between border p-1.5 text-center cursor-pointer rounded-[2px] ${
                           active
-                            ? 'border-[#1d4ed8] bg-white shadow-[0_0_0_2px_#93c5fd]'
-                            : 'border-[#b5afa0] bg-[#f9f7f2] hover:bg-white'
+                            ? 'border-[#000000] bg-[#ffffff] ring-2 ring-[#2b6ca3]'
+                            : 'border-[#a3a3a3] bg-[#f9fafb] hover:bg-white'
                         }`}
                       >
-                        {item.isRare && (
-                          <span className="absolute top-1 left-1 rounded bg-[#dc2626] px-1 py-0.5 font-pixel text-[7px] leading-none text-white">
-                            RARE
+                        {(item.isLtd || item.isRare) && (
+                          <span
+                            className={`absolute top-1 left-1 border border-[#000000] px-1 py-0.5 font-pixel text-[7px] leading-none text-white rounded-[1px] ${
+                              item.isLtd ? 'bg-[#7c3aed]' : 'bg-[#b91c1c]'
+                            }`}
+                          >
+                            {item.isLtd ? 'LTD' : 'RARE'}
                           </span>
                         )}
                         {item.hcOnly && (
-                          <span className="absolute top-1 right-1 rounded bg-[#eab308] px-1 py-0.5 font-pixel text-[7px] leading-none text-slate-950">
+                          <span className="absolute top-1 right-1 border border-[#000000] bg-[#eab308] px-1 py-0.5 font-pixel text-[7px] leading-none text-[#111827] rounded-[1px]">
                             HC
                           </span>
                         )}
-                        <PixelFurniCanvas furniId={item.id} size={46} />
-                        <span className="mt-1 w-full truncate text-[11px] font-extrabold text-slate-900">
-                          {item.name}
+                        {item.amount > 1 && (
+                          <span className="absolute top-1 left-1 border border-[#000000] bg-[#ca8a04] px-1 py-0.5 font-pixel text-[7px] leading-none text-white rounded-[1px]">
+                            {item.amount}x
+                          </span>
+                        )}
+                        <FurniPreviewImg itemType={item.furniId} alt={item.catalogName} size={46} />
+                        <span className="mt-1 w-full truncate text-[10px] font-bold text-[#111827]">
+                          {item.catalogName}
                         </span>
-                        <span className="mt-0.5 inline-flex items-center gap-1 font-mono-num text-[10px] font-extrabold text-amber-800">
+                        <span className="mt-0.5 font-mono-num text-[10px] font-bold text-[#b45309]">
                           {item.costCredits > 0 ? `${item.costCredits}c` : ''}
-                          {item.costCredits > 0 && item.costDuckets > 0 ? ' + ' : ''}
+                          {item.costCredits > 0 && item.costDuckets > 0 ? '+' : ''}
                           {item.costDuckets > 0 ? `${item.costDuckets}d` : ''}
                         </span>
                       </button>
@@ -460,45 +445,33 @@ export function CatalogueModal({ player, onBuy, onBuyPet, onClose }: CatalogueMo
                   })}
                 </div>
 
-                {/* Selected Furni Isometric Showcase + Buy Controls */}
-                {selected && (
-                  <div className="rounded border-2 border-[#b5afa0] bg-white p-3">
+                {/* Selected Item Preview & Buy Controls */}
+                {selectedEntry && (
+                  <div className="border border-[#999999] bg-[#ffffff] p-3 rounded-[2px]">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                      {/* Isometric Room-Tile Pedestal Preview */}
-                      <div className="relative flex h-28 w-full sm:w-32 items-center justify-center rounded border-2 border-[#8eb5d3] bg-gradient-to-b from-[#1e3a5f] to-[#2e5d8c] shrink-0 overflow-hidden">
-                        <svg
-                          className="pointer-events-none absolute bottom-2 h-10 w-24 opacity-85"
-                          viewBox="0 0 64 32"
-                          shapeRendering="crispEdges"
-                        >
-                          <polygon
-                            points="32,2 62,16 32,30 2,16"
-                            fill="#c89254"
-                            stroke="#1b1922"
-                            strokeWidth="1.5"
-                          />
-                          <polygon points="2,16 32,30 32,32 2,18" fill="#6b421c" />
-                          <polygon points="32,30 62,16 62,18 32,32" fill="#885626" />
-                        </svg>
-                        <div className="relative z-10 -mt-3">
-                          <PixelFurniCanvas furniId={selected.id} size={68} />
-                        </div>
+                      <div className="relative flex h-24 w-full sm:w-28 items-center justify-center border border-[#000000] bg-[#1d4e78] shrink-0 overflow-hidden rounded-[2px]">
+                        <FurniPreviewImg
+                          itemType={selectedEntry.furniId}
+                          alt={selectedEntry.catalogName}
+                          size={72}
+                        />
                       </div>
 
-                      {/* Description, Quantity, Engraving & Purchase */}
                       <div className="flex-1 min-w-0 space-y-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <h3 className="text-base font-extrabold text-slate-900">{selected.name}</h3>
+                          <h3 className="text-[13px] font-bold text-[#111827]">
+                            {selectedEntry.catalogName}
+                          </h3>
                           <div className="flex items-center gap-1">
                             {[1, 2, 5].map((q) => (
                               <button
                                 key={q}
                                 type="button"
                                 onClick={() => setQuantity(q)}
-                                className={`rounded border px-2 py-0.5 font-mono-num text-[11px] font-bold cursor-pointer ${
+                                className={`border px-2 py-0.5 font-mono-num text-[10px] font-bold cursor-pointer rounded-[2px] ${
                                   quantity === q
-                                    ? 'border-[#235c8a] bg-[#235c8a] text-white'
-                                    : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                    ? 'border-[#000000] bg-[#2b6ca3] text-white'
+                                    : 'border-[#a3a3a3] bg-[#f3f4f6] text-[#111827] hover:bg-[#e5e7eb]'
                                 }`}
                               >
                                 {q}x
@@ -507,15 +480,22 @@ export function CatalogueModal({ player, onBuy, onBuyPet, onClose }: CatalogueMo
                           </div>
                         </div>
 
-                        <p className="text-xs leading-relaxed text-slate-600">{selected.description}</p>
+                        <p className="text-[11px] text-[#4b5563] leading-snug">
+                          {selectedEntry.description}
+                          {selectedEntry.amount > 1 && (
+                            <span className="ml-1 font-bold text-[#0f766e]">
+                              (Pack grants {selectedEntry.amount * quantity}x items)
+                            </span>
+                          )}
+                        </p>
 
-                        {selected.engravable && (
+                        {selectedEntry.engravable && (
                           <div>
                             <label
                               htmlFor="cat-trophy-engraving"
-                              className="block text-[11px] font-extrabold text-amber-900"
+                              className="block text-[10px] font-bold text-[#92400e]"
                             >
-                              Custom Engraving Message
+                              Custom Engraving Inscription
                             </label>
                             <input
                               id="cat-trophy-engraving"
@@ -524,23 +504,23 @@ export function CatalogueModal({ player, onBuy, onBuyPet, onClose }: CatalogueMo
                               maxLength={80}
                               value={engravingText}
                               onChange={(e) => setEngravingText(e.target.value)}
-                              placeholder="Enter plaque inscription (e.g. Best Room 2026)..."
-                              className="mt-1 w-full rounded border-2 border-amber-300 bg-amber-50/50 px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:border-amber-600 focus:outline-none"
+                              placeholder="Enter dedication (e.g. Best Room 2026)..."
+                              className="mt-1 w-full border border-[#d97706] bg-[#fffbeb] px-2 py-1 text-xs font-semibold text-[#111827] focus:outline-none rounded-[2px]"
                             />
                           </div>
                         )}
 
-                        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                          <div className="flex items-center gap-2 font-mono-num text-xs font-extrabold">
-                            <span className="text-slate-500 font-sans">Total:</span>
-                            {selected.costCredits > 0 && (
-                              <span className="inline-flex items-center gap-1 text-amber-700">
-                                <Coins className="h-3.5 w-3.5" /> {selected.costCredits * quantity} Credits
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                          <div className="flex items-center gap-2 font-mono-num text-xs font-bold">
+                            <span className="text-[#4b5563] font-sans text-[11px]">Total:</span>
+                            {selectedEntry.costCredits > 0 && (
+                              <span className="inline-flex items-center gap-1 text-[#b45309]">
+                                <Coins className="h-3.5 w-3.5" /> {selectedEntry.costCredits * quantity}c
                               </span>
                             )}
-                            {selected.costDuckets > 0 && (
-                              <span className="inline-flex items-center gap-1 text-violet-700">
-                                <Sparkles className="h-3.5 w-3.5" /> {selected.costDuckets * quantity} Duckets
+                            {selectedEntry.costDuckets > 0 && (
+                              <span className="inline-flex items-center gap-1 text-[#6d28d9]">
+                                <Sparkles className="h-3.5 w-3.5" /> {selectedEntry.costDuckets * quantity}d
                               </span>
                             )}
                           </div>
@@ -548,19 +528,19 @@ export function CatalogueModal({ player, onBuy, onBuyPet, onClose }: CatalogueMo
                           <button
                             type="button"
                             onClick={handlePurchase}
-                            className="habbo-btn-green rounded px-6 py-2 font-pixel text-xs cursor-pointer"
+                            className="habbo-btn-green px-5 py-1.5 text-[12px] font-bold uppercase tracking-wide cursor-pointer"
                           >
-                            Buy Item
+                            Buy Now
                           </button>
                         </div>
 
                         {feedback && (
                           <p
                             role="status"
-                            className={`rounded border px-2.5 py-1 text-[11px] font-bold ${
+                            className={`border px-2.5 py-1 text-[11px] font-bold rounded-[2px] ${
                               feedback.ok
-                                ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                                : 'border-rose-300 bg-rose-50 text-rose-800'
+                                ? 'border-[#16a34a] bg-[#f0fdf4] text-[#14532d]'
+                                : 'border-[#dc2626] bg-[#fef2f2] text-[#7f1d1d]'
                             }`}
                           >
                             {feedback.text}

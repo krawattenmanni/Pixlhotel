@@ -115,12 +115,20 @@ export function getAvatarSprite(
   dir: Direction,
   pose: AvatarPose,
   frame: number,
-  swimming = false,
-  swimwearColor = '#0ea5e9'
+  inWater = false,
+  swimwearColor = '#0ea5e9',
+  wearingSwimwear = false,
+  danceStyle: 1 | 2 | 3 | 4 = 1
 ): HTMLCanvasElement {
   const animStep = frame % 4;
-  const swimKey = swimming ? `sw:${swimwearColor}` : '0';
-  const key = `av34|${getLookHash(look)}|${dir}|${pose}|${animStep}|${swimKey}`;
+  const hasSwimwear = inWater || wearingSwimwear;
+  const swimKey = inWater
+    ? `water:${swimwearColor}`
+    : wearingSwimwear
+    ? `decksw:${swimwearColor}`
+    : '0';
+  const danceKey = pose === 'dance' ? danceStyle : 0;
+  const key = `av34|${getLookHash(look)}|${dir}|${pose}|d${danceKey}|${animStep}|${swimKey}`;
   const cached = spriteCache.get(key);
   if (cached) return cached;
 
@@ -137,16 +145,16 @@ export function getAvatarSprite(
   const skinLo = shadeHex(skin, -28);
   const skinDeep = shadeHex(skin, -45);
 
-  const shirt = swimming ? skin : look.shirtColor;
+  const shirt = hasSwimwear ? skin : look.shirtColor;
   const shirtHi = shadeHex(shirt, 24);
   const shirtLo = shadeHex(shirt, -28);
   const shirtDeep = shadeHex(shirt, -44);
 
-  const pants = swimming ? swimwearColor : look.pantsColor;
+  const pants = hasSwimwear ? swimwearColor : look.pantsColor;
   const pantsHi = shadeHex(pants, 22);
   const pantsLo = shadeHex(pants, -26);
 
-  const shoes = swimming ? skinLo : look.shoesColor;
+  const shoes = hasSwimwear ? skinLo : look.shoesColor;
   const shoesHi = shadeHex(shoes, 22);
   const shoesLo = shadeHex(shoes, -22);
 
@@ -154,7 +162,99 @@ export function getAvatarSprite(
   const hairHi = shadeHex(hair, 26);
   const hairLo = shadeHex(hair, -28);
 
-  // Animation offsets (staggered diagonal stride / groove)
+  const cx = 22;
+  const baseY = 66;
+
+  // Special horizontal reclining pose (:lay / lounger)
+  if (pose === 'lay') {
+    // Extended legs & shoes toward +x
+    px(s, cx + 4, baseY - 14, 11, 5, hasSwimwear ? skin : pants);
+    px(s, cx + 5, baseY - 14, 9, 2, hasSwimwear ? skinHi : pantsHi);
+    px(s, cx + 4, baseY - 10, 11, 2, hasSwimwear ? skinLo : pantsLo);
+    if (hasSwimwear) {
+      px(s, cx + 3, baseY - 14, 5, 5, pants);
+    }
+    px(s, cx + 15, baseY - 15, 4, 6, shoes);
+    px(s, cx + 16, baseY - 15, 2, 2, shoesHi);
+
+    // Reclining torso
+    px(s, cx - 7, baseY - 16, 12, 8, shirt);
+    px(s, cx - 6, baseY - 17, 10, 2, shirtHi);
+    px(s, cx - 7, baseY - 10, 12, 2, shirtLo);
+    // Relaxed arm resting on side
+    px(s, cx - 4, baseY - 12, 8, 3, shirtHi);
+    px(s, cx + 4, baseY - 12, 3, 3, skin);
+
+    // Head propped slightly up on the left
+    const hx = cx - 18;
+    const hy = baseY - 24;
+    px(s, hx + 2, hy, 10, 1, skinHi);
+    px(s, hx + 1, hy + 1, 12, 11, skin);
+    px(s, hx + 2, hy + 12, 9, 2, skinLo);
+    if (!facingBack) {
+      px(s, hx + 6, hy + 6, 2, 2, '#141414');
+      px(s, hx + 10, hy + 6, 2, 2, '#141414');
+      px(s, hx + 7, hy + 10, 3, 1, '#7c2d12');
+    }
+    // Hair & crown/cap/shades
+    px(s, hx, hy - 2, 13, 5, hair);
+    px(s, hx + 2, hy - 2, 8, 2, hairHi);
+    if (look.hairStyle === 'long' || look.hairStyle === 'bob') {
+      px(s, hx - 1, hy + 2, 4, 10, hairLo);
+    }
+    if (look.accessory === 'sunglasses' && !facingBack) {
+      px(s, hx + 5, hy + 5, 8, 3, '#09090b');
+    } else if (look.accessory === 'crown') {
+      px(s, hx + 2, hy - 5, 9, 3, '#facc15');
+    }
+
+    const oriented = makeOffscreen(W, H);
+    if (mirrorX) {
+      oriented.ctx.translate(W, 0);
+      oriented.ctx.scale(-1, 1);
+    }
+    oriented.ctx.drawImage(scratch, 0, 0);
+
+    ctx.fillStyle = 'rgba(15, 20, 35, 0.28)';
+    ctx.beginPath();
+    ctx.ellipse(cx, baseY - 3, 16, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const srcImg = oriented.ctx.getImageData(0, 0, W, H);
+    const srcData = srcImg.data;
+    const outlined = makeOffscreen(W, H);
+    const outImg = outlined.ctx.createImageData(W, H);
+    const outData = outImg.data;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const idx = (y * W + x) * 4;
+        if (srcData[idx + 3] > 128) {
+          outData[idx] = srcData[idx];
+          outData[idx + 1] = srcData[idx + 1];
+          outData[idx + 2] = srcData[idx + 2];
+          outData[idx + 3] = 255;
+        } else {
+          const hasNeighbor =
+            (x > 0 && srcData[idx - 4 + 3] > 128) ||
+            (x < W - 1 && srcData[idx + 4 + 3] > 128) ||
+            (y > 0 && srcData[idx - W * 4 + 3] > 128) ||
+            (y < H - 1 && srcData[idx + W * 4 + 3] > 128);
+          if (hasNeighbor) {
+            outData[idx] = 0x14;
+            outData[idx + 1] = 0x14;
+            outData[idx + 2] = 0x14;
+            outData[idx + 3] = 255;
+          }
+        }
+      }
+    }
+    outlined.ctx.putImageData(outImg, 0, 0);
+    ctx.drawImage(outlined.canvas, 0, 0);
+    spriteCache.set(key, canvas);
+    return canvas;
+  }
+
+  // Animation offsets (staggered diagonal stride / 4 distinct dance styles)
   let bobY = 0;
   let nearLegDX = 0;
   let nearLegDY = 0;
@@ -183,19 +283,41 @@ export function getAvatarSprite(
       farArmDY = -2;
     }
   } else if (pose === 'dance') {
-    bobY = animStep % 2 === 0 ? -2 : 0;
-    nearLegDX = animStep === 1 ? -1 : 0;
-    farLegDX = animStep === 3 ? 1 : 0;
-    nearArmDY = animStep < 2 ? -5 : 1;
-    farArmDY = animStep >= 2 ? -5 : 1;
+    if (danceStyle === 2) {
+      // Pogo Mogo: energetic crouch & high pogo leap
+      bobY = animStep === 0 ? 2 : animStep === 1 ? -6 : animStep === 2 ? -3 : 0;
+      nearLegDY = animStep === 1 ? -3 : 0;
+      farLegDY = animStep === 1 ? -3 : 0;
+      nearArmDY = animStep === 1 || animStep === 2 ? -6 : 2;
+      farArmDY = animStep === 1 || animStep === 2 ? -6 : 2;
+    } else if (danceStyle === 3) {
+      // Duck Funk: wide side-step & flapping elbows
+      bobY = animStep % 2 === 0 ? -1 : 1;
+      nearLegDX = animStep === 0 ? -2 : animStep === 2 ? 2 : 0;
+      farLegDX = animStep === 0 ? -2 : animStep === 2 ? 2 : 0;
+      nearArmDY = animStep % 2 === 0 ? -4 : 2;
+      farArmDY = animStep % 2 === 0 ? -4 : 2;
+    } else if (danceStyle === 4) {
+      // The Rollie: alternating foot tap & shoulder roll
+      bobY = animStep === 1 || animStep === 3 ? -2 : 0;
+      nearLegDY = animStep === 1 ? -2 : 0;
+      farLegDY = animStep === 3 ? -2 : 0;
+      nearArmDY = animStep === 0 ? -5 : animStep === 2 ? 3 : -1;
+      farArmDY = animStep === 2 ? -5 : animStep === 0 ? 3 : -1;
+    } else {
+      // Classic Habbo Hop (:dance 1)
+      bobY = animStep % 2 === 0 ? -2 : 0;
+      nearLegDX = animStep === 1 ? -1 : 0;
+      farLegDX = animStep === 3 ? 1 : 0;
+      nearArmDY = animStep < 2 ? -5 : 1;
+      farArmDY = animStep >= 2 ? -5 : 1;
+    }
   } else if (pose === 'wave') {
     waveUp = animStep % 2 === 0;
     bobY = waveUp ? -1 : 0;
   }
 
   // Draw SE (dir=0) or NE (dir=3) in local +x facing orientation on scratch canvas
-  const cx = 22;
-  const baseY = 66;
   const torsoY = (pose === 'sit' ? baseY - 33 : baseY - 32) + bobY;
 
   const drawFarArm = () => {
@@ -207,6 +329,11 @@ export function getAvatarSprite(
       px(s, cx + 5, wy + 2, 3, 9, shirtLo);
       px(s, cx + 6, wy + 2, 2, 7, shirt);
       px(s, cx + 5, wy - 1, 3, 3, skin);
+      return;
+    }
+    if (pose === 'dance' && farArmDY < 0) {
+      px(s, ax, ay, 3, 6, shirtLo);
+      px(s, ax, ay - 3, 3, 3, skin);
       return;
     }
     px(s, ax, ay, 3, 6, shirtLo);
@@ -235,12 +362,11 @@ export function getAvatarSprite(
   };
 
   // 1. LEGS & STAGGERED DIAGONAL SHOES
-  if (swimming) {
-    // Swim trunks + kicking water legs submerged below chest
+  if (inWater) {
+    // Legs are completely hidden beneath the pool waterline; subtle swim waistband at waterline
     const swimBob = animStep % 2 === 0 ? 0 : 1;
-    px(s, cx - 5, torsoY + 14 + swimBob, 10, 6, pants);
-    px(s, cx - 4, torsoY + 15 + swimBob, 8, 2, pantsHi);
-    px(s, cx - 5, torsoY + 17 + swimBob, 10, 1, '#fef08a');
+    px(s, cx - 5, torsoY + 13 + swimBob, 10, 4, pants);
+    px(s, cx - 5, torsoY + 15 + swimBob, 10, 1, '#fef08a');
   } else if (pose === 'sit') {
     const sy = baseY - 16;
     // Far leg tucked forward-right
@@ -259,22 +385,29 @@ export function getAvatarSprite(
     // Far leg (back-right, slightly higher by 2px for 3/4 depth)
     const flx = cx + 1 + farLegDX;
     const fly = baseY - 17 + farLegDY;
-    px(s, flx, fly, 4, 11, pantsLo);
-    px(s, flx + 1, fly + 1, 2, 9, pants);
-    // Angled shoe pointing down-right
+    px(s, flx, fly, 4, 11, hasSwimwear ? skinLo : pantsLo);
+    px(s, flx + 1, fly + 1, 2, 9, hasSwimwear ? skin : pants);
+    if (hasSwimwear) {
+      px(s, flx, fly, 4, 5, pantsLo); // Swim shorts upper leg
+    }
+    // Angled shoe/sandal pointing down-right
     px(s, flx, fly + 11, 6, 3, shoesLo);
-    px(s, flx + 4, fly + 12, 2, 2, '#e2e8f0');
+    if (!hasSwimwear) px(s, flx + 4, fly + 12, 2, 2, '#e2e8f0');
 
     // Near leg (foreground-left, 2px lower for true staggered isometric stance)
     const nlx = cx - 5 + nearLegDX;
     const nly = baseY - 15 + nearLegDY;
-    px(s, nlx, nly, 5, 11, pants);
-    px(s, nlx + 1, nly + 1, 2, 9, pantsHi);
-    px(s, nlx, nly + 1, 1, 9, pantsLo);
-    // Near angled isometric sneaker/dress shoe
+    px(s, nlx, nly, 5, 11, hasSwimwear ? skin : pants);
+    px(s, nlx + 1, nly + 1, 2, 9, hasSwimwear ? skinHi : pantsHi);
+    px(s, nlx, nly + 1, 1, 9, hasSwimwear ? skinLo : pantsLo);
+    if (hasSwimwear) {
+      px(s, nlx, nly, 5, 5, pants);
+      px(s, nlx + 1, nly, 3, 4, pantsHi);
+    }
+    // Near angled isometric sneaker/sandal
     px(s, nlx, nly + 11, 7, 3, shoes);
     px(s, nlx + 1, nly + 11, 4, 1, shoesHi);
-    px(s, nlx + 5, nly + 12, 2, 2, '#f8fafc');
+    if (!hasSwimwear) px(s, nlx + 5, nly + 12, 2, 2, '#f8fafc');
   }
 
   // 2. FAR ARM (behind torso)
@@ -288,13 +421,25 @@ export function getAvatarSprite(
   px(s, cx + 2, torsoY + 2, 3, 13, shirtHi); // Lit 3/4 front chest
   px(s, cx - 5, torsoY + 15, 10, 2, shirtDeep); // Hem shadow
 
-  if (swimming) {
-    // Classic Habbo yellow duck swim ring / swimwear straps around chest
-    px(s, cx - 6, torsoY + 10, 12, 5, pants);
-    px(s, cx - 5, torsoY + 11, 10, 2, pantsHi);
-    // Sunlit yellow float ring rim when active
-    px(s, cx - 8, torsoY + 12, 16, 4, '#facc15');
-    px(s, cx - 6, torsoY + 13, 12, 2, '#fef08a');
+  if (inWater) {
+    // Classic Habbo yellow duck swim ring around waist at waterline
+    const swimBob = animStep % 2 === 0 ? 0 : 1;
+    px(s, cx - 6, torsoY + 9 + swimBob, 12, 4, pants);
+    px(s, cx - 9, torsoY + 11 + swimBob, 18, 5, '#eab308');
+    px(s, cx - 8, torsoY + 12 + swimBob, 16, 3, '#facc15');
+    px(s, cx - 6, torsoY + 12 + swimBob, 10, 2, '#fef08a');
+    // Mini duck head & orange beak perched on front of float ring
+    if (!facingBack) {
+      px(s, cx + 4, torsoY + 7 + swimBob, 5, 5, '#facc15');
+      px(s, cx + 5, torsoY + 8 + swimBob, 3, 2, '#fef9c3');
+      px(s, cx + 9, torsoY + 9 + swimBob, 3, 2, '#f97316');
+      px(s, cx + 7, torsoY + 8 + swimBob, 1, 1, '#141414');
+    }
+  } else if (wearingSwimwear) {
+    // Bright resort swimwear trunks/suit on deck
+    px(s, cx - 6, torsoY + 11, 12, 5, pants);
+    px(s, cx - 5, torsoY + 12, 10, 2, pantsHi);
+    px(s, cx - 6, torsoY + 11, 12, 1, '#fef08a');
   } else if (!facingBack) {
     if (look.shirtStyle === 'suit') {
       // Crisply angled suit jacket with white V-shirt, diagonal lapels, and necktie
@@ -489,12 +634,12 @@ export function getAvatarSprite(
   }
   oriented.ctx.drawImage(scratch, 0, 0);
 
-  // 9. Draw soft isometric oval ground shadow (or turquoise water ripple if swimming)
-  if (swimming) {
-    ctx.strokeStyle = animStep % 2 === 0 ? 'rgba(224, 242, 254, 0.85)' : 'rgba(125, 211, 252, 0.7)';
+  // 9. Draw soft isometric oval ground shadow (or turquoise water ripple if submerged in pool)
+  if (inWater) {
+    ctx.strokeStyle = animStep % 2 === 0 ? 'rgba(224, 242, 254, 0.92)' : 'rgba(125, 211, 252, 0.78)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.ellipse(cx, baseY - 12, 13 + (animStep % 2) * 2, 5.5 + (animStep % 2), 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, baseY - 11, 14 + (animStep % 2) * 2, 6 + (animStep % 2), 0, 0, Math.PI * 2);
     ctx.stroke();
   } else {
     ctx.fillStyle = 'rgba(15, 20, 35, 0.28)';
@@ -535,9 +680,11 @@ export function getAvatarSprite(
   }
 
   outlined.ctx.putImageData(outImg, 0, 0);
-  if (swimming) {
-    // Submerge lower legs into pool surface
-    ctx.drawImage(outlined.canvas, 0, 0, W, baseY - 12, 0, 6, W, baseY - 12);
+  if (inWater) {
+    // Submerge lower torso below pool surface & add crisp white water foam collar
+    const clipH = baseY - 14;
+    ctx.drawImage(outlined.canvas, 0, 0, W, clipH, 0, 8, W, clipH);
+    px(ctx, cx - 10, baseY - 7, 20, 2, 'rgba(224, 242, 254, 0.85)');
   } else {
     ctx.drawImage(outlined.canvas, 0, 0);
   }
@@ -1280,6 +1427,24 @@ export function getFurniSprite(
     // Frank bellhop cap + mustache
     outlinedRect(ctx, cx - 6, cy - 64, 12, 6, '#7f1d1d', '#ef4444');
     px(ctx, cx - 4, cy - 46, 8, 2, '#334155');
+  } else if (furniId === 'sticky_note') {
+    const palette =
+      state === 1
+        ? { fill: '#f9a8d4', hi: '#fce7f3', sh: '#db2777' }
+        : state === 2
+        ? { fill: '#93c5fd', hi: '#dbeafe', sh: '#2563eb' }
+        : state === 3
+        ? { fill: '#86efac', hi: '#dcfce7', sh: '#16a34a' }
+        : { fill: '#fef08a', hi: '#fef9c3', sh: '#ca8a04' };
+    // Crisp retro Post-It square with shadow & ruled pixel notes
+    px(ctx, cx - 10, cy - 34, 22, 22, 'rgba(0,0,0,0.28)');
+    outlinedRect(ctx, cx - 12, cy - 36, 22, 22, palette.fill, palette.hi, palette.sh);
+    px(ctx, cx - 11, cy - 35, 20, 3, palette.sh);
+    px(ctx, cx - 9, cy - 29, 14, 1, '#334155');
+    px(ctx, cx - 9, cy - 25, 11, 1, '#334155');
+    px(ctx, cx - 9, cy - 21, 13, 1, '#475569');
+    // Folded bottom-right corner
+    px(ctx, cx + 5, cy - 19, 4, 4, palette.hi);
   } else {
     drawIsoBox(16, 16, 20, 10, '#cbd5e1', '#64748b', '#94a3b8');
   }
@@ -1331,7 +1496,20 @@ export function drawIsoFloorTile(
 ) {
   const hw = 32;
   const hh = 16;
-  const slabH = tileChar === '1' || tileChar === '2' || tileChar === 's' ? 22 : tileChar === 'w' ? 6 : 8;
+  const slabH =
+    tileChar === '3' || tileChar === 'd'
+      ? 38
+      : tileChar === '2'
+      ? 26
+      : tileChar === 's'
+      ? 20
+      : tileChar === '1' || tileChar === 'b' || tileChar === 'c'
+      ? 16
+      : tileChar === 'l'
+      ? 14
+      : tileChar === 'w'
+      ? 10
+      : 10;
 
   const isEven = (gx + gy) % 2 === 0;
   let topColor = '#d6c7a9';
@@ -1340,26 +1518,50 @@ export function drawIsoFloorTile(
   let border = 'rgba(0,0,0,0.18)';
 
   if (tileChar === 'w') {
-    // Animated Pool / Pond Water Tile
+    // Animated Sunken Pool / Pond Water Tile
     const wave = (animTick + gx + gy) % 3;
-    topColor = wave === 0 ? '#06b6d4' : wave === 1 ? '#0ea5e9' : '#22d3ee';
+    topColor = wave === 0 ? '#0288d1' : wave === 1 ? '#29b6f6' : '#039be5';
+    leftEdge = '#01579b';
+    rightEdge = '#0277bd';
+    border = 'rgba(224, 242, 254, 0.35)';
+  } else if (tileChar === 'l') {
+    // Pool ladder transition step
+    topColor = '#0ea5e9';
     leftEdge = '#0369a1';
     rightEdge = '#0284c7';
-    border = 'rgba(224, 242, 254, 0.35)';
+    border = 'rgba(224, 242, 254, 0.45)';
+  } else if (tileChar === '3') {
+    // Rooftop Pool rocky cliff top
+    topColor = isEven ? '#78909c' : '#607d8b';
+    leftEdge = '#37474f';
+    rightEdge = '#455a64';
+    border = '#263238';
   } else if (tileChar === 'b') {
     // Changing Booth bright checkerboard pad
     topColor = isEven ? '#facc15' : '#2563eb';
     leftEdge = '#1e3a8a';
     rightEdge = '#1d4ed8';
   } else if (tileChar === 'd') {
-    // Diving board platform
-    topColor = '#38bdf8';
-    leftEdge = '#0369a1';
-    rightEdge = '#0284c7';
+    // Diving board stone tower top matching Lido upper terrace
+    topColor = '#d7ccc8';
+    leftEdge = '#8b7355';
+    rightEdge = '#a68f68';
+  } else if (tileChar === 'c') {
+    // Peaceful Park Cobblestone path
+    topColor = isEven ? '#cbd5e1' : '#b8c4d4';
+    leftEdge = '#64748b';
+    rightEdge = '#94a3b8';
+    border = 'rgba(51, 65, 85, 0.35)';
+  } else if (theme === 'wood_deck') {
+    // Warm sunlit teak rooftop wood planks
+    topColor = tileChar === '2' ? '#b87638' : isEven ? '#c88b4b' : '#bc7e40';
+    leftEdge = '#6b3e16';
+    rightEdge = '#875121';
+    border = 'rgba(72, 34, 8, 0.25)';
   } else if (theme === 'lido_deck') {
-    topColor = tileChar === 's' ? '#e2c08d' : isEven ? '#f5ebd6' : '#e6d8be';
-    leftEdge = '#a68f68';
-    rightEdge = '#bfa77e';
+    topColor = tileChar === 's' ? '#e2c08d' : tileChar === '2' ? '#d7ccc8' : isEven ? '#f5ebd6' : '#e6d8be';
+    leftEdge = '#8b7355';
+    rightEdge = '#a68f68';
   } else if (theme === 'park_grass') {
     topColor = tileChar === 's' ? '#cbb896' : isEven ? '#4da342' : '#419238';
     leftEdge = '#275920';
@@ -1379,7 +1581,16 @@ export function drawIsoFloorTile(
     rightEdge = '#1e1b4b';
     border = 'rgba(244, 114, 182, 0.32)';
   } else if (theme === 'marble') {
-    topColor = tileChar === 's' ? '#e5dec9' : isEven ? '#f1efe8' : '#dbd7cc';
+    topColor =
+      tileChar === 's'
+        ? '#e5dec9'
+        : tileChar === '2'
+        ? isEven
+          ? '#f8f5ec'
+          : '#e7dfcd'
+        : isEven
+        ? '#f1efe8'
+        : '#dbd7cc';
     leftEdge = '#8f8b80';
     rightEdge = '#aca79a';
   } else if (theme === 'parquet') {
@@ -1387,7 +1598,7 @@ export function drawIsoFloorTile(
     leftEdge = '#6b421c';
     rightEdge = '#885626';
   } else if (theme === 'rooftop') {
-    topColor = tileChar === '1' ? '#68768c' : isEven ? '#525e70' : '#455061';
+    topColor = tileChar === '2' ? '#7a889e' : tileChar === '1' ? '#68768c' : isEven ? '#525e70' : '#455061';
     leftEdge = '#242b36';
     rightEdge = '#343e4d';
     border = 'rgba(255,255,255,0.10)';
@@ -1418,7 +1629,7 @@ export function drawIsoFloorTile(
   // Subtle top-left bevel highlight so every tile pops crisply
   ctx.strokeStyle =
     tileChar === 'w'
-      ? 'rgba(224,242,254,0.65)'
+      ? 'rgba(224,242,254,0.72)'
       : theme === 'rooftop'
       ? 'rgba(255,255,255,0.16)'
       : 'rgba(255,255,255,0.35)';
@@ -1457,18 +1668,65 @@ export function drawIsoFloorTile(
 
   // Surface textures by tileChar / theme
   if (tileChar === 'w') {
+    // Submerged mosaic pool floor grid + shimmering white pixel ripples
+    ctx.strokeStyle = 'rgba(224, 242, 254, 0.2)';
+    ctx.beginPath();
+    ctx.moveTo(sx - 16, sy + hh - 8);
+    ctx.lineTo(sx + 16, sy + hh + 8);
+    ctx.moveTo(sx + 16, sy + hh - 8);
+    ctx.lineTo(sx - 16, sy + hh + 8);
+    ctx.stroke();
     const sh = ((animTick + gx) % 3) * 4;
-    px(ctx, sx - 10 + sh, sy + hh - 3, 7, 2, 'rgba(255,255,255,0.55)');
-    px(ctx, sx - 3, sy + hh + 4, 6, 1, 'rgba(186,230,253,0.65)');
+    px(ctx, sx - 10 + sh, sy + hh - 3, 7, 2, 'rgba(255,255,255,0.62)');
+    px(ctx, sx - 3, sy + hh + 4, 6, 1, 'rgba(186,230,253,0.72)');
+  } else if (tileChar === 'l') {
+    // Chrome pool ladder twin rails + 3 rungs connecting sunken water to deck
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(sx - 9, sy + hh - 10);
+    ctx.lineTo(sx - 9, sy + hh + 9);
+    ctx.moveTo(sx + 5, sy + hh - 4);
+    ctx.lineTo(sx + 5, sy + hh + 13);
+    ctx.stroke();
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 1;
+    for (const rOff of [-4, 2, 7]) {
+      px(ctx, sx - 9, sy + hh + rOff, 14, 2, '#f8fafc');
+    }
+  } else if (tileChar === '3') {
+    // Rocky cliff striations & mossy green tufts
+    px(ctx, sx - 12, sy + hh - 2, 10, 3, '#546e7a');
+    px(ctx, sx + 2, sy + hh + 2, 8, 2, '#90a4ae');
+    px(ctx, sx - 6, sy + hh - 7, 6, 3, '#4ade80');
+    px(ctx, sx + 6, sy + hh - 3, 5, 2, '#22c55e');
+    // Rock cliff face cracks
+    px(ctx, sx - 18, sy + hh + 14, 10, 2, '#263238');
+    px(ctx, sx + 8, sy + hh + 18, 10, 2, '#263238');
+  } else if (tileChar === 'c') {
+    // Cobblestone bricks
+    px(ctx, sx - 10, sy + hh - 3, 6, 3, '#94a3b8');
+    px(ctx, sx + 1, sy + hh - 1, 7, 3, '#e2e8f0');
+    px(ctx, sx - 4, sy + hh + 4, 6, 3, '#94a3b8');
   } else if (tileChar === 's') {
     // Stair step lines
-    ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+    ctx.strokeStyle = 'rgba(0,0,0,0.34)';
     ctx.beginPath();
     ctx.moveTo(sx - 16, sy + hh - 6);
     ctx.lineTo(sx + 16, sy + hh + 10);
     ctx.moveTo(sx - 16, sy + hh);
     ctx.lineTo(sx + 16, sy + hh + 16);
     ctx.stroke();
+  } else if (theme === 'wood_deck') {
+    // Wooden deck planks along isometric lines
+    ctx.strokeStyle = 'rgba(72, 34, 8, 0.34)';
+    ctx.beginPath();
+    ctx.moveTo(sx - 20, sy + hh - 5);
+    ctx.lineTo(sx + 12, sy + hh + 11);
+    ctx.moveTo(sx - 10, sy + hh - 10);
+    ctx.lineTo(sx + 20, sy + hh + 5);
+    ctx.stroke();
+    px(ctx, sx - 6, sy + hh + 1, 4, 1, 'rgba(255, 224, 178, 0.4)');
   } else if (theme === 'parquet') {
     ctx.strokeStyle = 'rgba(72, 34, 8, 0.22)';
     ctx.beginPath();
@@ -1685,21 +1943,224 @@ export function drawBanzaiTileOverlay(
   }
 }
 
+function getHeightForChar(ch: string): number {
+  switch (ch) {
+    case 'w':
+      return 0.125;
+    case 'l':
+      return 0.55;
+    case '0':
+      return 0;
+    case '1':
+    case 'b':
+    case 'c':
+      return 1;
+    case 's':
+      return 1.5;
+    case '2':
+      return 2;
+    case '3':
+    case 'd':
+      return 3;
+    default:
+      return 0;
+  }
+}
+
+function getLayoutChar(layout: string[], x: number, y: number): string {
+  if (y < 0 || y >= layout.length) return 'x';
+  const row = layout[y];
+  if (!row || x < 0 || x >= row.length) return 'x';
+  return row[x];
+}
+
 /**
- * Draws authentic 3D Habbo isometric back walls with top thickness cap, textured wallpaper, windows & pixel art.
+ * Draws either:
+ * - Outdoor ornate rooftop parapets / railings (+ classic orange Habbo Hotel facade on Rooftop Pool), OR
+ * - Perimeter-following indoor 3D Habbo walls with arched windows & pixel art.
  */
-export function drawRoomWalls(
+export function drawRoomWallsOrParapets(
   ctx: CanvasRenderingContext2D,
-  layout: string[],
+  room: RoomDef,
   originX: number,
   originY: number,
-  theme: RoomWallTheme,
   animTick: number
 ) {
-  const wallH = 108;
   const hw = 32;
   const hh = 16;
+  const layout = room.layout;
+  const theme = room.wallTheme;
 
+  if (room.outdoor) {
+    const railH = 16;
+    let railLeft = '#b0bec5';
+    let railRight = '#cfd8dc';
+    let railCap = '#eceff1';
+    let balusterCol = '#607d8b';
+
+    if (theme === 'rooftop_hotel') {
+      railLeft = '#8d6e63';
+      railRight = '#a1887f';
+      railCap = '#d7ccc8';
+      balusterCol = '#4e342e';
+    } else if (theme === 'neon') {
+      railLeft = '#1e1b4b';
+      railRight = '#312e81';
+      railCap = animTick % 2 === 0 ? '#22d3ee' : '#ec4899';
+      balusterCol = '#0f172a';
+    } else if (theme === 'nightsky') {
+      railLeft = '#334155';
+      railRight = '#475569';
+      railCap = '#94a3b8';
+      balusterCol = '#1e293b';
+    } else if (theme === 'park_hedge') {
+      railLeft = '#15803d';
+      railRight = '#16a34a';
+      railCap = '#4ade80';
+      balusterCol = '#14532d';
+    }
+
+    for (let y = 0; y < layout.length; y++) {
+      for (let x = 0; x < layout[y].length; x++) {
+        const ch = layout[y][x];
+        if (ch === 'x' || ch === '3') continue;
+        const z = getHeightForChar(ch);
+        const sx = originX + (x - y) * hw;
+        const sy = originY + (x + y) * hh - z * 16;
+
+        const leftVoid = getLayoutChar(layout, x - 1, y) === 'x';
+        const topVoid = getLayoutChar(layout, x, y - 1) === 'x';
+
+        // Classic Orange Habbo Hotel Facade along upper-left wing of Rooftop Pool (x=1, y=1..7)
+        if (room.rooftopHotelFacade && leftVoid && x === 1 && y >= 1 && y <= 7) {
+          const facadeH = 112;
+          drawIsoPoly(
+            ctx,
+            [
+              [sx - hw, sy + hh],
+              [sx, sy],
+              [sx, sy - facadeH],
+              [sx - hw, sy + hh - facadeH],
+            ],
+            '#f57c00',
+            '#b45309'
+          );
+          // Orange roof coping cap
+          drawIsoPoly(
+            ctx,
+            [
+              [sx - hw, sy + hh - facadeH],
+              [sx, sy - facadeH],
+              [sx - 6, sy - facadeH - 3],
+              [sx - hw - 6, sy + hh - facadeH - 3],
+            ],
+            '#ffb74d',
+            '#1b1922'
+          );
+          // Horizontal facade ribbing
+          for (let h = 24; h < facadeH - 12; h += 26) {
+            ctx.strokeStyle = '#e65100';
+            ctx.beginPath();
+            ctx.moveTo(sx - hw + 1, sy + hh - h);
+            ctx.lineTo(sx - 1, sy - h);
+            ctx.stroke();
+          }
+          // Glowing hotel guest-room pixel windows!
+          const winLit = (y + Math.floor(animTick / 8)) % 2 === 0;
+          drawIsoPoly(
+            ctx,
+            [
+              [sx - hw + 6, sy + hh - 34],
+              [sx - 6, sy - 26],
+              [sx - 6, sy - 62],
+              [sx - hw + 6, sy + hh - 70],
+            ],
+            winLit ? '#fef08a' : '#38bdf8',
+            '#7c2d12'
+          );
+          drawIsoPoly(
+            ctx,
+            [
+              [sx - hw + 6, sy + hh - 74],
+              [sx - 6, sy - 66],
+              [sx - 6, sy - 96],
+              [sx - hw + 6, sy + hh - 104],
+            ],
+            y % 2 === 0 ? '#7dd3fc' : '#fde047',
+            '#7c2d12'
+          );
+          continue;
+        }
+
+        if (leftVoid) {
+          // Left-back rooftop parapet railing with stone balusters
+          drawIsoPoly(
+            ctx,
+            [
+              [sx - hw, sy + hh],
+              [sx, sy],
+              [sx, sy - railH],
+              [sx - hw, sy + hh - railH],
+            ],
+            railLeft,
+            '#1b1922'
+          );
+          drawIsoPoly(
+            ctx,
+            [
+              [sx - hw, sy + hh - railH],
+              [sx, sy - railH],
+              [sx - 4, sy - railH - 2],
+              [sx - hw - 4, sy + hh - railH - 2],
+            ],
+            railCap,
+            '#1b1922'
+          );
+          // Baluster cutouts / pillars
+          for (const t of [0.25, 0.65]) {
+            const bx = sx - hw * (1 - t);
+            const by = sy + hh * (1 - t);
+            px(ctx, bx - 2, by - railH + 4, 4, railH - 6, balusterCol);
+          }
+        }
+
+        if (topVoid) {
+          // Right-back rooftop parapet railing with stone balusters
+          drawIsoPoly(
+            ctx,
+            [
+              [sx, sy],
+              [sx + hw, sy + hh],
+              [sx + hw, sy + hh - railH],
+              [sx, sy - railH],
+            ],
+            railRight,
+            '#1b1922'
+          );
+          drawIsoPoly(
+            ctx,
+            [
+              [sx, sy - railH],
+              [sx + hw, sy + hh - railH],
+              [sx + hw + 4, sy + hh - railH - 2],
+              [sx + 4, sy - railH - 2],
+            ],
+            railCap,
+            '#1b1922'
+          );
+          for (const t of [0.25, 0.65]) {
+            const bx = sx + hw * t;
+            const by = sy + hh * t;
+            px(ctx, bx - 2, by - railH + 4, 4, railH - 6, balusterCol);
+          }
+        }
+      }
+    }
+    return;
+  }
+
+  // Indoor perimeter-following 3D Habbo walls
+  const wallH = 104;
   let leftWall = '#b9c9d6';
   let rightWall = '#d7e3ec';
   let capColor = '#eef4f8';
@@ -1730,221 +2191,255 @@ export function drawRoomWalls(
     capColor = '#4c1d95';
     trimColor = '#0f172a';
     stripeColor = 'rgba(34, 211, 238, 0.22)';
-  } else if (theme === 'lido_sky') {
-    leftWall = '#0ea5e9';
-    rightWall = '#38bdf8';
-    capColor = '#facc15';
-    trimColor = '#e2c08d';
-    stripeColor = 'rgba(255,255,255,0.24)';
-  } else if (theme === 'park_hedge') {
-    leftWall = '#15803d';
-    rightWall = '#16a34a';
-    capColor = '#4ade80';
-    trimColor = '#78716c';
-    stripeColor = 'rgba(20, 83, 45, 0.25)';
+  } else if (theme === 'cream') {
+    leftWall = '#c8beae';
+    rightWall = '#e3dacb';
+    capColor = '#f5efe6';
+    trimColor = '#78350f';
+    stripeColor = 'rgba(120, 53, 15, 0.08)';
   }
 
-  // Find bounding walkable rectangle for classic Habbo L-wall
-  let minX = 999;
-  let maxX = -1;
-  let minY = 999;
-  let maxY = -1;
   for (let y = 0; y < layout.length; y++) {
     for (let x = 0; x < layout[y].length; x++) {
-      if (layout[y][x] !== 'x') {
-        minX = Math.min(minX, x);
-        maxX = Math.max(maxX, x);
-        minY = Math.min(minY, y);
-        maxY = Math.max(maxY, y);
-      }
-    }
-  }
+      const ch = layout[y][x];
+      if (ch === 'x') continue;
+      const z = getHeightForChar(ch);
+      const sx = originX + (x - y) * hw;
+      const sy = originY + (x + y) * hh - z * 16;
 
-  // Left wall runs along x = minX, y = minY..maxY
-  for (let y = minY; y <= maxY; y++) {
-    const sx = originX + (minX - y) * hw;
-    const sy = originY + (minX + y) * hh;
-    drawIsoPoly(
-      ctx,
-      [
-        [sx - hw, sy + hh],
-        [sx, sy],
-        [sx, sy - wallH],
-        [sx - hw, sy + hh - wallH],
-      ],
-      leftWall,
-      'rgba(0,0,0,0.12)'
-    );
+      const leftVoid = getLayoutChar(layout, x - 1, y) === 'x';
+      const topVoid = getLayoutChar(layout, x, y - 1) === 'x';
 
-    // Top wall thickness bevel cap
-    drawIsoPoly(
-      ctx,
-      [
-        [sx - hw, sy + hh - wallH],
-        [sx, sy - wallH],
-        [sx - 5, sy - wallH - 3],
-        [sx - hw - 5, sy + hh - wallH - 3],
-      ],
-      capColor,
-      '#1b1922'
-    );
-
-    // Wallpaper texture stripes/bricks
-    if (theme === 'brick') {
-      for (let h = 18; h < wallH - 8; h += 12) {
+      if (leftVoid) {
+        drawIsoPoly(
+          ctx,
+          [
+            [sx - hw, sy + hh],
+            [sx, sy],
+            [sx, sy - wallH],
+            [sx - hw, sy + hh - wallH],
+          ],
+          leftWall,
+          'rgba(0,0,0,0.12)'
+        );
+        drawIsoPoly(
+          ctx,
+          [
+            [sx - hw, sy + hh - wallH],
+            [sx, sy - wallH],
+            [sx - 5, sy - wallH - 3],
+            [sx - hw - 5, sy + hh - wallH - 3],
+          ],
+          capColor,
+          '#1b1922'
+        );
         ctx.strokeStyle = stripeColor;
         ctx.beginPath();
-        ctx.moveTo(sx - hw + 2, sy + hh - h);
-        ctx.lineTo(sx - 2, sy - h);
+        ctx.moveTo(sx - hw / 2, sy + hh / 2 - 12);
+        ctx.lineTo(sx - hw / 2, sy + hh / 2 - wallH + 6);
         ctx.stroke();
+
+        drawIsoPoly(
+          ctx,
+          [
+            [sx - hw, sy + hh],
+            [sx, sy],
+            [sx, sy - 11],
+            [sx - hw, sy + hh - 11],
+          ],
+          trimColor
+        );
+
+        // Arched / Skyline Windows on left wall segments
+        if (y === 3 || y === 6) {
+          const skyColor = theme === 'nightsky' ? '#0f172a' : '#7dd3fc';
+          drawIsoPoly(
+            ctx,
+            [
+              [sx - hw + 5, sy + hh - 30],
+              [sx - 5, sy - 22],
+              [sx - 5, sy - 76],
+              [sx - hw + 5, sy + hh - 84],
+            ],
+            '#475569',
+            '#1b1922'
+          );
+          drawIsoPoly(
+            ctx,
+            [
+              [sx - hw + 7, sy + hh - 33],
+              [sx - 7, sy - 25],
+              [sx - 7, sy - 73],
+              [sx - hw + 7, sy + hh - 81],
+            ],
+            skyColor,
+            '#334155'
+          );
+          px(ctx, sx - 21, sy - 56, 7, 3, '#ffffff');
+        }
       }
-    } else {
-      ctx.strokeStyle = stripeColor;
-      ctx.beginPath();
-      ctx.moveTo(sx - hw / 2, sy + hh / 2 - 12);
-      ctx.lineTo(sx - hw / 2, sy + hh / 2 - wallH + 6);
-      ctx.stroke();
-    }
 
-    // Wainscoting chair rail & baseboard
-    drawIsoPoly(
-      ctx,
-      [
-        [sx - hw, sy + hh],
-        [sx, sy],
-        [sx, sy - 11],
-        [sx - hw, sy + hh - 11],
-      ],
-      trimColor
-    );
-
-    // Classic Habbo Skyline Windows
-    if (y === minY + 2 || y === minY + 5) {
-      const skyColor = theme === 'nightsky' ? '#0f172a' : '#7dd3fc';
-      drawIsoPoly(
-        ctx,
-        [
-          [sx - hw + 5, sy + hh - 30],
-          [sx - 5, sy - 22],
-          [sx - 5, sy - 76],
-          [sx - hw + 5, sy + hh - 84],
-        ],
-        '#475569',
-        '#1b1922'
-      );
-      drawIsoPoly(
-        ctx,
-        [
-          [sx - hw + 7, sy + hh - 33],
-          [sx - 7, sy - 25],
-          [sx - 7, sy - 73],
-          [sx - hw + 7, sy + hh - 81],
-        ],
-        skyColor,
-        '#334155'
-      );
-      // Window mullion crossbars
-      ctx.strokeStyle = '#cbd5e1';
-      ctx.beginPath();
-      ctx.moveTo(sx - hw / 2, sy + hh / 2 - 29);
-      ctx.lineTo(sx - hw / 2, sy + hh / 2 - 77);
-      ctx.moveTo(sx - hw + 7, sy + hh - 53);
-      ctx.lineTo(sx - 7, sy - 49);
-      ctx.stroke();
-      if (theme === 'nightsky') {
-        const starBright = animTick % 2 === 0 ? '#fef08a' : '#bae6fd';
-        px(ctx, sx - 18, sy - 58, 2, 2, starBright);
-        px(ctx, sx - 12, sy - 42, 2, 2, '#ffffff');
-      } else {
-        // Distant sunlit cloud in window
-        px(ctx, sx - 21, sy - 56, 7, 3, '#ffffff');
-      }
-    }
-  }
-
-  // Right wall runs along y = minY, x = minX..maxX
-  for (let x = minX; x <= maxX; x++) {
-    const sx = originX + (x - minY) * hw;
-    const sy = originY + (x + minY) * hh;
-    drawIsoPoly(
-      ctx,
-      [
-        [sx, sy],
-        [sx + hw, sy + hh],
-        [sx + hw, sy + hh - wallH],
-        [sx, sy - wallH],
-      ],
-      rightWall,
-      'rgba(0,0,0,0.12)'
-    );
-
-    // Top wall thickness bevel cap
-    drawIsoPoly(
-      ctx,
-      [
-        [sx, sy - wallH],
-        [sx + hw, sy + hh - wallH],
-        [sx + hw + 5, sy + hh - wallH - 3],
-        [sx + 5, sy - wallH - 3],
-      ],
-      capColor,
-      '#1b1922'
-    );
-
-    if (theme === 'brick') {
-      for (let h = 18; h < wallH - 8; h += 12) {
+      if (topVoid) {
+        drawIsoPoly(
+          ctx,
+          [
+            [sx, sy],
+            [sx + hw, sy + hh],
+            [sx + hw, sy + hh - wallH],
+            [sx, sy - wallH],
+          ],
+          rightWall,
+          'rgba(0,0,0,0.12)'
+        );
+        drawIsoPoly(
+          ctx,
+          [
+            [sx, sy - wallH],
+            [sx + hw, sy + hh - wallH],
+            [sx + hw + 5, sy + hh - wallH - 3],
+            [sx + 5, sy - wallH - 3],
+          ],
+          capColor,
+          '#1b1922'
+        );
         ctx.strokeStyle = stripeColor;
         ctx.beginPath();
-        ctx.moveTo(sx + 2, sy - h);
-        ctx.lineTo(sx + hw - 2, sy + hh - h);
+        ctx.moveTo(sx + hw / 2, sy + hh / 2 - 12);
+        ctx.lineTo(sx + hw / 2, sy + hh / 2 - wallH + 6);
         ctx.stroke();
+
+        drawIsoPoly(
+          ctx,
+          [
+            [sx, sy],
+            [sx + hw, sy + hh],
+            [sx + hw, sy + hh - 11],
+            [sx, sy - 11],
+          ],
+          trimColor
+        );
+
+        // Arched Welcome Lounge windows or framed Habbo art
+        if (x === 3 || x === 6) {
+          if (theme === 'cream') {
+            drawIsoPoly(
+              ctx,
+              [
+                [sx + 6, sy - 24],
+                [sx + hw - 6, sy + hh - 32],
+                [sx + hw - 6, sy + hh - 78],
+                [sx + 6, sy - 70],
+              ],
+              '#7dd3fc',
+              '#78350f'
+            );
+            px(ctx, sx + 12, sy - 56, 8, 3, '#ffffff');
+          } else {
+            drawIsoPoly(
+              ctx,
+              [
+                [sx + 6, sy - 34],
+                [sx + hw - 6, sy + hh - 42],
+                [sx + hw - 6, sy + hh - 76],
+                [sx + 6, sy - 68],
+              ],
+              '#f59e0b',
+              '#451a03'
+            );
+            drawIsoPoly(
+              ctx,
+              [
+                [sx + 9, sy - 39],
+                [sx + hw - 9, sy + hh - 46],
+                [sx + hw - 9, sy + hh - 71],
+                [sx + 9, sy - 64],
+              ],
+              x === 3 ? '#1d4ed8' : '#991b1b'
+            );
+            px(ctx, sx + 14, sy - 50, 5, 5, '#fef08a');
+          }
+        }
       }
-    } else {
-      ctx.strokeStyle = stripeColor;
-      ctx.beginPath();
-      ctx.moveTo(sx + hw / 2, sy + hh / 2 - 12);
-      ctx.lineTo(sx + hw / 2, sy + hh / 2 - wallH + 6);
-      ctx.stroke();
-    }
-
-    // Baseboard
-    drawIsoPoly(
-      ctx,
-      [
-        [sx, sy],
-        [sx + hw, sy + hh],
-        [sx + hw, sy + hh - 11],
-        [sx, sy - 11],
-      ],
-      trimColor
-    );
-
-    // Pixel paintings on walls (Duck & Hotel Dragon portraits)
-    if (x === minX + 3 || x === minX + 6) {
-      drawIsoPoly(
-        ctx,
-        [
-          [sx + 6, sy - 34],
-          [sx + hw - 6, sy + hh - 42],
-          [sx + hw - 6, sy + hh - 76],
-          [sx + 6, sy - 68],
-        ],
-        '#f59e0b',
-        '#451a03'
-      );
-      drawIsoPoly(
-        ctx,
-        [
-          [sx + 9, sy - 39],
-          [sx + hw - 9, sy + hh - 46],
-          [sx + hw - 9, sy + hh - 71],
-          [sx + 9, sy - 64],
-        ],
-        x === minX + 3 ? '#1d4ed8' : '#991b1b'
-      );
-      px(ctx, sx + 14, sy - 50, 5, 5, '#fef08a');
     }
   }
+}
+
+export function drawRoomWalls(
+  ctx: CanvasRenderingContext2D,
+  layout: string[],
+  originX: number,
+  originY: number,
+  theme: RoomWallTheme,
+  animTick: number
+) {
+  drawRoomWallsOrParapets(
+    ctx,
+    {
+      id: 'compat',
+      name: 'Room',
+      owner: 'Hotel',
+      description: '',
+      category: 'public',
+      floorTheme: 'marble',
+      wallTheme: theme,
+      layout,
+      spawn: { x: 2, y: 2 },
+      baseOccupancy: 1,
+      initialFurni: [],
+    },
+    originX,
+    originY,
+    animTick
+  );
+}
+
+/**
+ * Draws the animated turquoise waterfall tumbling from the rocky cliff into the Rooftop Pool,
+ * plus floating orange & yellow swimming lane buoys.
+ */
+export function drawRooftopWaterfall(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  animTick: number
+) {
+  const shift = (animTick % 3) * 4;
+  // Mossy rock lip overhang where the spring spills out
+  outlinedRect(ctx, sx - 12, sy - 4, 20, 7, '#607d8b', '#90a4ae', '#263238');
+  px(ctx, sx - 10, sy - 4, 6, 2, '#4ade80');
+  // Cascading turquoise water sheet pouring down-left along cliff face into pool tile (9,2)
+  drawIsoPoly(
+    ctx,
+    [
+      [sx - 10, sy + 2],
+      [sx + 8, sy + 6],
+      [sx - 8, sy + 52],
+      [sx - 24, sy + 44],
+    ],
+    '#0288d1',
+    '#01579b'
+  );
+  // White rushing foam streaks
+  px(ctx, sx - 12, sy + 10 + shift, 3, 18, '#e0f2fe');
+  px(ctx, sx - 6, sy + 16 + ((shift + 4) % 10), 3, 18, '#bae6fd');
+  px(ctx, sx - 1, sy + 12 + shift, 2, 16, '#ffffff');
+  // Splash foam ring at bottom inside pool
+  px(ctx, sx - 28, sy + 44 + (animTick % 2), 26, 6, '#e0f2fe');
+  px(ctx, sx - 23, sy + 42 - (animTick % 2), 16, 3, '#ffffff');
+}
+
+export function drawPoolLaneBuoy(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  animTick: number,
+  index = 0
+) {
+  const bob = (animTick + index) % 2 === 0 ? 0 : 1;
+  const col = index % 2 === 0 ? '#f97316' : '#facc15';
+  const hi = index % 2 === 0 ? '#fdba74' : '#fef08a';
+  outlinedRect(ctx, sx - 5, sy + 9 + bob, 10, 6, col, hi, '#7c2d12');
+  px(ctx, sx - 3, sy + 15 + bob, 6, 1, 'rgba(224,242,254,0.8)');
 }
 
 /**
@@ -2132,40 +2627,44 @@ export function getBadgeSprite(
  * Renders a crisp miniature isometric room thumbnail (84x52) for the 2-tab Habbo Navigator.
  */
 export function getRoomThumbnailImage(room: RoomDef): string {
-  const key = `rthumb|${room.id}|${room.floorTheme}|${room.wallTheme}`;
+  const key = `rthumb|${room.id}|${room.floorTheme}|${room.wallTheme}|${room.outdoor ? '1' : '0'}`;
   const cached = roomThumbCache.get(key);
   if (cached) return cached;
 
   const { canvas, ctx } = makeOffscreen(84, 52);
-  const bg =
-    room.floorTheme === 'lido_deck'
-      ? '#0284c7'
-      : room.floorTheme === 'rooftop' || room.floorTheme === 'disco'
-      ? '#1e1b4b'
-      : room.floorTheme === 'banzai'
-      ? '#0f172a'
-      : room.floorTheme === 'park_grass'
-      ? '#15803d'
-      : '#2c4c6e';
+  const bg = room.outdoor
+    ? '#000000'
+    : room.floorTheme === 'banzai'
+    ? '#0f172a'
+    : '#141414';
   px(ctx, 0, 0, 84, 52, bg);
 
-  const wallCol =
-    room.wallTheme === 'lido_sky'
-      ? '#38bdf8'
-      : room.wallTheme === 'nightsky' || room.wallTheme === 'neon'
-      ? '#312e81'
-      : room.wallTheme === 'park_hedge'
-      ? '#22c55e'
-      : '#b9c9d6';
-
-  // Mini L-wall silhouette
-  drawIsoPoly(ctx, [[42, 6], [72, 20], [72, 32], [42, 18]], wallCol);
-  drawIsoPoly(ctx, [[42, 6], [12, 20], [12, 32], [42, 18]], shadeHex(wallCol, -18));
+  if (!room.outdoor) {
+    const wallCol =
+      room.wallTheme === 'nightsky' || room.wallTheme === 'neon'
+        ? '#312e81'
+        : room.wallTheme === 'cream'
+        ? '#e3dacb'
+        : '#b9c9d6';
+    drawIsoPoly(ctx, [[42, 6], [72, 20], [72, 32], [42, 18]], wallCol);
+    drawIsoPoly(ctx, [[42, 6], [12, 20], [12, 32], [42, 18]], shadeHex(wallCol, -18));
+  } else if (room.rooftopHotelFacade) {
+    // Classic orange hotel facade wing on upper-left
+    drawIsoPoly(ctx, [[42, 4], [12, 18], [12, 32], [42, 18]], '#f57c00', '#7c2d12');
+    px(ctx, 20, 18, 4, 4, '#fef08a');
+    px(ctx, 30, 13, 4, 4, '#7dd3fc');
+  } else {
+    // Low outdoor rooftop parapet rim
+    drawIsoPoly(ctx, [[42, 14], [72, 28], [72, 32], [42, 18]], '#90a4ae');
+    drawIsoPoly(ctx, [[42, 14], [12, 28], [12, 32], [42, 18]], '#607d8b');
+  }
 
   // Mini floor diamond
   const floorCol =
     room.floorTheme === 'lido_deck'
       ? '#f5ebd6'
+      : room.floorTheme === 'wood_deck'
+      ? '#c88b4b'
       : room.floorTheme === 'park_grass'
       ? '#4da342'
       : room.floorTheme === 'disco'
@@ -2178,9 +2677,13 @@ export function getRoomThumbnailImage(room: RoomDef): string {
 
   drawIsoPoly(ctx, [[42, 18], [72, 32], [42, 46], [12, 32]], floorCol, '#141414');
 
-  // If The Lido or Park, draw mini turquoise pool diamond!
-  if (room.floorTheme === 'lido_deck' || room.floorTheme === 'park_grass') {
-    drawIsoPoly(ctx, [[44, 24], [60, 32], [44, 40], [28, 32]], '#06b6d4', '#0369a1');
+  // Pool / Pond / Waterfall accents
+  if (room.floorTheme === 'lido_deck' || room.floorTheme === 'wood_deck' || room.floorTheme === 'park_grass') {
+    drawIsoPoly(ctx, [[45, 24], [61, 32], [45, 40], [29, 32]], '#0288d1', '#01579b');
+  }
+  if (room.rooftopHotelFacade) {
+    drawIsoPoly(ctx, [[56, 15], [66, 20], [56, 25], [46, 20]], '#78909c', '#37474f');
+    px(ctx, 54, 22, 4, 9, '#29b6f6');
   }
 
   const url = canvas.toDataURL('image/png');
@@ -2418,4 +2921,95 @@ export function getPetSprite(
   spriteCache.set(key, canvas);
   return canvas;
 }
+
+/**
+ * Renders detailed pixel-art hand-held drinks & snacks with sipping raise animation.
+ */
+export function drawCarryHandItem(
+  ctx: CanvasRenderingContext2D,
+  itemId: string,
+  avatarBaseX: number,
+  avatarBaseY: number,
+  dir: Direction,
+  isSipping = false
+) {
+  if (!itemId || itemId === 'none') return;
+  const facingLeft = dir === 1 || dir === 2;
+  const hx = Math.round(avatarBaseX + (facingLeft ? (isSipping ? -8 : -11) : isSipping ? 3 : 6));
+  const hy = Math.round(avatarBaseY - (isSipping ? 26 : 19));
+
+  if (itemId === 'cola') {
+    outlinedRect(ctx, hx, hy, 6, 9, '#dc2626', '#f87171', '#991b1b');
+    px(ctx, hx + 1, hy + 1, 4, 1, '#e2e8f0');
+    px(ctx, hx + 1, hy + 4, 4, 2, '#ffffff');
+  } else if (itemId === 'coffee') {
+    outlinedRect(ctx, hx, hy + 1, 7, 7, '#78350f', '#b45309', '#451a03');
+    px(ctx, hx + 1, hy + 2, 4, 1, '#fef3c7');
+    px(ctx, hx + (facingLeft ? -2 : 7), hy + 3, 2, 3, '#78350f');
+    px(ctx, hx + 2, hy - 2, 1, 2, 'rgba(255,255,255,0.75)');
+    px(ctx, hx + 4, hy - 3, 1, 2, 'rgba(255,255,255,0.55)');
+  } else if (itemId === 'champagne') {
+    outlinedRect(ctx, hx + 1, hy - 2, 5, 6, '#fef08a', '#ffffff', '#ca8a04');
+    px(ctx, hx + 3, hy + 4, 1, 4, '#e2e8f0');
+    px(ctx, hx + 1, hy + 8, 5, 1, '#cbd5e1');
+  } else if (itemId === 'icecream') {
+    // Waffle cone + strawberry & vanilla scoops
+    px(ctx, hx + 2, hy + 5, 3, 4, '#d97706');
+    px(ctx, hx + 3, hy + 8, 1, 2, '#92400e');
+    outlinedRect(ctx, hx + 1, hy + 1, 5, 4, '#f472b6', '#fbcfe8');
+    px(ctx, hx + 2, hy - 1, 3, 2, '#fef9c3');
+    px(ctx, hx + 3, hy - 2, 1, 1, '#ef4444');
+  } else if (itemId === 'carrot') {
+    outlinedRect(ctx, hx + 1, hy + 2, 4, 7, '#f97316', '#fdba74', '#c2410c');
+    px(ctx, hx + 1, hy - 1, 4, 3, '#22c55e');
+    px(ctx, hx + 2, hy - 2, 2, 2, '#4ade80');
+  } else if (itemId === 'rose') {
+    px(ctx, hx + 3, hy + 2, 1, 7, '#16a34a');
+    px(ctx, hx + 4, hy + 5, 2, 1, '#22c55e');
+    outlinedRect(ctx, hx + 1, hy - 2, 5, 5, '#e11d48', '#fda4af', '#881337');
+  }
+}
+
+/**
+ * Renders classic Habbo sign card held above avatar (:sign 1..10, heart, skull).
+ */
+export function drawAvatarSign(
+  ctx: CanvasRenderingContext2D,
+  signCode: string,
+  centerX: number,
+  topY: number
+) {
+  const bx = Math.round(centerX - 11);
+  const by = Math.round(topY - 26);
+  // Wooden pole
+  px(ctx, centerX - 1, by + 18, 2, 8, '#78350f');
+  // White pixel placard
+  outlinedRect(ctx, bx, by, 22, 18, '#ffffff', '#f8fafc', '#cbd5e1');
+  if (signCode === 'heart') {
+    // Pixel Heart
+    px(ctx, bx + 6, by + 5, 4, 3, '#e11d48');
+    px(ctx, bx + 12, by + 5, 4, 3, '#e11d48');
+    px(ctx, bx + 5, by + 7, 12, 4, '#e11d48');
+    px(ctx, bx + 7, by + 11, 8, 2, '#be123c');
+    px(ctx, bx + 9, by + 13, 4, 2, '#9f1239');
+    px(ctx, bx + 7, by + 6, 2, 1, '#fda4af');
+  } else if (signCode === 'skull') {
+    // Pixel Skull
+    px(ctx, bx + 7, by + 4, 8, 6, '#1e293b');
+    px(ctx, bx + 8, by + 3, 6, 1, '#334155');
+    px(ctx, bx + 8, by + 6, 2, 2, '#ffffff');
+    px(ctx, bx + 12, by + 6, 2, 2, '#ffffff');
+    px(ctx, bx + 8, by + 10, 6, 3, '#1e293b');
+    px(ctx, bx + 9, by + 11, 1, 2, '#ffffff');
+    px(ctx, bx + 11, by + 11, 1, 2, '#ffffff');
+    px(ctx, bx + 13, by + 11, 1, 2, '#ffffff');
+  } else {
+    ctx.font = 'bold 11px Tahoma, Verdana, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#1d4ed8';
+    ctx.fillText(signCode, centerX, by + 9);
+  }
+}
+
 

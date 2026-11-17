@@ -378,7 +378,7 @@ export function MeDashboard({
                     <button
                       type="button"
                       onClick={() => onEnterHotel()}
-                      className="habbo-btn-green habbo-pulse px-4 py-2 font-pixel text-[11px] sm:text-xs tracking-wide cursor-pointer whitespace-nowrap shrink-0"
+                      className="habbo-btn-green habbo-pulse px-4 py-2 text-[12px] font-bold uppercase tracking-wide cursor-pointer whitespace-nowrap shrink-0"
                     >
                       ENTER PIXLHOTEL / CHECK IN
                     </button>

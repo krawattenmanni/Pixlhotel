@@ -3,7 +3,7 @@ import type { Direction, PlacedFurni, RoomDef } from './types';
 
 export const TILE_W = 64;
 export const TILE_H = 32;
-export const TILE_Z_PX = 14;
+export const TILE_Z_PX = 16;
 
 export interface Point2D {
   x: number;
@@ -23,17 +23,29 @@ export function getTileHeight(room: RoomDef, gx: number, gy: number): number {
   const ch = getTileChar(room, gx, gy);
   switch (ch) {
     case 'w':
-      return -0.35;
-    case 's':
-      return 0.5;
-    case '1':
-      return 1;
-    case 'd':
-      return 1.25;
-    case '2':
-      return 2;
-    case 'b':
+      // Sunken pool / pond water: 14px below main deck ('1' at z=1 -> 1 - 14/16 = 0.125)
+      return 0.125;
+    case 'l':
+      // Pool ladder transition step between sunken water and main deck
+      return 0.55;
     case '0':
+      // Standard flat floor
+      return 0;
+    case '1':
+    case 'b':
+    case 'c':
+      // Main deck / terrace floor / cobblestone path
+      return 1;
+    case 's':
+      // Staircase transition between deck ('1') and upper terrace ('2')
+      return 1.5;
+    case '2':
+      // Raised upper terrace / DJ stage (+16px above main deck)
+      return 2;
+    case '3':
+    case 'd':
+      // High cliff / diving board tower (+32px above main deck)
+      return 3;
     default:
       return 0;
   }
@@ -86,7 +98,7 @@ export function screenToGrid(
       for (let x = 0; x < row.length; x++) {
         if (row[x] === 'x') continue;
         const z = getTileHeight(room, x, y);
-        candidates.push({ x, y, depth: x + y + z * 0.05 });
+        candidates.push({ x, y, depth: x + y + z * 0.08 });
       }
     }
     candidates.sort((a, b) => b.depth - a.depth);
@@ -135,7 +147,10 @@ export function isTileWalkable(
   if (y < 0 || y >= room.layout.length) return false;
   const row = room.layout[y];
   if (!row || x < 0 || x >= row.length) return false;
-  if (row[x] === 'x') return false;
+  const ch = row[x];
+  if (ch === 'x') return false;
+  // Decorative rocky cliff tops ('3') on Rooftop Pool are non-walkable scenery
+  if (ch === '3') return false;
 
   const itemsOnTile = placedFurni.filter((f) => f.x === x && f.y === y);
   for (const item of itemsOnTile) {
@@ -160,9 +175,17 @@ export function canStepBetweenTiles(
   const fromChar = getTileChar(room, fromX, fromY);
   const toChar = getTileChar(room, toX, toY);
 
-  // Diving board ('d') allows walking from '1' terrace or diving straight into 'w' pool
+  // Diving board ('d') allows walking from '2' tower onto 'd', or diving straight into 'w' pool
+  if (fromChar === '2' && toChar === 'd') return true;
+  if (fromChar === 'd' && toChar === '2') return true;
   if (fromChar === 'd' && toChar === 'w') return true;
-  if (fromChar === 'w' && toChar === 'd') return false; // climb out via pool steps ('0' or 's')
+  if (fromChar === 'w' && toChar === 'd') return false; // climb out via pool ladder ('l')
+  // Pool ladder ('l') smoothly connects sunken pool ('w') and main deck ('1')
+  if ((fromChar === 'w' && toChar === 'l') || (fromChar === 'l' && toChar === 'w')) return true;
+  if ((fromChar === '1' && toChar === 'l') || (fromChar === 'l' && toChar === '1')) return true;
+  // Prevent stepping directly across sheer pool wall without ladder (except diving board)
+  if ((fromChar === 'w' && toChar === '1') || (fromChar === '1' && toChar === 'w')) return false;
+
   return Math.abs(toZ - fromZ) <= 0.75;
 }
 

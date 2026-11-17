@@ -105,11 +105,31 @@ export const CHAT_BUBBLE_STYLES: {
   },
 ];
 
+export type DanceStyleId = 1 | 2 | 3 | 4;
+
+export const VALID_SIGN_CODES = [
+  '1',
+  '2',
+  '3',
+  '4',
+  '5',
+  '6',
+  '7',
+  '8',
+  '9',
+  '10',
+  'heart',
+  'skull',
+] as const;
+
 export type ParsedClientCommand =
   | { type: 'pose'; pose: AvatarPose }
+  | { type: 'dance'; style: DanceStyleId }
+  | { type: 'sign'; sign: string }
   | { type: 'moonwalk' }
   | { type: 'carry'; item: CarryItemId }
   | { type: 'roll'; rolled: number }
+  | { type: 'user_chooser' }
   | { type: 'furni_chooser' }
   | { type: 'commands_help' }
   | { type: 'moodlight_toggle' }
@@ -127,17 +147,39 @@ export function parseClientCommand(rawText: string, rng: () => number = Math.ran
   if (lower === ':sit') {
     return { type: 'pose', pose: 'sit' };
   }
+  if (lower === ':lay') {
+    return { type: 'pose', pose: 'lay' };
+  }
   if (lower === ':stand') {
     return { type: 'pose', pose: 'stand' };
   }
   if (lower === ':dance' || lower === ':habnam' || lower === ':pogo') {
-    return { type: 'pose', pose: 'dance' };
+    return { type: 'dance', style: lower === ':pogo' ? 2 : 1 };
+  }
+  if (lower.startsWith(':dance ')) {
+    const arg = Number(lower.slice(7).trim());
+    if (arg >= 1 && arg <= 4) {
+      return { type: 'dance', style: Math.round(arg) as DanceStyleId };
+    }
+    return { type: 'dance', style: 1 };
+  }
+  if (lower.startsWith(':sign ')) {
+    const arg = lower.slice(6).trim();
+    if ((VALID_SIGN_CODES as readonly string[]).includes(arg)) {
+      return { type: 'sign', sign: arg };
+    }
+    if (arg === 'love') return { type: 'sign', sign: 'heart' };
+    if (arg === 'danger' || arg === 'dead') return { type: 'sign', sign: 'skull' };
+    return { type: 'sign', sign: '1' };
   }
   if (lower === ':moonwalk') {
     return { type: 'moonwalk' };
   }
   if (lower === ':drop' || lower === ':empty') {
     return { type: 'carry', item: 'none' };
+  }
+  if (lower === ':drink') {
+    return { type: 'carry', item: 'cola' };
   }
   if (lower === ':cola' || lower === ':drink cola') {
     return { type: 'carry', item: 'cola' };
@@ -168,7 +210,10 @@ export function parseClientCommand(rawText: string, rng: () => number = Math.ran
     const rolled = Math.floor(rng() * 6) + 1;
     return { type: 'roll', rolled };
   }
-  if (lower === ':furni' || lower === ':chooser') {
+  if (lower === ':chooser') {
+    return { type: 'user_chooser' };
+  }
+  if (lower === ':furni') {
     return { type: 'furni_chooser' };
   }
   if (lower === ':commands' || lower === ':help') {

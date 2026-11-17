@@ -4,7 +4,7 @@ export type AppScreen = 'cms' | 'loading' | 'hotel';
 
 export type Direction = 0 | 1 | 2 | 3; // 0: SE (front-right), 1: SW (front-left), 2: NW (back-left), 3: NE (back-right)
 
-export type AvatarPose = 'stand' | 'walk' | 'sit' | 'wave' | 'dance';
+export type AvatarPose = 'stand' | 'walk' | 'sit' | 'wave' | 'dance' | 'lay';
 
 export type HairStyle = 'spiky' | 'bob' | 'quiff' | 'long' | 'mohawk' | 'curls';
 export type ShirtStyle = 'tee' | 'hoodie' | 'suit' | 'stripes' | 'tank';
@@ -12,6 +12,7 @@ export type ExpressionStyle = 'happy' | 'cool' | 'cheeky' | 'serene';
 export type AccessoryStyle = 'none' | 'crown' | 'headphones' | 'sunglasses' | 'cap';
 
 export interface LookConfig {
+  gender?: 'M' | 'F';
   skinColor: string;
   hairStyle: HairStyle;
   hairColor: string;
@@ -31,6 +32,23 @@ export interface TrophyMetadata {
   engravedAt: string;
 }
 
+export type StickyNoteColor = 'yellow' | 'pink' | 'blue' | 'green';
+
+export interface StickyNoteData {
+  color: StickyNoteColor;
+  text: string;
+  author: string;
+  updatedAt?: string;
+}
+
+export type RoomAccessMode = 'open' | 'doorbell' | 'password';
+
+export interface RoomSettingsPayload {
+  accessMode: RoomAccessMode;
+  password?: string;
+  rights: string[];
+}
+
 export interface FurniItemDef {
   id: string;
   name: string;
@@ -38,9 +56,14 @@ export interface FurniItemDef {
   category: FurniCategory;
   costCredits: number;
   costDuckets: number;
+  catalogAmount?: number;
   hcOnly?: boolean;
   walkable: boolean;
   sittable: boolean;
+  layable?: boolean;
+  stackable?: boolean;
+  isSurface?: boolean;
+  stackHeight?: number;
   seatHeight?: number;
   width: number;
   depth: number;
@@ -49,6 +72,7 @@ export interface FurniItemDef {
   catalogSection?: string;
   animated?: boolean;
   engravable?: boolean;
+  isStickyNote?: boolean;
 }
 
 export interface CatalogPageRow {
@@ -104,9 +128,11 @@ export interface PlacedFurni {
   furniId: string;
   x: number;
   y: number;
+  z?: number;
   dir: Direction;
   state: number; // e.g., 0 off, 1 on/active
   customData?: TrophyMetadata;
+  stickyNote?: StickyNoteData;
 }
 
 export interface InventoryEntry {
@@ -166,6 +192,7 @@ export interface BanzaiTileState {
 
 export type RoomFloorTheme =
   | 'lido_deck'
+  | 'wood_deck'
   | 'parquet'
   | 'marble'
   | 'rooftop'
@@ -176,6 +203,7 @@ export type RoomFloorTheme =
 
 export type RoomWallTheme =
   | 'lido_sky'
+  | 'rooftop_hotel'
   | 'cream'
   | 'navy'
   | 'brick'
@@ -193,10 +221,15 @@ export interface RoomDef {
   categoryNum?: number;
   modelName?: string;
   state?: string;
+  accessMode?: RoomAccessMode;
+  accessPassword?: string;
+  roomRights?: string[];
   usersMax?: number;
+  outdoor?: boolean;
+  rooftopHotelFacade?: boolean;
   floorTheme: RoomFloorTheme;
   wallTheme: RoomWallTheme;
-  /** Row-major grid: 'x' void, '0' floor, '1'/'2' raised terrace, 's' stairs, 'w' pool water, 'b' changing booth, 'd' diving board */
+  /** Row-major heightmap: 'x' void, 'w' sunken water, '0' flat floor, 'l' pool ladder, 'c' cobble path, '1' main deck, 's' stairs, '2' raised terrace, '3' cliff top, 'b' changing booth, 'd' diving board */
   layout: string[];
   spawn: { x: number; y: number };
   initialFurni: PlacedFurni[];
@@ -217,6 +250,7 @@ export interface HabboNPC {
   chatLines: string[];
   badge?: string;
   badges?: string[];
+  respectCount?: number;
 }
 
 export interface SpeechBubble {
@@ -340,6 +374,8 @@ export interface RemotePlayerState {
   targetY: number;
   dir: Direction;
   pose: AvatarPose;
+  danceStyle?: 1 | 2 | 3 | 4;
+  activeSign?: string | null;
   carryItem: string;
   moonwalk: boolean;
   swimming?: boolean;
@@ -347,6 +383,7 @@ export interface RemotePlayerState {
   badge?: string;
   badges: string[];
   rank: AccountRank;
+  respectCount?: number;
   updatedAt: number;
 }
 
@@ -366,6 +403,9 @@ export interface PlayerState {
   equippedBadgeId: string;
   equippedBadges?: string[];
   friendIds: string[];
+  incomingFriendRequests?: string[];
+  outgoingFriendRequests?: string[];
+  respectCount?: number;
   currentRoomId: string;
   pets: OwnedPet[];
   pendingEngravings: Record<string, TrophyMetadata[]>;
@@ -374,6 +414,7 @@ export interface PlayerState {
 export interface PlayerProfileRecord {
   id: string;
   accountId?: string;
+  numericUserId?: number;
   name: string;
   motto: string;
   look: LookConfig;
@@ -386,6 +427,7 @@ export interface PlayerProfileRecord {
   roomId?: string;
   isStaff?: boolean;
   npcId?: string;
+  respectCount?: number;
 }
 
 export interface VoucherResult {

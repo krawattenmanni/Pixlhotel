@@ -22,7 +22,11 @@ import {
 import { authenticateUser, registerUser, syncBadgesWithPlayer } from './game/auth';
 import { buildHotelPlayerDirectory, toggleFriend } from './game/friends';
 import {
+  CATALOG_ITEMS_SEED,
+  CATALOG_PAGES_SEED,
   DEFAULT_LOOK,
+  findFurniDef,
+  getEquippedBadges,
   INITIAL_NEWS,
   INITIAL_NPCS,
   INITIAL_PLAYER_STATE,
@@ -31,6 +35,7 @@ import {
 } from './game/data';
 import {
   buyCatalogueItem,
+  moveFurniInRoom,
   pickupFurniToInventory,
   placeFurniFromInventory,
   purchaseHC,
@@ -53,11 +58,13 @@ import {
   saveCustomBadges,
 } from './game/customBadges';
 import { buyPet, getPetDef } from './game/pets';
-import { soundEngine } from './game/soundEngine';
+import { habboAudio } from './game/habboAudio';
 import {
+  broadcastHotelAlertViaChannel,
   createRoomInSupabase,
   decrementVoucherUsesInSupabase,
   deleteBanInSupabase,
+  deleteCatalogItemInSupabase,
   fetchAllRetroStateFromSupabase,
   insertBanInSupabase,
   insertCatalogueItemsInSupabase,
@@ -65,34 +72,46 @@ import {
   insertUserBadgeInSupabase,
   insertUserPetInSupabase,
   mapBadgeCodeToCatalogId,
+  moveItemInSupabase,
   pickupAllRoomItemsInSupabase,
   pickupItemInSupabase,
   placeItemInSupabase,
   registerUserInSupabase,
   serializeItemExtraData,
+  serializeRoomStateField,
   toggleFriendshipInSupabase,
   transferItemsOwnershipInSupabase,
   updateAccountInSupabase,
   updateItemInSupabase,
+  updateRoomSettingsInSupabase,
   updateUserPetInSupabase,
+  upsertCatalogItemInSupabase,
+  upsertCatalogPageInSupabase,
 } from './game/supabaseSync';
+import type { ConsoleMessage } from './components/hotel/FriendsConsoleModal';
 import { executeTradeTransfer } from './game/trading';
 import { supabase } from './lib/supabase';
 import type {
   AccountRank,
   AppScreen,
   BanRecord,
+  CatalogItemRow,
+  CatalogPageRow,
   CmsTab,
   CustomBadgeDef,
   Direction,
   HabboNPC,
+  HotelAlertPayload,
   LookConfig,
   NewsArticle,
   PetSpecies,
   PlacedFurni,
+  PlayerProfileRecord,
   PlayerState,
   RankDef,
+  RoomAccessMode,
   RoomDef,
+  StickyNoteData,
   TradeSlotItem,
   UserAccount,
   VoucherDef,
@@ -105,6 +124,9 @@ export default function App() {
   const [rooms, setRooms] = useState<RoomDef[]>(INITIAL_ROOMS);
   const [news, setNews] = useState<NewsArticle[]>(INITIAL_NEWS);
   const [vouchers, setVouchers] = useState<VoucherDef[]>([]);
+  const [catalogPages, setCatalogPages] = useState<CatalogPageRow[]>(CATALOG_PAGES_SEED);
+  const [catalogItems, setCatalogItems] = useState<CatalogItemRow[]>(CATALOG_ITEMS_SEED);
+  const [hotelAlert, setHotelAlert] = useState<HotelAlertPayload | null>(null);
   const [customBadges, setCustomBadges] = useState<CustomBadgeDef[]>(() => loadCustomBadges());
 
   const [screen, setScreen] = useState<AppScreen | 'auth'>(() => {
@@ -122,6 +144,14 @@ export default function App() {
   const [moderationState, setModerationState] = useState<RoomModerationState>(() =>
     createInitialModerationState()
   );
+  const [pmThreads, setPmThreads] = useState<Record<string, ConsoleMessage[]>>({});
+  const [unreadPmCount, setUnreadPmCount] = useState(0);
+  const [doorbellQueue, setDoorbellQueue] = useState<{ guestName: string; roomId: string }[]>([]);
+  const [doorbellOutcome, setDoorbellOutcome] = useState<{
+    roomId: string;
+    accepted: boolean;
+    ts: number;
+  } | null>(null);
 
   const [roomFurniMap, setRoomFurniMap] = useState<Record<string, PlacedFurni[]>>(() => {
     const map: Record<string, PlacedFurni[]> = {};
@@ -152,7 +182,7 @@ export default function App() {
 
   useEffect(() => {
     document.body.dataset.state = screen === 'hotel' ? 'playing' : screen;
-    soundEngine.setInGame(screen === 'hotel');
+    habboAudio.setInGame(screen === 'hotel');
   }, [screen]);
 
   useEffect(() => {
@@ -175,6 +205,8 @@ export default function App() {
     if (snap.news.length > 0) setNews(snap.news);
     setVouchers(snap.vouchers);
     vouchersRef.current = snap.vouchers;
+    if (snap.catalogPages.length > 0) setCatalogPages(snap.catalogPages);
+    if (snap.catalogItems.length > 0) setCatalogItems(snap.catalogItems);
     if (snap.customBadges.length > 0) {
       setCustomBadges((prev) => {
         const merged = [...snap.customBadges];
@@ -241,6 +273,63 @@ export default function App() {
       .on('broadcast', { event: 'retro:sync' }, () => {
         if (active) scheduleRefresh();
       })
+      .on('broadcast', { event: 'hotel:alert' }, ({ payload }) => {
+        if (active && payload) {
+          setHotelAlert(payload as HotelAlertPayload);
+        }
+      })
+      .on('broadcast', { event: 'pm:send' }, ({ payload }) => {
+        if (!active || !payload) return;
+        const p = payload as { from?: string; to?: string; text?: string };
+        if (!p.from || !p.to || !p.text) return;
+        if (p.to.toLowerCase() !== playerRef.current.username.toLowerCase()) return;
+        const key = p.from.toLowerCase();
+        const incoming: ConsoleMessage = {
+          id: `pm-in-${Date.now()}-${Math.random()}`,
+          sender: 'them',
+          senderName: p.from,
+          text: p.text,
+          time: 'Now',
+        };
+        setPmThreads((prev) => ({
+          ...prev,
+          [key]: [...(prev[key] ?? []), incoming],
+        }));
+        setUnreadPmCount((c) => c + 1);
+        if (screenRef.current === 'hotel') {
+          habboAudio.playConsoleMessage();
+        }
+      })
+      .on('broadcast', { event: 'doorbell:ring' }, ({ payload }) => {
+        if (!active || !payload) return;
+        const p = payload as { guestName?: string; roomId?: string };
+        if (!p.guestName || !p.roomId) return;
+        if (p.guestName.toLowerCase() === playerRef.current.username.toLowerCase()) return;
+        const targetRoom = roomsRef.current.find((r) => r.id === p.roomId);
+        if (!targetRoom) return;
+        const meName = playerRef.current.username.toLowerCase();
+        const canAnswer =
+          targetRoom.owner.toLowerCase() === meName ||
+          playerRef.current.rank >= 4 ||
+          (targetRoom.roomRights ?? []).some((r) => r.toLowerCase() === meName);
+        if (canAnswer) {
+          setDoorbellQueue((prev) => {
+            if (prev.some((d) => d.guestName === p.guestName && d.roomId === p.roomId)) return prev;
+            return [...prev, { guestName: p.guestName!, roomId: p.roomId! }];
+          });
+        }
+      })
+      .on('broadcast', { event: 'doorbell:answer' }, ({ payload }) => {
+        if (!active || !payload) return;
+        const p = payload as { guestName?: string; roomId?: string; accepted?: boolean };
+        if (!p.guestName || !p.roomId) return;
+        if (p.guestName.toLowerCase() !== playerRef.current.username.toLowerCase()) return;
+        setDoorbellOutcome({
+          roomId: p.roomId,
+          accepted: Boolean(p.accepted),
+          ts: Date.now(),
+        });
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
         if (active) scheduleRefresh();
       })
@@ -251,6 +340,12 @@ export default function App() {
         if (active) scheduleRefresh();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, () => {
+        if (active) scheduleRefresh();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog_pages' }, () => {
+        if (active) scheduleRefresh();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog_items' }, () => {
         if (active) scheduleRefresh();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'user_badges' }, () => {
@@ -322,7 +417,10 @@ export default function App() {
   const handleToggleMute = useCallback(() => {
     setMuted((prev) => {
       const next = !prev;
-      soundEngine.setMuted(next);
+      habboAudio.setMuted(next);
+      if (!next) {
+        habboAudio.playUiClick();
+      }
       return next;
     });
   }, []);
@@ -625,16 +723,18 @@ export default function App() {
       outcome = { ok: res.ok, message: res.message };
 
       if (!res.ok) {
-        soundEngine.playError();
+        habboAudio.playError();
         return outcome;
       }
 
-      soundEngine.playCreditChime();
+      habboAudio.playCoinsPurchase();
       updatePlayer(() => res.player);
 
       // Classic PhoenixEmu Rule: insert into `items` with room_id = 0
       const userId = prevPlayer.numericId;
       if (userId) {
+        const def = findFurniDef(furniId);
+        const totalRowsToInsert = Math.max(1, Math.floor(quantity)) * (def?.catalogAmount ?? 1);
         const queue = res.player.pendingEngravings?.[furniId] ?? [];
         const latestMeta = queue.length > 0 ? queue[queue.length - 1] : undefined;
         const extraData = serializeItemExtraData(0, latestMeta);
@@ -642,7 +742,7 @@ export default function App() {
         void insertCatalogueItemsInSupabase({
           userId,
           furniId,
-          quantity,
+          quantity: totalRowsToInsert,
           extraData,
         }).then((insertedRows) => {
           if (insertedRows.length > 0) {
@@ -673,11 +773,11 @@ export default function App() {
       const spawnTile = { x: room.spawn.x, y: Math.max(1, room.spawn.y - 1) };
       const res = buyPet(prevPlayer, species, customName, room.id, spawnTile);
       if (!res.ok || !res.pet) {
-        soundEngine.playError();
+        habboAudio.playError();
         return { ok: false, message: res.message };
       }
 
-      soundEngine.playCreditChime();
+      habboAudio.playCoinsPurchase();
       const createdPet = res.pet;
       updatePlayer(() => res.player);
 
@@ -714,7 +814,7 @@ export default function App() {
     (roomId: string) => {
       const room = roomsRef.current.find((r) => r.id === roomId) ?? roomsRef.current[0];
       const dbRoomId = room.numericId ?? (Number(roomId) || 1);
-      soundEngine.playClick();
+      habboAudio.playUiClick();
       const updatedPets = (playerRef.current.pets ?? []).map((p, idx) => ({
         ...p,
         roomId: room.id,
@@ -741,7 +841,7 @@ export default function App() {
 
   const handleCarePet = useCallback(
     (petId: string, kind: 'feed' | 'play') => {
-      soundEngine.playCreditChime();
+      habboAudio.playCoinsPurchase();
       let updatedTarget: { numericId?: number; hunger: number; happiness: number } | null = null;
       updatePlayer((prev) => ({
         ...prev,
@@ -794,11 +894,11 @@ export default function App() {
         receivedCredits
       );
       if (!res.ok) {
-        soundEngine.playError();
+        habboAudio.playError();
         return { ok: false, message: res.message };
       }
 
-      soundEngine.playCreditChime();
+      habboAudio.playCoinsPurchase();
       updatePlayer(() => res.player);
 
       if (prevPlayer.numericId) {
@@ -837,7 +937,7 @@ export default function App() {
 
   const handleAwardBanzaiReward = useCallback(
     (credits: number, duckets: number) => {
-      soundEngine.playCreditChime();
+      habboAudio.playCoinsPurchase();
       updatePlayer((prev) => ({
         ...prev,
         credits: prev.credits + credits,
@@ -910,6 +1010,7 @@ export default function App() {
             roomId: dbRoomId,
             x,
             y,
+            z: newlyPlaced.z ?? 0,
             rot: dir,
           }).then(() => {
             broadcastSyncEvent({ type: 'furni:place', roomId });
@@ -919,7 +1020,11 @@ export default function App() {
             userId: currentPlayer.numericId,
             furniId,
             quantity: 1,
-            extraData: serializeItemExtraData(newlyPlaced.state, newlyPlaced.customData),
+            extraData: serializeItemExtraData(
+              newlyPlaced.state,
+              newlyPlaced.customData,
+              newlyPlaced.stickyNote
+            ),
           }).then(async (rows) => {
             if (rows[0]) {
               await placeItemInSupabase({
@@ -927,6 +1032,7 @@ export default function App() {
                 roomId: dbRoomId,
                 x,
                 y,
+                z: newlyPlaced.z ?? 0,
                 rot: dir,
               });
             }
@@ -937,6 +1043,35 @@ export default function App() {
       return { ok: res.ok, message: res.message };
     },
     [broadcastSyncEvent, updatePlayer]
+  );
+
+  const handleMoveFurni = useCallback(
+    (roomId: string, uid: string, x: number, y: number): { ok: boolean; message: string } => {
+      const room = roomsRef.current.find((r) => r.id === roomId);
+      if (!room) return { ok: false, message: 'Room not found.' };
+      const currentPlaced = roomFurniMapRef.current[roomId] ?? [];
+      const res = moveFurniInRoom(currentPlaced, room, uid, x, y);
+      if (!res.ok || !res.moved) {
+        return { ok: false, message: res.message };
+      }
+      setRoomFurniMap((prev) => ({
+        ...prev,
+        [roomId]: res.placedFurni,
+      }));
+      const itemId = res.moved.itemId ?? (/^\d+$/.test(uid) ? Number(uid) : undefined);
+      if (itemId) {
+        void moveItemInSupabase({
+          itemId,
+          x,
+          y,
+          z: res.moved.z ?? 0,
+        }).then(() => {
+          broadcastSyncEvent({ type: 'furni:move', roomId });
+        });
+      }
+      return { ok: true, message: res.message };
+    },
+    [broadcastSyncEvent]
   );
 
   const handleRotateFurni = useCallback(
@@ -1040,7 +1175,7 @@ export default function App() {
       if (target && itemId) {
         void updateItemInSupabase({
           itemId,
-          extraData: serializeItemExtraData(nextState, target.customData),
+          extraData: serializeItemExtraData(nextState, target.customData, target.stickyNote),
         }).then(() => {
           broadcastSyncEvent({ type: 'furni:state', roomId });
         });
@@ -1049,9 +1184,318 @@ export default function App() {
     [broadcastSyncEvent]
   );
 
+  const handleUpdateStickyNote = useCallback(
+    (roomId: string, uid: string, note: StickyNoteData) => {
+      const colorToState: Record<StickyNoteData['color'], number> = {
+        yellow: 0,
+        pink: 1,
+        blue: 2,
+        green: 3,
+      };
+      const nextState = colorToState[note.color] ?? 0;
+      const nextList = (roomFurniMapRef.current[roomId] ?? []).map((f) =>
+        f.uid === uid ? { ...f, state: nextState, stickyNote: note } : f
+      );
+      setRoomFurniMap((prev) => ({
+        ...prev,
+        [roomId]: nextList,
+      }));
+      const target = nextList.find((f) => f.uid === uid);
+      const itemId = target?.itemId ?? (/^\d+$/.test(uid) ? Number(uid) : undefined);
+      if (target && itemId) {
+        void updateItemInSupabase({
+          itemId,
+          extraData: serializeItemExtraData(nextState, target.customData, note),
+        }).then(() => {
+          broadcastSyncEvent({ type: 'furni:sticky', roomId });
+        });
+      }
+    },
+    [broadcastSyncEvent]
+  );
+
+  const handleUpdateRoomSettings = useCallback(
+    (
+      roomId: string,
+      patch: {
+        name: string;
+        description: string;
+        usersMax: number;
+        accessMode: RoomAccessMode;
+        accessPassword: string;
+        roomRights: string[];
+      }
+    ) => {
+      const stateStr = serializeRoomStateField({
+        accessMode: patch.accessMode,
+        password: patch.accessPassword,
+        rights: patch.roomRights,
+      });
+      setRooms((prev) =>
+        prev.map((r) =>
+          r.id === roomId
+            ? {
+                ...r,
+                name: patch.name,
+                description: patch.description,
+                usersMax: patch.usersMax,
+                state: stateStr,
+                accessMode: patch.accessMode,
+                accessPassword: patch.accessPassword,
+                roomRights: patch.roomRights,
+              }
+            : r
+        )
+      );
+      const targetRoom = roomsRef.current.find((r) => r.id === roomId);
+      const dbRoomId = targetRoom?.numericId ?? (Number(roomId) || 0);
+      if (dbRoomId > 0) {
+        void updateRoomSettingsInSupabase({
+          roomId: dbRoomId,
+          caption: patch.name,
+          description: patch.description,
+          usersMax: patch.usersMax,
+          state: stateStr,
+        }).then(() => {
+          broadcastSyncEvent({ type: 'room:settings', roomId });
+        });
+      }
+    },
+    [broadcastSyncEvent]
+  );
+
+  const handleToggleRoomRights = useCallback(
+    (roomId: string, targetUsername: string): boolean => {
+      const room = roomsRef.current.find((r) => r.id === roomId);
+      if (!room) return false;
+      const existing = room.roomRights ?? [];
+      const hasAlready = existing.some(
+        (u) => u.toLowerCase() === targetUsername.toLowerCase()
+      );
+      const nextRights = hasAlready
+        ? existing.filter((u) => u.toLowerCase() !== targetUsername.toLowerCase())
+        : [...existing, targetUsername];
+      handleUpdateRoomSettings(roomId, {
+        name: room.name,
+        description: room.description,
+        usersMax: room.usersMax ?? 25,
+        accessMode: room.accessMode ?? 'open',
+        accessPassword: room.accessPassword ?? '',
+        roomRights: nextRights,
+      });
+      return !hasAlready;
+    },
+    [handleUpdateRoomSettings]
+  );
+
+  const handleGiveRespectToUser = useCallback(
+    (targetUsername: string) => {
+      const targetAcc = accountsRef.current.find(
+        (a) => a.username.toLowerCase() === targetUsername.toLowerCase()
+      );
+      if (!targetAcc) return;
+      const updatedAcc: UserAccount = {
+        ...targetAcc,
+        playerState: {
+          ...targetAcc.playerState,
+          respectCount: (targetAcc.playerState.respectCount ?? 0) + 1,
+        },
+      };
+      const nextAccounts = accountsRef.current.map((a) =>
+        a.id === targetAcc.id ? updatedAcc : a
+      );
+      accountsRef.current = nextAccounts;
+      setAccounts(nextAccounts);
+      void updateAccountInSupabase(updatedAcc).then(() => {
+        broadcastSyncEvent({ type: 'user:respect', username: targetUsername });
+      });
+    },
+    [broadcastSyncEvent]
+  );
+
+  const handleFriendAction = useCallback(
+    (
+      profile: PlayerProfileRecord,
+      action: 'send_request' | 'accept_request' | 'decline_request' | 'remove'
+    ) => {
+      const profileId = profile.id;
+      const meNumericId = playerRef.current.numericId;
+      const targetAcc = accountsRef.current.find(
+        (a) => `acc-${a.id}` === profileId || a.username.toLowerCase() === profile.name.toLowerCase()
+      );
+      const meProfileId = meNumericId ? `acc-${meNumericId}` : `acc-${playerRef.current.username}`;
+
+      updatePlayer((prev) => {
+        const friends = prev.friendIds ?? [];
+        const incoming = prev.incomingFriendRequests ?? [];
+        const outgoing = prev.outgoingFriendRequests ?? [];
+
+        if (action === 'remove') {
+          return {
+            ...prev,
+            friendIds: friends.filter((id) => id !== profileId),
+          };
+        }
+        if (action === 'decline_request') {
+          return {
+            ...prev,
+            incomingFriendRequests: incoming.filter((id) => id !== profileId),
+          };
+        }
+        if (action === 'accept_request') {
+          return {
+            ...prev,
+            incomingFriendRequests: incoming.filter((id) => id !== profileId),
+            outgoingFriendRequests: outgoing.filter((id) => id !== profileId),
+            friendIds: friends.includes(profileId) ? friends : [...friends, profileId],
+          };
+        }
+        // send_request: auto-accept NPCs immediately for smooth offline/solo play, send pending request to real users
+        if (profile.npcId) {
+          return {
+            ...prev,
+            friendIds: friends.includes(profileId) ? friends : [...friends, profileId],
+          };
+        }
+        return {
+          ...prev,
+          outgoingFriendRequests: outgoing.includes(profileId) ? outgoing : [...outgoing, profileId],
+        };
+      });
+
+      if (targetAcc) {
+        const nextTargetState = { ...targetAcc.playerState };
+        if (action === 'send_request') {
+          const curIn = nextTargetState.incomingFriendRequests ?? [];
+          if (!curIn.includes(meProfileId)) {
+            nextTargetState.incomingFriendRequests = [...curIn, meProfileId];
+          }
+        } else if (action === 'accept_request') {
+          nextTargetState.outgoingFriendRequests = (
+            nextTargetState.outgoingFriendRequests ?? []
+          ).filter((id) => id !== meProfileId);
+          const curFriends = nextTargetState.friendIds ?? [];
+          if (!curFriends.includes(meProfileId)) {
+            nextTargetState.friendIds = [...curFriends, meProfileId];
+          }
+        } else if (action === 'remove') {
+          nextTargetState.friendIds = (nextTargetState.friendIds ?? []).filter(
+            (id) => id !== meProfileId
+          );
+        }
+        const updatedTargetAcc: UserAccount = {
+          ...targetAcc,
+          playerState: nextTargetState,
+        };
+        accountsRef.current = accountsRef.current.map((a) =>
+          a.id === updatedTargetAcc.id ? updatedTargetAcc : a
+        );
+        setAccounts(accountsRef.current);
+        void updateAccountInSupabase(updatedTargetAcc);
+      }
+
+      if (meNumericId && profileId.startsWith('acc-')) {
+        const targetNumericId = Number(profileId.slice(4));
+        if (Number.isFinite(targetNumericId) && targetNumericId > 0) {
+          if (action === 'accept_request' || action === 'remove') {
+            void toggleFriendshipInSupabase(
+              meNumericId,
+              targetNumericId,
+              action === 'accept_request'
+            ).then(() => {
+              broadcastSyncEvent({ type: 'friend:update' });
+            });
+          } else {
+            broadcastSyncEvent({ type: 'friend:request' });
+          }
+        }
+      }
+    },
+    [broadcastSyncEvent, updatePlayer]
+  );
+
+  const handleSendPm = useCallback(
+    (targetProfile: PlayerProfileRecord, text: string) => {
+      const clean = text.trim();
+      if (!clean) return;
+      const key = targetProfile.name.toLowerCase();
+      const myMsg: ConsoleMessage = {
+        id: `pm-out-${Date.now()}-${Math.random()}`,
+        sender: 'me',
+        senderName: playerRef.current.username,
+        text: clean,
+        time: 'Now',
+      };
+      setPmThreads((prev) => ({
+        ...prev,
+        [key]: [...(prev[key] ?? []), myMsg],
+      }));
+      const ch = syncChannelRef.current;
+      if (ch && syncChannelSubscribedRef.current) {
+        ch.send({
+          type: 'broadcast',
+          event: 'pm:send',
+          payload: {
+            from: playerRef.current.username,
+            to: targetProfile.name,
+            text: clean,
+          },
+        }).catch(() => {});
+      }
+    },
+    []
+  );
+
+  const handleSendDoorbellRing = useCallback((roomId: string) => {
+    setDoorbellOutcome(null);
+    const ch = syncChannelRef.current;
+    if (ch && syncChannelSubscribedRef.current) {
+      ch.send({
+        type: 'broadcast',
+        event: 'doorbell:ring',
+        payload: {
+          guestName: playerRef.current.username,
+          roomId,
+        },
+      }).catch(() => {});
+    }
+  }, []);
+
+  const handleAnswerDoorbell = useCallback(
+    (guestName: string, roomId: string, accepted: boolean) => {
+      setDoorbellQueue((prev) =>
+        prev.filter((d) => !(d.guestName === guestName && d.roomId === roomId))
+      );
+      const ch = syncChannelRef.current;
+      if (ch && syncChannelSubscribedRef.current) {
+        ch.send({
+          type: 'broadcast',
+          event: 'doorbell:answer',
+          payload: { guestName, roomId, accepted },
+        }).catch(() => {});
+      }
+    },
+    []
+  );
+
   const handleEquipBadge = useCallback(
     (badgeId: string) => {
-      updatePlayer((prev) => ({ ...prev, equippedBadgeId: badgeId }));
+      updatePlayer((prev) => {
+        const current = getEquippedBadges(prev);
+        let next: string[];
+        if (current.includes(badgeId)) {
+          next = current.length > 1 ? current.filter((b) => b !== badgeId) : current;
+        } else if (current.length < 5) {
+          next = [...current, badgeId];
+        } else {
+          next = [...current.slice(1), badgeId];
+        }
+        return {
+          ...prev,
+          equippedBadgeId: next[0] ?? badgeId,
+          equippedBadges: next,
+        };
+      });
     },
     [updatePlayer]
   );
@@ -1270,6 +1714,85 @@ export default function App() {
     [broadcastSyncEvent, customBadges]
   );
 
+  const handleUpsertCatalogPage = useCallback(
+    async (params: {
+      id?: number;
+      caption: string;
+      minRank?: number;
+      visible?: boolean;
+      orderNum?: number;
+    }): Promise<{ ok: boolean; message: string }> => {
+      const saved = await upsertCatalogPageInSupabase(params);
+      if (saved) {
+        setCatalogPages((prev) => {
+          const exists = prev.some((p) => p.id === saved.id);
+          return (exists ? prev.map((p) => (p.id === saved.id ? saved : p)) : [...prev, saved]).sort(
+            (a, b) => a.order_num - b.order_num
+          );
+        });
+        broadcastSyncEvent({ type: 'catalog:page' });
+        return { ok: true, message: `Saved category "${saved.caption}" in catalog_pages!` };
+      }
+      return { ok: false, message: 'Could not save category to catalog_pages.' };
+    },
+    [broadcastSyncEvent]
+  );
+
+  const handleUpsertCatalogItem = useCallback(
+    async (params: {
+      id?: number;
+      pageId: number;
+      catalogName: string;
+      costCredits: number;
+      costDuckets: number;
+      amount?: number;
+      itemType: string;
+    }): Promise<{ ok: boolean; message: string }> => {
+      const saved = await upsertCatalogItemInSupabase(params);
+      if (saved) {
+        setCatalogItems((prev) => {
+          const exists = prev.some((i) => i.id === saved.id);
+          return exists ? prev.map((i) => (i.id === saved.id ? saved : i)) : [...prev, saved];
+        });
+        broadcastSyncEvent({ type: 'catalog:item' });
+        return { ok: true, message: `Saved "${saved.catalog_name}" (${saved.cost_credits}c) in catalog_items!` };
+      }
+      return { ok: false, message: 'Could not save item to catalog_items.' };
+    },
+    [broadcastSyncEvent]
+  );
+
+  const handleDeleteCatalogItem = useCallback(
+    async (itemId: number): Promise<{ ok: boolean; message: string }> => {
+      const ok = await deleteCatalogItemInSupabase(itemId);
+      if (ok) {
+        setCatalogItems((prev) => prev.filter((i) => i.id !== itemId));
+        broadcastSyncEvent({ type: 'catalog:delete', itemId });
+        return { ok: true, message: 'Removed item from catalog_items.' };
+      }
+      return { ok: false, message: 'Could not delete item from catalog_items.' };
+    },
+    [broadcastSyncEvent]
+  );
+
+  const handleSendHotelAlert = useCallback(
+    async (message: string): Promise<{ ok: boolean; message: string }> => {
+      const clean = message.trim();
+      if (!clean) return { ok: false, message: 'Enter an announcement message first.' };
+      const alert: HotelAlertPayload = {
+        id: `alert-${Date.now()}`,
+        title: 'Message from Hotel Management',
+        message: clean,
+        sender: playerRef.current.username,
+        timestamp: new Date().toISOString(),
+      };
+      setHotelAlert(alert);
+      await broadcastHotelAlertViaChannel(syncChannelRef.current, alert);
+      return { ok: true, message: 'Hotel-Wide Alert broadcast sent to all online players!' };
+    },
+    []
+  );
+
   const activeRoom = rooms.find((r) => r.id === player.currentRoomId) ?? rooms[0];
   const liveStaff = useMemo(
     () => deriveStaffMembersFromAccounts(accounts, ranks),
@@ -1303,6 +1826,8 @@ export default function App() {
         roomFurniMap={roomFurniMap}
         npcs={INITIAL_NPCS}
         customBadges={customBadges}
+        catalogPages={catalogPages}
+        catalogItems={catalogItems}
         muted={muted}
         onToggleMute={handleToggleMute}
         onBackToCms={handleBackToCms}
@@ -1315,18 +1840,38 @@ export default function App() {
         onConfirmTrade={handleConfirmTrade}
         onAwardBanzaiReward={handleAwardBanzaiReward}
         onPlaceFurni={handlePlaceFurni}
+        onMoveFurni={handleMoveFurni}
         onRotateFurni={handleRotateFurni}
         onPickupFurni={handlePickupFurni}
         onPickupAllFurni={handlePickupAllFurni}
         onToggleFurniState={handleToggleFurniState}
+        onUpdateStickyNote={handleUpdateStickyNote}
+        onUpdateRoomSettings={handleUpdateRoomSettings}
+        onToggleRoomRights={handleToggleRoomRights}
+        onSaveMotto={handleSaveMotto}
+        onSaveLook={handleSaveLook}
+        onGiveRespect={handleGiveRespectToUser}
         onRefreshRoomFurni={refreshRetroSnapshot}
         onUnlockBadge={handleUnlockBadge}
+        onEquipBadge={handleEquipBadge}
+        hotelAlert={hotelAlert}
+        onDismissHotelAlert={() => setHotelAlert(null)}
         moderationState={moderationState}
         onKickUser={handleKickUser}
         onBanUser={handleBanUser}
         onUnbanUser={handleUnbanUser}
         directory={directory}
         onToggleFriend={handleToggleFriend}
+        onFriendAction={handleFriendAction}
+        pmThreads={pmThreads}
+        unreadPmCount={unreadPmCount}
+        onClearUnreadPms={() => setUnreadPmCount(0)}
+        onSendPm={handleSendPm}
+        doorbellQueue={doorbellQueue}
+        doorbellOutcome={doorbellOutcome}
+        onClearDoorbellOutcome={() => setDoorbellOutcome(null)}
+        onSendDoorbellRing={handleSendDoorbellRing}
+        onAnswerDoorbell={handleAnswerDoorbell}
       />
     );
   }
@@ -1349,7 +1894,7 @@ export default function App() {
         onSignOut={handleSignOut}
       />
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-3 py-5 sm:px-6 sm:py-6">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-3 py-4 sm:px-5 sm:py-5">
         {cmsTab === 'me' && (
           <MeDashboard
             player={player}
@@ -1409,6 +1954,8 @@ export default function App() {
         {cmsTab === 'shop' && (
           <ShopVouchersTab
             player={player}
+            catalogPages={catalogPages}
+            catalogItems={catalogItems}
             onBuyItem={handleBuyCatalogueItem}
             onRedeemVoucher={handleRedeemVoucher}
           />
@@ -1420,6 +1967,8 @@ export default function App() {
             ranks={ranks}
             bans={bans}
             vouchers={vouchers}
+            catalogPages={catalogPages}
+            catalogItems={catalogItems}
             customBadges={customBadges}
             currentUsername={player.username}
             onChangeRank={handleChangeAccountRank}
@@ -1431,12 +1980,104 @@ export default function App() {
             }}
             onPostNews={handlePostNews}
             onMintAndAwardBadge={handleMintAndAwardBadge}
+            onUpsertCatalogPage={handleUpsertCatalogPage}
+            onUpsertCatalogItem={handleUpsertCatalogItem}
+            onDeleteCatalogItem={handleDeleteCatalogItem}
+            onSendHotelAlert={handleSendHotelAlert}
           />
         )}
       </main>
 
-      <footer className="border-t border-[#8eb5d3] bg-[#a3d1f7] py-4 text-center text-xs font-semibold text-[#1e4a6d]">
-        PIXL Hotel Retro Portal · PhoenixEmu / HoloCMS Relational Schema &amp; 3/4 Isometric Pixel Client
+      {hotelAlert && (
+        <div
+          className="fixed inset-0 z-[75] flex items-center justify-center bg-black/55 p-4"
+          data-testid="hotel-alert-modal"
+        >
+          <div className="client-window w-full max-w-md overflow-hidden">
+            <div
+              className="client-window-bar flex items-center justify-between px-3 py-1.5"
+              style={{ background: 'linear-gradient(180deg, #b91c1c 0%, #7f1d1d 100%)' }}
+            >
+              <span className="font-pixel text-[11px] text-[#fef08a]">
+                {hotelAlert.title || 'Message from Hotel Management'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setHotelAlert(null)}
+                className="client-close-btn"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 space-y-3 bg-[#ececec]">
+              <p className="border border-[#8f8f8f] bg-white p-3 text-[12px] font-bold text-[#111827] rounded-[2px]">
+                {hotelAlert.message}
+              </p>
+              <div className="flex items-center justify-between text-[10px] font-bold text-[#4b5563]">
+                <span>Sent by: {hotelAlert.sender}</span>
+                <button
+                  type="button"
+                  onClick={() => setHotelAlert(null)}
+                  className="habbo-btn-blue px-4 py-1 text-[11px] font-bold cursor-pointer"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <footer className="relative mt-6 bg-[#95c7f0]">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 1200 44"
+          preserveAspectRatio="none"
+          shapeRendering="crispEdges"
+          className="block h-[44px] w-full"
+        >
+          <rect x="0" y="38" width="1200" height="6" fill="#6aa5d9" />
+          {/* Distant skyline silhouettes */}
+          <rect x="30" y="18" width="38" height="26" fill="#7ab3e3" />
+          <rect x="74" y="12" width="46" height="32" fill="#6ea9dc" />
+          <rect x="132" y="22" width="32" height="22" fill="#7ab3e3" />
+          <rect x="210" y="16" width="52" height="28" fill="#6ea9dc" />
+          <rect x="280" y="20" width="40" height="24" fill="#7ab3e3" />
+          <rect x="348" y="10" width="44" height="34" fill="#6ea9dc" />
+          <rect x="430" y="20" width="56" height="24" fill="#7ab3e3" />
+          {/* Iconic center orange PIXL Hotel tower silhouette */}
+          <rect x="556" y="4" width="88" height="40" fill="#c85808" />
+          <rect x="560" y="6" width="80" height="38" fill="#eb7614" />
+          <rect x="584" y="0" width="32" height="6" fill="#1d4e78" />
+          <rect x="568" y="12" width="10" height="8" fill="#fde047" />
+          <rect x="584" y="12" width="10" height="8" fill="#fde047" />
+          <rect x="606" y="12" width="10" height="8" fill="#fde047" />
+          <rect x="622" y="12" width="10" height="8" fill="#bae6fd" />
+          <rect x="568" y="24" width="10" height="8" fill="#bae6fd" />
+          <rect x="584" y="24" width="10" height="8" fill="#fde047" />
+          <rect x="606" y="24" width="10" height="8" fill="#fde047" />
+          <rect x="622" y="24" width="10" height="8" fill="#fde047" />
+          {/* Right skyline silhouettes */}
+          <rect x="668" y="14" width="48" height="30" fill="#6ea9dc" />
+          <rect x="734" y="22" width="42" height="22" fill="#7ab3e3" />
+          <rect x="810" y="10" width="54" height="34" fill="#6ea9dc" />
+          <rect x="880" y="18" width="38" height="26" fill="#7ab3e3" />
+          <rect x="945" y="12" width="50" height="32" fill="#6ea9dc" />
+          <rect x="1020" y="20" width="44" height="24" fill="#7ab3e3" />
+          <rect x="1095" y="14" width="58" height="30" fill="#6ea9dc" />
+          {/* Lit distant windows */}
+          <rect x="84" y="18" width="6" height="5" fill="#e0f2fe" />
+          <rect x="98" y="18" width="6" height="5" fill="#fef08a" />
+          <rect x="358" y="16" width="6" height="5" fill="#fef08a" />
+          <rect x="372" y="16" width="6" height="5" fill="#e0f2fe" />
+          <rect x="822" y="18" width="6" height="5" fill="#fef08a" />
+          <rect x="838" y="18" width="6" height="5" fill="#e0f2fe" />
+          <rect x="958" y="18" width="6" height="5" fill="#fef08a" />
+          <rect x="1110" y="20" width="6" height="5" fill="#fef08a" />
+        </svg>
+        <div className="border-t-2 border-[#6a9fcc] bg-[#84bce9] py-3 text-center text-[11px] font-bold text-[#173d5e]">
+          PIXL Hotel Retro Portal · HoloCMS &amp; Shockwave 3/4 Isometric Pixel Client · &copy; 2009–2026 PIXLHotel
+        </div>
       </footer>
     </div>
   );

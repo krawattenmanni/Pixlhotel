@@ -132,7 +132,7 @@ export function buyCatalogueItem(
   }
   const unitCredits = priceOverride?.costCredits ?? def.costCredits;
   const unitDuckets = priceOverride?.costDuckets ?? def.costDuckets;
-  const bundleAmount = Math.max(1, priceOverride?.amount ?? 1);
+  const bundleAmount = Math.max(1, priceOverride?.amount ?? def.catalogAmount ?? 1);
   const displayName = priceOverride?.name ?? def.name;
 
   const purchases = Math.max(1, Math.min(20, Math.floor(rawQty)));
@@ -196,24 +196,72 @@ export function buyCatalogueItem(
   };
 }
 
+export function computeFurniPlacement(
+  room: RoomDef,
+  placedFurni: PlacedFurni[],
+  furniId: string | undefined,
+  x: number,
+  y: number,
+  ignoreUid?: string
+): { ok: boolean; z: number; reason?: string } {
+  if (y < 0 || y >= room.layout.length) {
+    return { ok: false, z: 0, reason: 'Tile out of room bounds.' };
+  }
+  const row = room.layout[y];
+  if (!row || x < 0 || x >= row.length) {
+    return { ok: false, z: 0, reason: 'Tile out of room bounds.' };
+  }
+  if (row[x] === 'x' || row[x] === '3') {
+    return { ok: false, z: 0, reason: 'Cannot place furniture on void or cliff tile.' };
+  }
+
+  const existing = placedFurni.filter((f) => f.x === x && f.y === y && f.uid !== ignoreUid);
+  const solidExisting = existing.filter((item) => {
+    const def = findFurniDef(item.furniId);
+    return def ? !def.walkable : true;
+  });
+
+  if (solidExisting.length === 0) {
+    return { ok: true, z: 0 };
+  }
+
+  const incomingDef = furniId ? findFurniDef(furniId) : undefined;
+  if (!incomingDef?.stackable) {
+    return { ok: false, z: 0, reason: 'Tile is already occupied by solid furniture.' };
+  }
+
+  // Stackable small furni can sit on top of surfaces (tables, bars, desks)
+  let highestItem: PlacedFurni | null = null;
+  let highestZ = -1;
+  for (const item of solidExisting) {
+    const zVal = item.z ?? 0;
+    if (zVal >= highestZ) {
+      highestZ = zVal;
+      highestItem = item;
+    }
+  }
+
+  if (!highestItem) return { ok: true, z: 0 };
+  const topDef = findFurniDef(highestItem.furniId);
+  if (topDef?.isSurface) {
+    const nextZ = Number(((highestItem.z ?? 0) + (topDef.stackHeight ?? 0.68)).toFixed(2));
+    if (nextZ <= 1.6) {
+      return { ok: true, z: nextZ };
+    }
+  }
+
+  return { ok: false, z: 0, reason: 'Cannot stack that item higher here.' };
+}
+
 export function canPlaceFurniAt(
   room: RoomDef,
   placedFurni: PlacedFurni[],
   x: number,
-  y: number
+  y: number,
+  furniId?: string,
+  ignoreUid?: string
 ): boolean {
-  if (y < 0 || y >= room.layout.length) return false;
-  const row = room.layout[y];
-  if (!row || x < 0 || x >= row.length) return false;
-  if (row[x] === 'x') return false;
-
-  // Allow placing on top of walkable rugs, disallow stacking solid items on solid items
-  const existing = placedFurni.filter((f) => f.x === x && f.y === y);
-  for (const item of existing) {
-    const def = findFurniDef(item.furniId);
-    if (def && !def.walkable) return false;
-  }
-  return true;
+  return computeFurniPlacement(room, placedFurni, furniId, x, y, ignoreUid).ok;
 }
 
 export function placeFurniFromInventory(
@@ -242,13 +290,14 @@ export function placeFurniFromInventory(
       message: 'No remaining item in inventory.',
     };
   }
-  if (!canPlaceFurniAt(room, placedFurni, x, y)) {
+  const placement = computeFurniPlacement(room, placedFurni, furniId, x, y);
+  if (!placement.ok) {
     return {
       ok: false,
       inventory,
       placedFurni,
       pendingEngravings,
-      message: 'Cannot place furniture on that tile.',
+      message: placement.reason || 'Cannot place furniture on that tile.',
     };
   }
 
@@ -272,12 +321,31 @@ export function placeFurniFromInventory(
     nextPending = { ...pendingEngravings, [furniId]: queue.slice(1) };
   }
 
+  const def = findFurniDef(furniId);
   const newUid = consumedItemId
     ? String(consumedItemId)
     : `placed-${furniId}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
   const nextPlaced: PlacedFurni[] = [
     ...placedFurni,
-    { uid: newUid, itemId: consumedItemId, furniId, x, y, dir, state: 1, customData },
+    {
+      uid: newUid,
+      itemId: consumedItemId,
+      furniId,
+      x,
+      y,
+      z: placement.z,
+      dir,
+      state: def?.isStickyNote ? 0 : 1,
+      customData,
+      stickyNote: def?.isStickyNote
+        ? {
+            color: 'yellow',
+            text: 'Leave a note for visitors!',
+            author: 'PIXL Citizen',
+            updatedAt: new Date().toISOString().slice(0, 10),
+          }
+        : undefined,
+    },
   ];
 
   return {
@@ -285,7 +353,44 @@ export function placeFurniFromInventory(
     inventory: nextInventory,
     placedFurni: nextPlaced,
     pendingEngravings: nextPending,
-    message: customData ? 'Engraved Trophy placed!' : 'Furniture placed!',
+    message: customData
+      ? 'Engraved Trophy placed!'
+      : placement.z > 0
+      ? 'Stacked item neatly on surface!'
+      : 'Furniture placed!',
+  };
+}
+
+export function moveFurniInRoom(
+  placedFurni: PlacedFurni[],
+  room: RoomDef,
+  uid: string,
+  x: number,
+  y: number
+): {
+  ok: boolean;
+  placedFurni: PlacedFurni[];
+  moved?: PlacedFurni;
+  message: string;
+} {
+  const target = placedFurni.find((f) => f.uid === uid);
+  if (!target) {
+    return { ok: false, placedFurni, message: 'Furniture not found in room.' };
+  }
+  const placement = computeFurniPlacement(room, placedFurni, target.furniId, x, y, uid);
+  if (!placement.ok) {
+    return {
+      ok: false,
+      placedFurni,
+      message: placement.reason || 'Cannot move furniture onto that tile.',
+    };
+  }
+  const moved: PlacedFurni = { ...target, x, y, z: placement.z };
+  return {
+    ok: true,
+    placedFurni: placedFurni.map((f) => (f.uid === uid ? moved : f)),
+    moved,
+    message: placement.z > 0 ? 'Stacked furniture on surface!' : 'Furniture moved!',
   };
 }
 

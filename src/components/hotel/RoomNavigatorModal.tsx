@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { DoorOpen, PlusCircle, Users, X } from 'lucide-react';
+import { getRoomThumbnailImage } from '../../game/pixelSprites';
 import type { RoomDef } from '../../game/types';
 
 interface RoomNavigatorModalProps {
@@ -19,6 +20,9 @@ const ROOM_MODELS = [
   { id: 'model_c', label: 'Oak Parquet & Navy' },
   { id: 'model_a', label: 'Classic Marble Lounge' },
   { id: 'model_b', label: 'Rooftop Night Sky' },
+  { id: 'model_lido', label: 'The Lido Pool Deck' },
+  { id: 'model_rooftop', label: 'Rooftop Pool & Orange Hotel' },
+  { id: 'model_park', label: 'Peaceful Park Lawn' },
   { id: 'model_tatami', label: 'Zen Tatami & Brick' },
 ];
 
@@ -30,12 +34,17 @@ export function RoomNavigatorModal({
   onCreateRoom,
   onClose,
 }: RoomNavigatorModalProps) {
+  const [activeTab, setActiveTab] = useState<'public' | 'guest'>('public');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [caption, setCaption] = useState('');
   const [description, setDescription] = useState('');
   const [modelName, setModelName] = useState('model_c');
   const [creating, setCreating] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  const publicRooms = rooms.filter((r) => r.category === 'public');
+  const guestRooms = rooms.filter((r) => r.category !== 'public');
+  const displayedRooms = activeTab === 'public' ? publicRooms : guestRooms;
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,18 +69,19 @@ export function RoomNavigatorModal({
 
   return (
     <div
-      className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
+      className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-black/55 p-3"
       role="dialog"
       aria-modal="true"
       aria-label="Room Navigator"
+      data-testid="room-navigator-modal"
     >
-      <div className="client-window flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden">
-        <div className="client-window-bar flex items-center justify-between px-3.5 py-2 shrink-0">
-          <span className="inline-flex items-center gap-2 font-pixel text-sm">
-            <DoorOpen className="h-4 w-4" />
+      <div className="client-window flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden">
+        <div className="client-window-bar flex items-center justify-between px-3 py-1.5 shrink-0">
+          <span className="inline-flex items-center gap-1.5 text-[12px] font-bold">
+            <DoorOpen className="h-4 w-4 text-[#fef08a]" />
             Hotel Navigator
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {onCreateRoom && (
               <button
                 type="button"
@@ -80,32 +90,62 @@ export function RoomNavigatorModal({
                   setShowCreateForm((v) => !v);
                   setFeedback(null);
                 }}
-                className="habbo-btn-green inline-flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-bold cursor-pointer"
+                className="habbo-btn-green inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold cursor-pointer"
               >
-                <PlusCircle className="h-3.5 w-3.5" />
-                {showCreateForm ? 'Back to Rooms' : 'Create Room'}
+                <PlusCircle className="h-3 w-3" />
+                {showCreateForm ? 'Back to Navigator' : 'Create Room'}
               </button>
             )}
             <button
               type="button"
               onClick={onClose}
               aria-label="Close Navigator"
-              className="rounded border border-white/30 bg-black/25 p-1 hover:bg-black/45 cursor-pointer"
+              className="client-close-btn"
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-3 w-3" />
             </button>
           </div>
         </div>
 
+        {/* Classic 2-Tab Bar: Public Rooms | Guest Rooms */}
+        {!showCreateForm && (
+          <div className="flex items-center gap-1 border-b border-[#000000] bg-[#d4d4d4] px-3 pt-2 shrink-0">
+            <button
+              type="button"
+              data-testid="nav-tab-public"
+              onClick={() => setActiveTab('public')}
+              className={`border border-b-0 border-[#000000] px-3 py-1.5 text-[11px] font-bold cursor-pointer rounded-t-[3px] ${
+                activeTab === 'public'
+                  ? 'bg-[#ececec] text-[#111827] -mb-px pb-2'
+                  : 'bg-[#4b708f] text-white hover:bg-[#5c84a6]'
+              }`}
+            >
+              Public Rooms ({publicRooms.length})
+            </button>
+            <button
+              type="button"
+              data-testid="nav-tab-guest"
+              onClick={() => setActiveTab('guest')}
+              className={`border border-b-0 border-[#000000] px-3 py-1.5 text-[11px] font-bold cursor-pointer rounded-t-[3px] ${
+                activeTab === 'guest'
+                  ? 'bg-[#ececec] text-[#111827] -mb-px pb-2'
+                  : 'bg-[#4b708f] text-white hover:bg-[#5c84a6]'
+              }`}
+            >
+              Guest Rooms ({guestRooms.length})
+            </button>
+          </div>
+        )}
+
         {showCreateForm ? (
-          <form onSubmit={handleCreateSubmit} className="p-4 space-y-3 overflow-y-auto">
-            <div className="rounded border border-[#c8d6e5] bg-[#f4f8fc] p-2.5 text-xs text-slate-700">
-              Create your own persistent private suite saved directly in the PostgreSQL{' '}
-              <strong className="font-mono-num">rooms</strong> table!
+          <form onSubmit={handleCreateSubmit} className="p-4 space-y-3 overflow-y-auto bg-[#ececec]">
+            <div className="border border-[#999999] bg-[#ffffff] p-2.5 text-[11px] text-[#374151] rounded-[2px]">
+              Create your own private suite saved in the PostgreSQL{' '}
+              <strong className="font-mono-num">rooms</strong> table.
             </div>
 
             <div>
-              <label htmlFor="nav-room-caption" className="block text-xs font-bold text-slate-800">
+              <label htmlFor="nav-room-caption" className="block text-[11px] font-bold text-[#111827]">
                 Room Name
               </label>
               <input
@@ -117,12 +157,12 @@ export function RoomNavigatorModal({
                 value={caption}
                 onChange={(e) => setCaption(e.target.value)}
                 placeholder={`${playerUsername}'s Trading Lounge`}
-                className="mt-1 w-full rounded border-2 border-stone-400 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 focus:border-[#2c6e9b] focus:outline-none"
+                className="mt-1 w-full border border-[#6b7280] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#111827] focus:border-[#2b6ca3] focus:outline-none rounded-[2px]"
               />
             </div>
 
             <div>
-              <label htmlFor="nav-room-desc" className="block text-xs font-bold text-slate-800">
+              <label htmlFor="nav-room-desc" className="block text-[11px] font-bold text-[#111827]">
                 Description
               </label>
               <input
@@ -132,19 +172,19 @@ export function RoomNavigatorModal({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Come trade rares and hang out!"
-                className="mt-1 w-full rounded border-2 border-stone-400 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 focus:border-[#2c6e9b] focus:outline-none"
+                className="mt-1 w-full border border-[#6b7280] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#111827] focus:border-[#2b6ca3] focus:outline-none rounded-[2px]"
               />
             </div>
 
             <div>
-              <label htmlFor="nav-room-model" className="block text-xs font-bold text-slate-800">
-                Room Floor &amp; Wall Style
+              <label htmlFor="nav-room-model" className="block text-[11px] font-bold text-[#111827]">
+                Room Model &amp; Style
               </label>
               <select
                 id="nav-room-model"
                 value={modelName}
                 onChange={(e) => setModelName(e.target.value)}
-                className="mt-1 w-full rounded border-2 border-stone-400 bg-white px-3 py-1.5 text-xs font-bold text-slate-900 focus:border-[#2c6e9b] focus:outline-none"
+                className="mt-1 w-full border border-[#6b7280] bg-white px-2.5 py-1.5 text-xs font-bold text-[#111827] focus:border-[#2b6ca3] focus:outline-none rounded-[2px]"
               >
                 {ROOM_MODELS.map((m) => (
                   <option key={m.id} value={m.id}>
@@ -155,7 +195,7 @@ export function RoomNavigatorModal({
             </div>
 
             {feedback && (
-              <p className="rounded border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-800">
+              <p className="border border-[#dc2626] bg-[#fef2f2] px-3 py-1.5 text-xs font-bold text-[#7f1d1d] rounded-[2px]">
                 {feedback}
               </p>
             )}
@@ -164,69 +204,93 @@ export function RoomNavigatorModal({
               type="submit"
               disabled={creating || !caption.trim()}
               data-testid="nav-create-room-submit"
-              className="habbo-btn-green w-full rounded py-2 font-pixel text-xs cursor-pointer disabled:opacity-50"
+              className="habbo-btn-green w-full py-2 font-pixel text-xs cursor-pointer disabled:opacity-50"
             >
               {creating ? 'Creating Room...' : 'Create & Enter Room'}
             </button>
           </form>
         ) : (
-          <div className="divide-y divide-stone-300 p-2 overflow-y-auto">
-            {rooms.map((room) => {
-              const isCurrent = room.id === currentRoomId;
-              const isBanzai = room.modelName === 'model_banzai' || room.id === 'battle_banzai' || room.numericId === 3;
-              const catLabel = isBanzai ? 'Games' : room.category === 'private' ? 'Private' : 'Public';
-              const catClass = isBanzai
-                ? 'bg-cyan-100 text-cyan-900'
-                : room.category === 'private'
-                ? 'bg-amber-100 text-amber-900'
-                : 'bg-sky-100 text-sky-900';
+          <div className="space-y-1.5 p-2.5 overflow-y-auto bg-[#ececec]">
+            {displayedRooms.length === 0 ? (
+              <p className="border border-[#999999] bg-white p-4 text-center text-xs text-[#4b5563] rounded-[2px]">
+                No rooms in this tab yet. Click Create Room to open a private suite!
+              </p>
+            ) : (
+              displayedRooms.map((room) => {
+                const isCurrent = room.id === currentRoomId;
+                const isLido = room.modelName === 'model_lido' || room.id === 'the_lido';
+                const isBanzai = room.modelName === 'model_banzai' || room.id === 'battle_banzai';
+                const thumbSrc = getRoomThumbnailImage(room);
 
-              return (
-                <div
-                  key={room.id}
-                  className="flex items-center justify-between gap-3 rounded p-3 hover:bg-white/70"
-                >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <h3 className="text-sm font-extrabold text-slate-900 truncate">{room.name}</h3>
-                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${catClass}`}>
-                        {catLabel}
-                      </span>
-                      {isCurrent && (
-                        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">
-                          Here
-                        </span>
-                      )}
+                return (
+                  <div
+                    key={room.id}
+                    data-testid={`nav-room-row-${room.id}`}
+                    className={`flex items-center justify-between gap-2.5 border p-2 rounded-[2px] ${
+                      isCurrent
+                        ? 'border-[#16a34a] bg-[#f0fdf4]'
+                        : 'border-[#b5b5b5] bg-[#ffffff] hover:bg-[#f4f8fc]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <img
+                        src={thumbSrc}
+                        alt={room.name}
+                        className="pixelated h-[42px] w-[68px] border border-[#000000] shrink-0 rounded-[2px]"
+                        draggable={false}
+                      />
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <h3 className="text-[12px] font-bold text-[#111827] truncate">
+                            {room.name}
+                          </h3>
+                          {isLido && (
+                            <span className="border border-[#000000] bg-[#0284c7] px-1 py-0.5 font-pixel text-[7px] text-white rounded-[1px]">
+                              POOL
+                            </span>
+                          )}
+                          {isBanzai && (
+                            <span className="border border-[#000000] bg-[#7c3aed] px-1 py-0.5 font-pixel text-[7px] text-white rounded-[1px]">
+                              GAME
+                            </span>
+                          )}
+                          {isCurrent && (
+                            <span className="border border-[#15803d] bg-[#dcfce7] px-1 py-0.5 text-[9px] font-bold text-[#14532d] rounded-[1px]">
+                              HERE
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-[#4b5563] truncate">
+                          Owner: {room.owner === 'PixelGuest' ? playerUsername : room.owner}
+                          {room.description ? ` · ${room.description}` : ''}
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-xs text-slate-600 truncate">
-                      Owner: {room.owner === 'PixelGuest' ? playerUsername : room.owner}
-                      {room.description ? ` · ${room.description}` : ''}
-                    </p>
-                  </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 font-mono-num text-xs font-bold text-emerald-800">
-                      <Users className="h-3 w-3" /> {room.baseOccupancy}/{room.usersMax ?? 25}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={isCurrent}
-                      onClick={() => {
-                        onSelectRoom(room.id);
-                        onClose();
-                      }}
-                      className={`rounded px-3 py-1.5 text-xs font-bold ${
-                        isCurrent
-                          ? 'bg-stone-300 text-stone-600 cursor-default'
-                          : 'habbo-btn-green cursor-pointer'
-                      }`}
-                    >
-                      {isCurrent ? 'Current' : 'Enter'}
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="inline-flex items-center gap-1 border border-[#16a34a] bg-[#dcfce7] px-1.5 py-0.5 font-mono-num text-[10px] font-bold text-[#14532d] rounded-[2px]">
+                        <Users className="h-3 w-3" /> {room.baseOccupancy}/{room.usersMax ?? 25}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={isCurrent}
+                        onClick={() => {
+                          onSelectRoom(room.id);
+                          onClose();
+                        }}
+                        className={`px-2.5 py-1 text-[11px] font-bold ${
+                          isCurrent
+                            ? 'border border-[#999999] bg-[#d4d4d4] text-[#525252] cursor-default rounded-[2px]'
+                            : 'habbo-btn-green cursor-pointer'
+                        }`}
+                      >
+                        {isCurrent ? 'Current' : 'Enter'}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         )}
       </div>

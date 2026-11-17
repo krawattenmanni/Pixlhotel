@@ -22,9 +22,13 @@ import type {
   PetSpecies,
   PlacedFurni,
   RankDef,
+  RoomAccessMode,
   RoomDef,
   RoomFloorTheme,
+  RoomSettingsPayload,
   RoomWallTheme,
+  StickyNoteColor,
+  StickyNoteData,
   TrophyMetadata,
   UserAccount,
   VoucherDef,
@@ -57,6 +61,9 @@ export interface UserLookExtras {
   equippedBadges?: string[];
   currentRoomId?: string;
   npcFriendIds?: string[];
+  respectCount?: number;
+  incomingFriendRequests?: string[];
+  outgoingFriendRequests?: string[];
 }
 
 export interface DbRankRow {
@@ -224,6 +231,7 @@ export function sanitizeUserLook(
       : DEFAULT_LOOK;
   if (!raw || typeof raw !== 'object') return { ...base };
   return {
+    gender: raw.gender === 'F' ? 'F' : raw.gender === 'M' ? 'M' : base.gender ?? 'M',
     skinColor: typeof raw.skinColor === 'string' ? raw.skinColor : base.skinColor,
     hairStyle: raw.hairStyle ?? base.hairStyle,
     hairColor: typeof raw.hairColor === 'string' ? raw.hairColor : base.hairColor,
@@ -260,53 +268,121 @@ export function getRoomThemeFromModel(modelName: string | null | undefined): {
   floorTheme: RoomFloorTheme;
   wallTheme: RoomWallTheme;
   spawn: { x: number; y: number };
+  outdoor: boolean;
+  rooftopHotelFacade?: boolean;
 } {
   switch (modelName) {
     case 'model_lido':
-      return { floorTheme: 'lido_deck', wallTheme: 'lido_sky', spawn: { x: 2, y: 8 } };
+      return { floorTheme: 'lido_deck', wallTheme: 'lido_sky', spawn: { x: 4, y: 5 }, outdoor: true };
+    case 'model_rooftop':
+      return {
+        floorTheme: 'wood_deck',
+        wallTheme: 'rooftop_hotel',
+        spawn: { x: 4, y: 6 },
+        outdoor: true,
+        rooftopHotelFacade: true,
+      };
     case 'model_b':
     case 'model_mammoth':
-      return { floorTheme: 'rooftop', wallTheme: 'nightsky', spawn: { x: 4, y: 8 } };
+      return { floorTheme: 'rooftop', wallTheme: 'nightsky', spawn: { x: 5, y: 7 }, outdoor: true };
     case 'model_disco':
-      return { floorTheme: 'disco', wallTheme: 'neon', spawn: { x: 4, y: 8 } };
+      return { floorTheme: 'disco', wallTheme: 'neon', spawn: { x: 5, y: 7 }, outdoor: true };
     case 'model_park':
-      return { floorTheme: 'park_grass', wallTheme: 'park_hedge', spawn: { x: 5, y: 8 } };
+      return { floorTheme: 'park_grass', wallTheme: 'park_hedge', spawn: { x: 6, y: 7 }, outdoor: true };
     case 'model_banzai':
-      return { floorTheme: 'banzai', wallTheme: 'neon', spawn: { x: 4, y: 8 } };
+      return { floorTheme: 'banzai', wallTheme: 'neon', spawn: { x: 4, y: 8 }, outdoor: true };
     case 'model_c':
-      return { floorTheme: 'parquet', wallTheme: 'navy', spawn: { x: 4, y: 6 } };
+      return { floorTheme: 'parquet', wallTheme: 'navy', spawn: { x: 4, y: 6 }, outdoor: false };
     case 'model_tatami':
-      return { floorTheme: 'tatami', wallTheme: 'brick', spawn: { x: 4, y: 6 } };
+      return { floorTheme: 'tatami', wallTheme: 'brick', spawn: { x: 4, y: 6 }, outdoor: false };
     case 'model_a':
     case 'model_welcome':
     default:
-      return { floorTheme: 'marble', wallTheme: 'cream', spawn: { x: 5, y: 8 } };
+      return { floorTheme: 'marble', wallTheme: 'cream', spawn: { x: 5, y: 7 }, outdoor: false };
   }
+}
+
+function matchPublicTemplateForRow(row: DbRoomRow): RoomDef | undefined {
+  const cap = row.caption.trim().toLowerCase();
+  const model = (row.model_name ?? '').trim().toLowerCase();
+  return INITIAL_ROOMS.find((r) => {
+    if (r.category !== 'public') return false;
+    if (model && r.modelName && r.modelName.toLowerCase() === model) return true;
+    if (r.name.toLowerCase() === cap) return true;
+    if (r.id === 'the_lido' && (cap === 'the lido' || cap === 'lido deck')) return true;
+    if (r.id === 'welcome_lounge' && (model === 'model_a' || cap === 'welcome lounge')) return true;
+    return false;
+  });
+}
+
+export function parseRoomStateField(rawState: string | null | undefined): RoomSettingsPayload {
+  const raw = (rawState ?? '').trim();
+  if (!raw || raw === 'open') {
+    return { accessMode: 'open', rights: [] };
+  }
+  if (raw === 'doorbell') {
+    return { accessMode: 'doorbell', rights: [] };
+  }
+  if (raw.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(raw) as Partial<RoomSettingsPayload> & { mode?: RoomAccessMode };
+      const mode: RoomAccessMode =
+        parsed.accessMode === 'doorbell' ||
+        parsed.accessMode === 'password' ||
+        parsed.mode === 'doorbell' ||
+        parsed.mode === 'password'
+          ? (parsed.accessMode ?? parsed.mode)!
+          : 'open';
+      return {
+        accessMode: mode,
+        password: typeof parsed.password === 'string' ? parsed.password : '',
+        rights: Array.isArray(parsed.rights)
+          ? parsed.rights.filter((r): r is string => typeof r === 'string' && r.trim().length > 0)
+          : [],
+      };
+    } catch {
+      // Fallback
+    }
+  }
+  if (raw.startsWith('password:')) {
+    return { accessMode: 'password', password: raw.slice('password:'.length), rights: [] };
+  }
+  return { accessMode: 'open', rights: [] };
+}
+
+export function serializeRoomStateField(settings: RoomSettingsPayload): string {
+  const cleanRights = Array.from(new Set(settings.rights.map((r) => r.trim()).filter(Boolean)));
+  if (settings.accessMode === 'open' && cleanRights.length === 0) return 'open';
+  if (settings.accessMode === 'doorbell' && cleanRights.length === 0) return 'doorbell';
+  return JSON.stringify({
+    accessMode: settings.accessMode,
+    password: settings.accessMode === 'password' ? settings.password ?? '' : undefined,
+    rights: cleanRights,
+  });
 }
 
 export function mapRoomRowToRoomDef(row: DbRoomRow): RoomDef {
   const theme = getRoomThemeFromModel(row.model_name);
   const category: 'public' | 'private' = row.category === 3 ? 'private' : 'public';
-
-  // Match canonical multi-level public room blueprint from INITIAL_ROOMS when applicable
-  const matchedTemplate = INITIAL_ROOMS.find(
-    (r) =>
-      r.category === 'public' &&
-      ((row.model_name && r.modelName === row.model_name) ||
-        r.name.toLowerCase() === row.caption.trim().toLowerCase())
-  );
+  const matchedTemplate = category === 'public' ? matchPublicTemplateForRow(row) : undefined;
+  const parsedSettings = parseRoomStateField(row.state);
 
   return {
     id: String(row.id),
     numericId: row.id,
-    name: row.caption,
-    owner: row.owner,
-    description: row.description || matchedTemplate?.description || 'Welcome to this PIXL Hotel room!',
+    name: matchedTemplate?.name ?? row.caption,
+    owner: matchedTemplate?.owner ?? row.owner,
+    description: matchedTemplate?.description ?? row.description ?? 'Welcome to this PIXL Hotel room!',
     category,
     categoryNum: row.category ?? 1,
-    modelName: row.model_name || matchedTemplate?.modelName || 'model_a',
+    modelName: matchedTemplate?.modelName ?? row.model_name ?? 'model_a',
     state: row.state || 'open',
+    accessMode: category === 'public' ? 'open' : parsedSettings.accessMode,
+    accessPassword: parsedSettings.password,
+    roomRights: parsedSettings.rights,
     usersMax: row.users_max ?? 25,
+    outdoor: matchedTemplate?.outdoor ?? theme.outdoor,
+    rooftopHotelFacade: matchedTemplate?.rooftopHotelFacade ?? theme.rooftopHotelFacade ?? false,
     floorTheme: matchedTemplate?.floorTheme ?? theme.floorTheme,
     wallTheme: matchedTemplate?.wallTheme ?? theme.wallTheme,
     layout: matchedTemplate?.layout ?? STANDARD_ROOM_LAYOUT,
@@ -319,15 +395,39 @@ export function mapRoomRowToRoomDef(row: DbRoomRow): RoomDef {
   };
 }
 
+const STICKY_COLOR_STATE_MAP: Record<StickyNoteColor, number> = {
+  yellow: 0,
+  pink: 1,
+  blue: 2,
+  green: 3,
+};
+
 export function parseItemExtraData(raw: string | null | undefined): {
   state: number;
   customData?: TrophyMetadata;
+  stickyNote?: StickyNoteData;
 } {
   if (!raw) return { state: 0 };
   const trimmed = raw.trim();
   if (trimmed.startsWith('{')) {
     try {
-      const parsed = JSON.parse(trimmed) as Partial<TrophyMetadata>;
+      const parsed = JSON.parse(trimmed) as Partial<TrophyMetadata> &
+        Partial<StickyNoteData> & { _kind?: string };
+      if (parsed && (parsed._kind === 'sticky' || (typeof parsed.text === 'string' && typeof parsed.color === 'string'))) {
+        const col: StickyNoteColor =
+          parsed.color === 'pink' || parsed.color === 'blue' || parsed.color === 'green'
+            ? parsed.color
+            : 'yellow';
+        return {
+          state: STICKY_COLOR_STATE_MAP[col],
+          stickyNote: {
+            color: col,
+            text: typeof parsed.text === 'string' ? parsed.text : '',
+            author: typeof parsed.author === 'string' ? parsed.author : 'PIXL Citizen',
+            updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : undefined,
+          },
+        };
+      }
       if (parsed && typeof parsed.inscription === 'string') {
         return {
           state: 1,
@@ -348,8 +448,12 @@ export function parseItemExtraData(raw: string | null | undefined): {
 
 export function serializeItemExtraData(
   state: number,
-  customData?: TrophyMetadata
+  customData?: TrophyMetadata,
+  stickyNote?: StickyNoteData
 ): string {
+  if (stickyNote) {
+    return JSON.stringify({ _kind: 'sticky', ...stickyNote });
+  }
   if (customData && customData.inscription) {
     return JSON.stringify(customData);
   }
@@ -371,9 +475,11 @@ export function mapItemRowToPlacedFurni(
     furniId: row.item_type,
     x: Number(row.x) || 0,
     y: Number(row.y) || 0,
+    z: Number(row.z) || 0,
     dir: dirNum as Direction,
     state: parsed.state,
     customData: parsed.customData,
+    stickyNote: parsed.stickyNote,
   };
 }
 
@@ -637,7 +743,10 @@ export function mapUserRowToUserAccount(params: {
       credits: typeof row.credits === 'number' ? row.credits : 250,
       duckets: typeof row.duckets === 'number' ? row.duckets : 150,
       hcDays: typeof row.hc_days === 'number' ? row.hc_days : 0,
-      look,
+      look: {
+        ...look,
+        gender: row.gender === 'F' ? 'F' : look.gender ?? 'M',
+      },
       inventory,
       redeemedVouchers: Array.isArray(extras.redeemedVouchers)
         ? extras.redeemedVouchers
@@ -646,6 +755,13 @@ export function mapUserRowToUserAccount(params: {
       equippedBadgeId: primaryEquipped,
       equippedBadges,
       friendIds: Array.from(friendIdSet),
+      incomingFriendRequests: Array.isArray(extras.incomingFriendRequests)
+        ? extras.incomingFriendRequests
+        : [],
+      outgoingFriendRequests: Array.isArray(extras.outgoingFriendRequests)
+        ? extras.outgoingFriendRequests
+        : [],
+      respectCount: typeof extras.respectCount === 'number' ? extras.respectCount : 0,
       currentRoomId: extras.currentRoomId || defaultRoomId,
       pets,
       pendingEngravings,
@@ -660,8 +776,11 @@ export function mapAccountToUserDbUpdate(account: UserAccount) {
     Array.isArray(playerState.equippedBadges) && playerState.equippedBadges.length > 0
       ? playerState.equippedBadges.slice(0, 5)
       : [playerState.equippedBadgeId || 'badge_checkin'];
+  const resolvedGender: 'M' | 'F' =
+    playerState.look.gender === 'F' || account.gender === 'F' ? 'F' : 'M';
   return {
     motto: playerState.motto,
+    gender: resolvedGender,
     rank: account.rank,
     credits: playerState.credits,
     duckets: playerState.duckets,
@@ -670,12 +789,16 @@ export function mapAccountToUserDbUpdate(account: UserAccount) {
     last_online: new Date().toISOString(),
     look: {
       ...playerState.look,
+      gender: resolvedGender,
       _pixlExtras: {
         redeemedVouchers: playerState.redeemedVouchers,
         equippedBadgeId: equippedBadges[0] ?? playerState.equippedBadgeId,
         equippedBadges,
         currentRoomId: playerState.currentRoomId,
         npcFriendIds,
+        respectCount: playerState.respectCount ?? 0,
+        incomingFriendRequests: playerState.incomingFriendRequests ?? [],
+        outgoingFriendRequests: playerState.outgoingFriendRequests ?? [],
       },
     },
   };
@@ -721,12 +844,8 @@ async function ensurePublicRoomsAndItemsInSupabase(
     const missingRoomPayloads: Omit<DbRoomRow, 'id'>[] = [];
 
     for (const tpl of publicTemplates) {
-      const exists = roomRows.some(
-        (r) =>
-          (tpl.modelName && r.model_name === tpl.modelName) ||
-          r.caption.trim().toLowerCase() === tpl.name.toLowerCase()
-      );
-      if (!exists) {
+      const matched = roomRows.find((r) => matchPublicTemplateForRow(r)?.id === tpl.id);
+      if (!matched) {
         missingRoomPayloads.push({
           caption: tpl.name,
           owner: tpl.owner,
@@ -737,6 +856,33 @@ async function ensurePublicRoomsAndItemsInSupabase(
           users_max: tpl.usersMax ?? 25,
           category: tpl.categoryNum ?? 1,
         });
+      } else {
+        // Force-update existing public room metadata / model_name so updated 2008 heightmaps apply live
+        const targetModel = tpl.modelName || 'model_a';
+        if (
+          matched.caption !== tpl.name ||
+          matched.description !== tpl.description ||
+          matched.model_name !== targetModel ||
+          matched.owner !== tpl.owner
+        ) {
+          const { data: updatedRow } = await supabase
+            .from('rooms')
+            .update({
+              caption: tpl.name,
+              owner: tpl.owner,
+              description: tpl.description,
+              model_name: targetModel,
+              users_now: tpl.baseOccupancy ?? matched.users_now,
+            })
+            .eq('id', matched.id)
+            .select('*')
+            .single();
+          if (updatedRow) {
+            roomRows = roomRows.map((r) =>
+              r.id === matched.id ? (updatedRow as DbRoomRow) : r
+            );
+          }
+        }
       }
     }
 
@@ -750,17 +896,35 @@ async function ensurePublicRoomsAndItemsInSupabase(
       }
     }
 
-    // Seed initial furniture ONLY for public rooms that currently have 0 items in `items`
+    // Force-sync public template furniture (user_id === 1) if missing or layout signature changed
     const itemsToInsert: Omit<DbItemRow, 'id'>[] = [];
     for (const tpl of publicTemplates) {
-      const matchedRoom = roomRows.find(
-        (r) =>
-          (tpl.modelName && r.model_name === tpl.modelName) ||
-          r.caption.trim().toLowerCase() === tpl.name.toLowerCase()
-      );
+      const matchedRoom = roomRows.find((r) => matchPublicTemplateForRow(r)?.id === tpl.id);
       if (!matchedRoom) continue;
-      const hasRoomItems = itemRows.some((it) => it.room_id === matchedRoom.id);
-      if (!hasRoomItems && tpl.initialFurni.length > 0) {
+
+      const adminRoomItems = itemRows.filter(
+        (it) => it.room_id === matchedRoom.id && it.user_id === 1
+      );
+      const existingSig = adminRoomItems
+        .map((it) => `${it.x},${it.y},${it.item_type}`)
+        .sort()
+        .join('|');
+      const expectedSig = tpl.initialFurni
+        .map((f) => `${f.x},${f.y},${f.furniId}`)
+        .sort()
+        .join('|');
+
+      if (existingSig !== expectedSig) {
+        if (adminRoomItems.length > 0) {
+          await supabase
+            .from('items')
+            .delete()
+            .eq('room_id', matchedRoom.id)
+            .eq('user_id', 1);
+          itemRows = itemRows.filter(
+            (it) => !(it.room_id === matchedRoom.id && it.user_id === 1)
+          );
+        }
         for (const f of tpl.initialFurni) {
           itemsToInsert.push({
             user_id: 1,
@@ -830,21 +994,29 @@ async function ensureCatalogSeededInSupabase(
     );
 
     if (missingPages.length > 0) {
+      let maxPageId = pageRows.reduce((m, r) => Math.max(m, Number(r.id) || 0), 0);
+      const usedPageIds = new Set(pageRows.map((r) => r.id));
+      const payloads = missingPages.map((p) => {
+        const assignedId = !usedPageIds.has(p.id) ? p.id : ++maxPageId;
+        usedPageIds.add(assignedId);
+        return {
+          id: assignedId,
+          parent_id: p.parent_id,
+          caption: p.caption,
+          icon_image: p.icon_image,
+          visible: p.visible,
+          min_rank: p.min_rank,
+          order_num: p.order_num,
+        };
+      });
       const { data: insertedPages, error } = await supabase
         .from('catalog_pages')
-        .insert(
-          missingPages.map((p) => ({
-            parent_id: p.parent_id,
-            caption: p.caption,
-            icon_image: p.icon_image,
-            visible: p.visible,
-            min_rank: p.min_rank,
-            order_num: p.order_num,
-          }))
-        )
+        .insert(payloads)
         .select('*');
       if (!error && insertedPages) {
         pageRows = [...pageRows, ...(insertedPages as DbCatalogPageRow[])];
+      } else if (error) {
+        console.warn('[Supabase catalog_pages] seed error:', error.message);
       }
     }
 
@@ -859,30 +1031,28 @@ async function ensureCatalogSeededInSupabase(
       }
     }
 
-    // If catalog has < 40 items, seed missing items from CATALOG_ITEMS_SEED (strict schema columns only!)
-    if (itemRows.length < 40) {
-      const existingTypes = new Set(itemRows.map((it) => it.item_type));
-      const missingItems = CATALOG_ITEMS_SEED.filter((seed) => !existingTypes.has(seed.item_type)).map(
-        (seed) => ({
-          page_id: seedToDbPageId.get(seed.page_id) ?? pageRows[0]?.id ?? seed.page_id,
-          catalog_name: seed.catalog_name,
-          cost_credits: seed.cost_credits,
-          cost_duckets: seed.cost_duckets,
-          amount: seed.amount,
-          item_type: seed.item_type,
-        })
-      );
+    // Seed missing items from CATALOG_ITEMS_SEED (or ensure newly introduced items like sticky_note exist)
+    const existingTypes = new Set(itemRows.map((it) => it.item_type));
+    const missingItems = CATALOG_ITEMS_SEED.filter(
+      (seed) => (itemRows.length < 40 || seed.item_type === 'sticky_note') && !existingTypes.has(seed.item_type)
+    ).map((seed) => ({
+      page_id: seedToDbPageId.get(seed.page_id) ?? pageRows[0]?.id ?? seed.page_id,
+      catalog_name: seed.catalog_name,
+      cost_credits: seed.cost_credits,
+      cost_duckets: seed.cost_duckets,
+      amount: seed.amount,
+      item_type: seed.item_type,
+    }));
 
-      if (missingItems.length > 0) {
-        const { data: insertedItems, error } = await supabase
-          .from('catalog_items')
-          .insert(missingItems)
-          .select('*');
-        if (!error && insertedItems) {
-          itemRows = [...itemRows, ...(insertedItems as DbCatalogItemRow[])];
-        } else if (error) {
-          console.warn('[Supabase catalog_items] seed error:', error.message);
-        }
+    if (missingItems.length > 0) {
+      const { data: insertedItems, error } = await supabase
+        .from('catalog_items')
+        .insert(missingItems)
+        .select('*');
+      if (!error && insertedItems) {
+        itemRows = [...itemRows, ...(insertedItems as DbCatalogItemRow[])];
+      } else if (error) {
+        console.warn('[Supabase catalog_items] seed error:', error.message);
       }
     }
   } catch (err) {
@@ -1199,6 +1369,7 @@ export async function placeItemInSupabase(params: {
   roomId: number;
   x: number;
   y: number;
+  z?: number;
   rot: number;
 }): Promise<boolean> {
   try {
@@ -1208,6 +1379,7 @@ export async function placeItemInSupabase(params: {
         room_id: params.roomId,
         x: Math.round(params.x),
         y: Math.round(params.y),
+        z: Number(params.z ?? 0),
         rot: Number(params.rot) || 0,
       })
       .eq('id', params.itemId);
@@ -1218,6 +1390,60 @@ export async function placeItemInSupabase(params: {
     return true;
   } catch (err) {
     console.warn('[Supabase items] place unexpected:', err);
+    return false;
+  }
+}
+
+export async function moveItemInSupabase(params: {
+  itemId: number;
+  x: number;
+  y: number;
+  z: number;
+  rot?: number;
+}): Promise<boolean> {
+  try {
+    const patch: Record<string, unknown> = {
+      x: Math.round(params.x),
+      y: Math.round(params.y),
+      z: Number(params.z) || 0,
+    };
+    if (typeof params.rot === 'number') patch.rot = params.rot;
+    const { error } = await supabase.from('items').update(patch).eq('id', params.itemId);
+    if (error) {
+      console.warn('[Supabase items] move error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase items] move unexpected:', err);
+    return false;
+  }
+}
+
+export async function updateRoomSettingsInSupabase(params: {
+  roomId: number;
+  caption: string;
+  description: string;
+  usersMax: number;
+  state: string;
+}): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('rooms')
+      .update({
+        caption: params.caption.trim().slice(0, 48),
+        description: params.description.trim().slice(0, 140),
+        users_max: Math.max(5, Math.min(100, Math.round(params.usersMax))),
+        state: params.state,
+      })
+      .eq('id', params.roomId);
+    if (error) {
+      console.warn('[Supabase rooms] settings update error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase rooms] settings update unexpected:', err);
     return false;
   }
 }
@@ -1492,15 +1718,19 @@ export async function upsertCatalogPageInSupabase(params: {
       if (error || !data) return null;
       return mapCatalogPageRow(data as DbCatalogPageRow);
     } else {
+      const { data: existingIds } = await supabase.from('catalog_pages').select('id');
+      const nextId =
+        ((existingIds ?? []) as { id: number }[]).reduce((m, r) => Math.max(m, Number(r.id) || 0), 0) + 1;
       const { data, error } = await supabase
         .from('catalog_pages')
         .insert({
+          id: nextId,
           parent_id: -1,
           caption: params.caption.trim(),
           icon_image: 1,
           visible: params.visible ?? true,
           min_rank: params.minRank ?? 1,
-          order_num: params.orderNum ?? 99,
+          order_num: params.orderNum ?? nextId,
         })
         .select('*')
         .single();
@@ -1546,8 +1776,20 @@ export async function upsertCatalogItemInSupabase(params: {
         .insert(payload)
         .select('*')
         .single();
-      if (error || !data) return null;
-      return mapCatalogItemRow(data as DbCatalogItemRow);
+      if (!error && data) {
+        return mapCatalogItemRow(data as DbCatalogItemRow);
+      }
+      // Fallback if catalog_items.id lacks auto-increment sequence
+      const { data: existingIds } = await supabase.from('catalog_items').select('id');
+      const nextId =
+        ((existingIds ?? []) as { id: number }[]).reduce((m, r) => Math.max(m, Number(r.id) || 0), 0) + 1;
+      const retry = await supabase
+        .from('catalog_items')
+        .insert({ id: nextId, ...payload })
+        .select('*')
+        .single();
+      if (retry.error || !retry.data) return null;
+      return mapCatalogItemRow(retry.data as DbCatalogItemRow);
     }
   } catch (err) {
     console.warn('[Supabase catalog_items] upsert error:', err);

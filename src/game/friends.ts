@@ -42,6 +42,7 @@ export function buildHotelPlayerDirectory(
     profiles.push({
       id: linkedNpcId ?? (key === 'krawattenmanni' ? 'staff-krawattenmanni' : `acc-${acc.id}`),
       accountId: acc.id,
+      numericUserId: acc.numericId,
       name: acc.username,
       motto: acc.playerState.motto,
       look: acc.playerState.look,
@@ -54,6 +55,7 @@ export function buildHotelPlayerDirectory(
       roomId: acc.online ? matchingNpc?.roomId ?? acc.playerState.currentRoomId : undefined,
       isStaff: meta.isStaff,
       npcId: matchingNpc?.id,
+      respectCount: acc.playerState.respectCount ?? 0,
     });
   }
 

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { INITIAL_PLAYER_STATE, INITIAL_ROOMS } from './data';
 import {
   buyCatalogueItem,
+  computeFurniPlacement,
+  moveFurniInRoom,
   pickupFurniToInventory,
   placeFurniFromInventory,
   purchaseHC,
@@ -85,13 +87,13 @@ import { authenticateUser, getInitialAccounts, registerUser, syncBadgesWithPlaye
 
 test('A* pathfinding routes around obstacles and reaches sittable chairs', () => {
   const room = INITIAL_ROOMS.find((r) => r.id === 'welcome_lounge')!;
-  // Walk from spawn (4,7) to seat at (6,3) around furniture
-  const path = findPath(room, room.initialFurni, 4, 7, 6, 3);
+  // Walk from spawn (5,7) to sittable HC Club Sofa at (7,5) around furniture
+  const path = findPath(room, room.initialFurni, 5, 7, 7, 5);
   assert.ok(path.length > 0, 'Should find a valid path to the HC Club Sofa');
-  assert.deepEqual(path[path.length - 1], { x: 6, y: 3 });
+  assert.deepEqual(path[path.length - 1], { x: 7, y: 5 });
 
-  // Should not path onto solid non-sittable fireplace at (4,1)
-  const blockedPath = findPath(room, room.initialFurni, 4, 7, 4, 1);
+  // Should not path onto solid non-sittable fireplace at (5,1)
+  const blockedPath = findPath(room, room.initialFurni, 5, 7, 5, 1);
   assert.equal(blockedPath.length, 0);
 });
 
@@ -424,25 +426,65 @@ test('Housekeeping 16x16 custom badge minting & engraved trophy metadata persist
 });
 
 import { CARRY_ITEMS, MOODLIGHT_PRESETS, parseClientCommand } from './clientFeatures';
+import { habboAudio } from './habboAudio';
 import { soundEngine } from './soundEngine';
 
-test('PIXL Hotel client commands (:moonwalk, :sit, :cola, :furni, :roll, o/) parse accurately and soundEngine stays silent outside hotel client', () => {
-  // soundEngine defaults to inGame=false so CMS is 100% silent
-  assert.equal(soundEngine.isInGame(), false);
-  soundEngine.setInGame(true);
-  assert.equal(soundEngine.isInGame(), true);
-  soundEngine.setInGame(false);
-  assert.equal(soundEngine.isInGame(), false);
+test('PIXL Hotel client commands (:moonwalk, :sit, :cola, :furni, :roll, o/) parse accurately and habboAudio stays silent outside hotel client', () => {
+  // habboAudio (and soundEngine alias) defaults to inGame=false so CMS is 100% silent
+  assert.equal(habboAudio, soundEngine);
+  assert.equal(habboAudio.isInGame(), false);
+  assert.equal(habboAudio.isMuted(), false);
+
+  // Verify every bespoke foley/audio method exists and is safe when inGame=false (CMS silent)
+  habboAudio.playChatPop('say');
+  habboAudio.playChatPop('shout');
+  habboAudio.playChatPop('whisper');
+  habboAudio.playConsoleMessage();
+  habboAudio.playCoinsPurchase();
+  habboAudio.playUiClick();
+  habboAudio.playWindowToggle(true);
+  habboAudio.playWindowToggle(false);
+  habboAudio.playFurniPlace();
+  habboAudio.playFurniRotate();
+  habboAudio.playFurniPickup();
+  habboAudio.playDiveSplash();
+  habboAudio.playWaterStep();
+  habboAudio.playStep();
+  habboAudio.playDiceRoll();
+  habboAudio.playTeleporter();
+
+  // Trax toggle respects inGame and muted gating
+  assert.equal(habboAudio.toggleTraxMusic(0), null);
+  habboAudio.setInGame(true);
+  assert.equal(habboAudio.isInGame(), true);
+  assert.equal(habboAudio.toggleTraxMusic(0), 0);
+  assert.equal(habboAudio.getActiveTrax(), 0);
+  // Toggling same track stops it
+  assert.equal(habboAudio.toggleTraxMusic(0), null);
+  assert.equal(habboAudio.getActiveTrax(), null);
+  // Muting while playing stops Trax immediately
+  assert.equal(habboAudio.toggleTraxMusic(1), 1);
+  habboAudio.setMuted(true);
+  assert.equal(habboAudio.isMuted(), true);
+  assert.equal(habboAudio.getActiveTrax(), null);
+  habboAudio.setMuted(false);
+  habboAudio.setInGame(false);
+  assert.equal(habboAudio.isInGame(), false);
 
   assert.deepEqual(parseClientCommand(':commands'), { type: 'commands_help' });
   assert.deepEqual(parseClientCommand(':furni'), { type: 'furni_chooser' });
-  assert.deepEqual(parseClientCommand(':chooser'), { type: 'furni_chooser' });
+  assert.deepEqual(parseClientCommand(':chooser'), { type: 'user_chooser' });
   assert.deepEqual(parseClientCommand(':moodlight'), { type: 'moodlight_toggle' });
   assert.deepEqual(parseClientCommand(':moonwalk'), { type: 'moonwalk' });
   assert.deepEqual(parseClientCommand(':sit'), { type: 'pose', pose: 'sit' });
+  assert.deepEqual(parseClientCommand(':lay'), { type: 'pose', pose: 'lay' });
   assert.deepEqual(parseClientCommand(':stand'), { type: 'pose', pose: 'stand' });
-  assert.deepEqual(parseClientCommand(':habnam'), { type: 'pose', pose: 'dance' });
+  assert.deepEqual(parseClientCommand(':habnam'), { type: 'dance', style: 1 });
+  assert.deepEqual(parseClientCommand(':dance 3'), { type: 'dance', style: 3 });
+  assert.deepEqual(parseClientCommand(':sign heart'), { type: 'sign', sign: 'heart' });
+  assert.deepEqual(parseClientCommand(':sign 10'), { type: 'sign', sign: '10' });
   assert.deepEqual(parseClientCommand('o/'), { type: 'pose', pose: 'wave' });
+  assert.deepEqual(parseClientCommand(':drink'), { type: 'carry', item: 'cola' });
   assert.deepEqual(parseClientCommand(':cola'), { type: 'carry', item: 'cola' });
   assert.deepEqual(parseClientCommand(':coffee'), { type: 'carry', item: 'coffee' });
   assert.deepEqual(parseClientCommand(':drop'), { type: 'carry', item: 'none' });
@@ -473,7 +515,10 @@ import {
   mapUserPetRowToOwnedPet,
   mapUserRowToUserAccount,
   mapVoucherRow,
+  parseItemExtraData,
+  parseRoomStateField,
   serializeItemExtraData,
+  serializeRoomStateField,
 } from './supabaseSync';
 
 test('PhoenixEmu / HoloCMS relational row mappers hydrate users, bans, rooms, items (room_id=0 inventory rule), pets, news, and vouchers', () => {
@@ -646,4 +691,169 @@ test('PhoenixEmu / HoloCMS relational row mappers hydrate users, bans, rooms, it
   assert.equal(voucher.code, 'HABBO2026');
   assert.equal(voucher.credits, 500);
 });
+
+import {
+  CATALOG_ITEMS_SEED,
+  CATALOG_PAGES_SEED,
+  FURNI_CATALOGUE,
+  getEquippedBadges,
+} from './data';
+import {
+  canStepBetweenTiles,
+  getTileHeight,
+  isChangingBoothTile,
+  isDivingBoardTile,
+  isSwimTile,
+  isTileWalkable,
+} from './isoMath';
+
+test('The Lido & Rooftop Pool multi-level isometric heightmaps, pool ladders, diving board, and 8 public rooms work accurately', () => {
+  const publicRooms = INITIAL_ROOMS.filter((r) => r.category === 'public');
+  assert.ok(publicRooms.length >= 7, 'Expected at least 7 iconic public rooms');
+
+  const expectedIds = [
+    'the_lido',
+    'rooftop_pool',
+    'welcome_lounge',
+    'club_mammoth',
+    'chromide_club',
+    'peaceful_park',
+    'battle_banzai',
+  ];
+  for (const id of expectedIds) {
+    assert.ok(
+      publicRooms.some((r) => r.id === id),
+      `Expected public room "${id}" to be seeded`
+    );
+  }
+
+  const lido = INITIAL_ROOMS.find((r) => r.id === 'the_lido')!;
+  assert.equal(lido.outdoor, true);
+  let foundBooth: { x: number; y: number } | null = null;
+  let foundBoard: { x: number; y: number } | null = null;
+  let foundWater: { x: number; y: number } | null = null;
+  for (let y = 0; y < lido.layout.length; y++) {
+    for (let x = 0; x < lido.layout[y].length; x++) {
+      if (isChangingBoothTile(lido, x, y)) foundBooth = { x, y };
+      if (isDivingBoardTile(lido, x, y)) foundBoard = { x, y };
+      if (isSwimTile(lido, x, y)) foundWater = { x, y };
+    }
+  }
+  assert.ok(foundBooth, 'The Lido must contain a Changing Booth tile');
+  assert.ok(foundBoard, 'The Lido must contain a Diving Board tile');
+  assert.ok(foundWater, 'The Lido must contain Pool Water tiles');
+
+  assert.equal(getTileHeight(lido, foundWater.x, foundWater.y), 0.125);
+  assert.equal(getTileHeight(lido, foundBoard.x, foundBoard.y), 3);
+  assert.equal(canStepBetweenTiles(lido, foundBoard.x, foundBoard.y, foundWater.x, foundWater.y), true);
+  assert.equal(canStepBetweenTiles(lido, foundWater.x, foundWater.y, foundBoard.x, foundBoard.y), false);
+
+  // Rooftop Pool: outdoor facade, cliff height 3 (non-walkable), pool ladder ('l') transition
+  const rooftop = INITIAL_ROOMS.find((r) => r.id === 'rooftop_pool')!;
+  assert.equal(rooftop.outdoor, true);
+  assert.equal(rooftop.rooftopHotelFacade, true);
+  assert.equal(getTileHeight(rooftop, 9, 1), 3);
+  assert.equal(isTileWalkable(rooftop, rooftop.initialFurni, 9, 1, false), false);
+  assert.equal(getTileHeight(rooftop, 6, 2), 0.55);
+  assert.equal(canStepBetweenTiles(rooftop, 5, 2, 6, 2), true);
+  assert.equal(canStepBetweenTiles(rooftop, 6, 2, 7, 2), true);
+  assert.equal(canStepBetweenTiles(rooftop, 5, 4, 6, 4), false);
+
+  // Elevated screenToGrid picks terrace/water accurately
+  const ptWater = gridToScreen(foundWater.x, foundWater.y, 400, 120, getTileHeight(lido, foundWater.x, foundWater.y));
+  const backWater = screenToGrid(ptWater.x, ptWater.y + 16, 400, 120, lido);
+  assert.deepEqual(backWater, foundWater);
+});
+
+test('52-item DB Catalogue seeds across 7 sections and 5-slot badge equipping work cleanly', () => {
+  assert.equal(CATALOG_PAGES_SEED.length, 7);
+  assert.ok(FURNI_CATALOGUE.length >= 52, `Expected >= 52 items, got ${FURNI_CATALOGUE.length}`);
+  assert.equal(CATALOG_ITEMS_SEED.length, FURNI_CATALOGUE.length);
+
+  const playerWithMany = {
+    ...INITIAL_PLAYER_STATE,
+    equippedBadgeId: 'badge_checkin',
+    equippedBadges: [
+      'badge_checkin',
+      'badge_hc',
+      'badge_dragon',
+      'badge_lido',
+      'badge_banzai',
+      'badge_admin',
+    ],
+  };
+  const equipped = getEquippedBadges(playerWithMany);
+  assert.equal(equipped.length, 5);
+});
+
+test('furni stacking (z-height), moving, 20x sticky_note pack, sticky extra_data, and room access state work accurately', () => {
+  const room = INITIAL_ROOMS.find((r) => r.id === 'my_room')!;
+  const placedBase = [
+    { uid: 'desk-1', furniId: 'exec_desk', x: 5, y: 5, z: 0, dir: 0 as const, state: 1 },
+    { uid: 'sofa-1', furniId: 'hc_sofa', x: 4, y: 5, z: 0, dir: 0 as const, state: 1 },
+  ];
+
+  // Stackable trophy can be stacked on exec_desk (isSurface) with positive z
+  const trophyCheck = computeFurniPlacement(room, placedBase, 'gold_trophy', 5, 5);
+  assert.equal(trophyCheck.ok, true);
+  assert.ok(trophyCheck.z > 0, `Expected stacked z > 0, got ${trophyCheck.z}`);
+
+  // Non-stackable sofa cannot be stacked on exec_desk
+  const sofaCheck = computeFurniPlacement(room, placedBase, 'hc_sofa', 5, 5);
+  assert.equal(sofaCheck.ok, false);
+
+  // Moving a sticky_note from floor onto exec_desk assigns stacked z
+  const placedWithNote = [
+    ...placedBase,
+    { uid: 'note-1', furniId: 'sticky_note', x: 6, y: 5, z: 0, dir: 0 as const, state: 0 },
+  ];
+  const moveRes = moveFurniInRoom(placedWithNote, room, 'note-1', 5, 5);
+  assert.equal(moveRes.ok, true);
+  const movedNote = moveRes.placedFurni.find((f) => f.uid === 'note-1')!;
+  assert.equal(movedNote.x, 5);
+  assert.equal(movedNote.y, 5);
+  assert.ok((movedNote.z ?? 0) > 0);
+
+  // Buying 1 pack of sticky_note charges 1 credit and grants 20 notes
+  const stickyBuy = buyCatalogueItem(INITIAL_PLAYER_STATE, 'sticky_note', 1);
+  assert.equal(stickyBuy.ok, true);
+  assert.equal(stickyBuy.player.credits, INITIAL_PLAYER_STATE.credits - 1);
+  assert.equal(
+    stickyBuy.player.inventory.find((i) => i.furniId === 'sticky_note')?.quantity,
+    20
+  );
+
+  // Sticky note extra_data round-trip
+  const extraRaw = serializeItemExtraData(2, undefined, {
+    color: 'blue',
+    text: 'Meet at The Lido!',
+    author: 'Krawattenmanni',
+    updatedAt: '2026-11-17',
+  });
+  const parsedExtra = parseItemExtraData(extraRaw);
+  assert.equal(parsedExtra.state, 2);
+  assert.equal(parsedExtra.stickyNote?.color, 'blue');
+  assert.equal(parsedExtra.stickyNote?.text, 'Meet at The Lido!');
+
+  // Room state serialization / parsing (doorbell & password & room rights)
+  const serializedPass = serializeRoomStateField({
+    accessMode: 'password',
+    password: 'pixl',
+    rights: ['FriendOne', 'FriendTwo'],
+  });
+  const parsedPass = parseRoomStateField(serializedPass);
+  assert.equal(parsedPass.accessMode, 'password');
+  assert.equal(parsedPass.password, 'pixl');
+  assert.deepEqual(parsedPass.rights, ['FriendOne', 'FriendTwo']);
+
+  const serializedDoorbell = serializeRoomStateField({
+    accessMode: 'doorbell',
+    rights: ['HelperUser'],
+  });
+  const parsedDoorbell = parseRoomStateField(serializedDoorbell);
+  assert.equal(parsedDoorbell.accessMode, 'doorbell');
+  assert.deepEqual(parsedDoorbell.rights, ['HelperUser']);
+});
+
+
 

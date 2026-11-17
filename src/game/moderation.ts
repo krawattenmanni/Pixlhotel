@@ -36,14 +36,26 @@ const ROOM_NPC_ALIAS: Record<string, string> = {
   '3': 'battle_banzai',
 };
 
+const MODEL_TO_NPC_ROOM: Record<string, string> = {
+  model_welcome: 'welcome_lounge',
+  model_a: 'welcome_lounge',
+  model_b: 'club_mammoth',
+  model_banzai: 'battle_banzai',
+  model_lido: 'the_lido',
+  model_rooftop: 'rooftop_pool',
+  model_disco: 'chromide_club',
+  model_park: 'peaceful_park',
+};
+
 export function getActiveRoomNpcs(
   npcs: HabboNPC[],
   roomId: string,
-  modState: RoomModerationState
+  modState: RoomModerationState,
+  modelName?: string
 ): HabboNPC[] {
   const kicked = new Set(modState.kickedByRoom[roomId] ?? []);
   const banned = new Set(modState.bannedByRoom[roomId] ?? []);
-  const aliasRoomId = ROOM_NPC_ALIAS[roomId];
+  const aliasRoomId = (modelName && MODEL_TO_NPC_ROOM[modelName]) || ROOM_NPC_ALIAS[roomId];
   return npcs.filter(
     (n) =>
       (n.roomId === roomId || (aliasRoomId && n.roomId === aliasRoomId)) &&
