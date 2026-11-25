@@ -23,13 +23,19 @@ import {
 } from '../../game/clientFeatures';
 import { findBadgeDefById } from '../../game/customBadges';
 import { getEquippedBadges } from '../../game/data';
-import { normalizeBadgeCategoryGroup, type BadgeCategoryFilter } from '../../game/i18n';
+import {
+  normalizeBadgeCategoryGroup,
+  t,
+  type AppTheme,
+  type BadgeCategoryFilter,
+} from '../../game/i18n';
 import { getPetDef } from '../../game/pets';
 import { getRoomThumbnailImage } from '../../game/pixelSprites';
 import type {
   AvatarPose,
   CustomBadgeDef,
   Direction,
+  LanguageCode,
   NewsArticle,
   PlayerProfileRecord,
   PlayerState,
@@ -50,12 +56,15 @@ interface MeDashboardProps {
   friends: PlayerProfileRecord[];
   news: NewsArticle[];
   customBadges?: CustomBadgeDef[];
+  lang?: LanguageCode;
+  theme?: AppTheme;
   onSaveMotto: (motto: string) => void;
   onEnterHotel: (roomId?: string) => void;
   onRedeemVoucher: (code: string) => { ok: boolean; message: string };
   onExtendHC: () => { ok: boolean; message: string };
   onOpenWardrobe: () => void;
   onInspectPlayer: (profileId: string) => void;
+  onViewMyPage?: (username: string) => void;
   onEquipBadge?: (badgeId: string) => void;
   onCarePet?: (petId: string, kind: 'feed' | 'play') => void;
   roomOccupancyMap?: Record<string, number>;
@@ -239,12 +248,15 @@ export function MeDashboard({
   friends,
   news,
   customBadges = [],
+  lang = 'en',
+  theme = 'light',
   onSaveMotto,
   onEnterHotel,
   onRedeemVoucher,
   onExtendHC,
   onOpenWardrobe,
   onInspectPlayer,
+  onViewMyPage,
   onEquipBadge,
   onCarePet,
   roomOccupancyMap = {},
@@ -372,8 +384,14 @@ export function MeDashboard({
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         {/* ICONIC HABBO "PERSONAL PLATE" HERO CARD */}
         <section className="habbo-box lg:col-span-7 flex flex-col justify-between">
-          {/* Scenic Isometric Terrace Banner (165px+ tall) */}
-          <div className="relative min-h-[180px] overflow-hidden bg-gradient-to-b from-[#55b7f7] via-[#9bd6fb] to-[#e4f5ff] p-3.5 sm:p-4">
+          {/* Scenic Isometric Terrace Banner (165px+ tall) with Day/Night Sky */}
+          <div
+            className={`relative min-h-[180px] overflow-hidden p-3.5 sm:p-4 ${
+              theme === 'dark'
+                ? 'bg-gradient-to-b from-[#091526] via-[#102540] to-[#1a365d]'
+                : 'bg-gradient-to-b from-[#55b7f7] via-[#9bd6fb] to-[#e4f5ff]'
+            }`}
+          >
             {/* Pixel Rooftop / Terrace Scenic Backdrop SVG */}
             <svg
               className="pointer-events-none absolute inset-0 h-full w-full"
@@ -382,35 +400,68 @@ export function MeDashboard({
               shapeRendering="crispEdges"
               aria-hidden="true"
             >
-              {/* Clouds & Distant Hotel */}
-              <rect x="28" y="14" width="54" height="12" fill="#ffffff" />
-              <rect x="40" y="8" width="28" height="8" fill="#ffffff" />
-              <rect x="220" y="18" width="48" height="10" fill="#ffffff" />
-              <rect x="442" y="12" width="60" height="12" fill="#ffffff" />
+              {theme === 'dark' ? (
+                <>
+                  {/* Night Stars & Golden Crescent Moon */}
+                  <rect x="492" y="16" width="18" height="18" fill="#fde047" />
+                  <rect x="498" y="16" width="12" height="12" fill="#091526" />
+                  <rect x="92" y="18" width="3" height="3" fill="#fef08a" />
+                  <rect x="184" y="12" width="2" height="2" fill="#ffffff" />
+                  <rect x="268" y="24" width="3" height="3" fill="#bae6fd" />
+                  <rect x="352" y="14" width="2" height="2" fill="#fef08a" />
+                  <rect x="424" y="28" width="3" height="3" fill="#ffffff" />
+                </>
+              ) : (
+                <>
+                  {/* Fluffy Daytime Pixel Clouds */}
+                  <rect x="28" y="14" width="54" height="12" fill="#ffffff" />
+                  <rect x="40" y="8" width="28" height="8" fill="#ffffff" />
+                  <rect x="220" y="18" width="48" height="10" fill="#ffffff" />
+                  <rect x="442" y="12" width="60" height="12" fill="#ffffff" />
+                </>
+              )}
               {/* Left Pixel Hotel Wing Windows */}
-              <rect x="0" y="28" width="68" height="106" fill="#6396bf" />
+              <rect x="0" y="28" width="68" height="106" fill={theme === 'dark' ? '#1e3a5f' : '#6396bf'} />
               <rect x="10" y="40" width="12" height="12" fill="#fef08a" />
               <rect x="30" y="40" width="12" height="12" fill="#bae6fd" />
               <rect x="10" y="62" width="12" height="12" fill="#bae6fd" />
               <rect x="30" y="62" width="12" height="12" fill="#fef08a" />
               <rect x="10" y="84" width="12" height="12" fill="#fef08a" />
-              {/* Palm Tree */}
-              <rect x="136" y="66" width="8" height="68" fill="#854d0e" />
+              {/* Potted Pixel Palm Tree */}
+              <rect x="132" y="114" width="16" height="14" fill="#b45309" />
+              <rect x="136" y="66" width="8" height="50" fill="#854d0e" />
               <rect x="118" y="56" width="24" height="8" fill="#16a34a" />
               <rect x="138" y="58" width="24" height="8" fill="#22c55e" />
               <rect x="126" y="48" width="26" height="8" fill="#4ade80" />
-              {/* Terrace Stone Parapet & Tiled Isometric Deck */}
-              <rect x="0" y="132" width="560" height="58" fill="#e6dcc6" />
-              <rect x="0" y="126" width="560" height="7" fill="#cbd5e1" />
+              {/* Pixel Hibiscus Bushes along Balustrade */}
+              <rect x="210" y="108" width="34" height="18" fill="#15803d" />
+              <rect x="216" y="104" width="22" height="8" fill="#22c55e" />
+              <rect x="218" y="112" width="4" height="4" fill="#f43f5e" />
+              <rect x="230" y="108" width="4" height="4" fill="#ec4899" />
+              <rect x="380" y="108" width="38" height="18" fill="#15803d" />
+              <rect x="386" y="104" width="26" height="8" fill="#22c55e" />
+              <rect x="390" y="110" width="4" height="4" fill="#ec4899" />
+              <rect x="404" y="114" width="4" height="4" fill="#fde047" />
+              {/* Stone Balustrade Pillars & Terrace Parapet */}
+              {[84, 166, 262, 344, 436, 518].map((bx) => (
+                <rect key={bx} x={bx} y="116" width="10" height="12" fill="#94a3b8" />
+              ))}
+              <rect x="0" y="132" width="560" height="58" fill={theme === 'dark' ? '#b8ad98' : '#e6dcc6'} />
+              <rect x="0" y="124" width="560" height="4" fill="#e2e8f0" />
+              <rect x="0" y="128" width="560" height="5" fill="#cbd5e1" />
               <rect x="0" y="132" width="560" height="3" fill="#94a3b8" />
               {/* Checkerboard isometric terrace tiles */}
-              <rect x="16" y="144" width="38" height="10" fill="#d6cab1" />
-              <rect x="92" y="144" width="38" height="10" fill="#d6cab1" />
-              <rect x="168" y="144" width="38" height="10" fill="#d6cab1" />
-              <rect x="244" y="144" width="38" height="10" fill="#d6cab1" />
-              <rect x="54" y="162" width="38" height="10" fill="#d6cab1" />
-              <rect x="130" y="162" width="38" height="10" fill="#d6cab1" />
-              <rect x="206" y="162" width="38" height="10" fill="#d6cab1" />
+              <rect x="16" y="144" width="38" height="10" fill={theme === 'dark' ? '#9e927c' : '#d6cab1'} />
+              <rect x="92" y="144" width="38" height="10" fill={theme === 'dark' ? '#9e927c' : '#d6cab1'} />
+              <rect x="168" y="144" width="38" height="10" fill={theme === 'dark' ? '#9e927c' : '#d6cab1'} />
+              <rect x="244" y="144" width="38" height="10" fill={theme === 'dark' ? '#9e927c' : '#d6cab1'} />
+              <rect x="320" y="144" width="38" height="10" fill={theme === 'dark' ? '#9e927c' : '#d6cab1'} />
+              <rect x="396" y="144" width="38" height="10" fill={theme === 'dark' ? '#9e927c' : '#d6cab1'} />
+              <rect x="54" y="162" width="38" height="10" fill={theme === 'dark' ? '#9e927c' : '#d6cab1'} />
+              <rect x="130" y="162" width="38" height="10" fill={theme === 'dark' ? '#9e927c' : '#d6cab1'} />
+              <rect x="206" y="162" width="38" height="10" fill={theme === 'dark' ? '#9e927c' : '#d6cab1'} />
+              <rect x="282" y="162" width="38" height="10" fill={theme === 'dark' ? '#9e927c' : '#d6cab1'} />
+              <rect x="358" y="162" width="38" height="10" fill={theme === 'dark' ? '#9e927c' : '#d6cab1'} />
             </svg>
 
             {/* Micro Pose & Wardrobe Controls in Top-Left Corner */}
@@ -445,6 +496,19 @@ export function MeDashboard({
                 >
                   Looks
                 </button>
+                {onViewMyPage && (
+                  <>
+                    <span className="text-[#cbd5e1]">|</span>
+                    <button
+                      type="button"
+                      data-testid="me-open-mypage-btn"
+                      onClick={() => onViewMyPage(player.username)}
+                      className="rounded-[2px] px-1.5 py-0.5 font-bold text-[#b45309] hover:bg-[#fef3c7] cursor-pointer"
+                    >
+                      {t(lang, 'nav_mypage')}
+                    </button>
+                  </>
+                )}
               </div>
 
               <div className="flex items-center gap-1">
