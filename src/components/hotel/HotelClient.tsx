@@ -1,32 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Bell,
-  Coffee,
-  Coins,
-  Crown,
-  Disc,
-  DoorOpen,
   Gamepad2,
-  Hand,
   Heart,
-  Home,
-  Info,
-  Lightbulb,
-  Music,
-  Package,
   PawPrint,
-  Send,
-  Settings,
-  ShieldAlert,
-  Shirt,
-  ShoppingBag,
   Sparkles,
-  Terminal,
-  ThumbsUp,
-  Users,
   Utensils,
-  Volume2,
-  VolumeX,
   X,
 } from 'lucide-react';
 import {
@@ -68,6 +47,7 @@ import {
   type Point2D,
 } from '../../game/isoMath';
 import {
+  canDeleteRoom,
   getActiveRoomNpcs,
   isRoomOwnerOrAdmin,
   type RoomModerationState,
@@ -77,9 +57,11 @@ import {
   drawAvatarSign,
   drawBanzaiTileOverlay,
   drawCarryHandItem,
+  drawDestinationArrow,
   drawIsoFloorTile,
   drawLidoTileProp,
   drawPoolLaneBuoy,
+  drawRoomDoorMat,
   drawRoomWallsOrParapets,
   drawRooftopWaterfall,
   getAvatarHeadSprite,
@@ -117,6 +99,15 @@ import type {
   TradeSlotItem,
 } from '../../game/types';
 import { BadgeInfoModal } from '../BadgeInfoModal';
+import {
+  BlueQuestionIcon,
+  CatalogueBookIcon,
+  CoinPurseIcon,
+  ConsolePhoneIcon,
+  HabboHandIcon,
+  HotelNavigatorIcon,
+  SpeakerIcon,
+} from '../HabboDockIcons';
 import { PixelBadgeSprite, PixelPetCanvas } from '../PixelSpriteCanvas';
 import { AdminToolsPanel } from './AdminToolsPanel';
 import { AvatarInfoStand, type InfoStandTarget } from './AvatarInfoStand';
@@ -143,6 +134,7 @@ interface HotelClientProps {
   player: PlayerState;
   rooms: RoomDef[];
   roomFurniMap: Record<string, PlacedFurni[]>;
+  roomOccupancyMap?: Record<string, number>;
   npcs: HabboNPC[];
   customBadges?: CustomBadgeDef[];
   catalogPages?: CatalogPageRow[];
@@ -159,6 +151,11 @@ interface HotelClientProps {
     description: string;
     modelName: string;
   }) => Promise<{ ok: boolean; message: string }>;
+  onDeleteRoom?: (
+    roomId: string
+  ) => void | Promise<{ ok: boolean; message: string } | void>;
+  clientToastMessage?: string | null;
+  onClearClientToast?: () => void;
   onBuyCatalogueItem: (
     furniId: string,
     quantity?: number,
@@ -251,6 +248,7 @@ interface SimParticle {
 interface RemotePlayerSim extends RemotePlayerState {
   path: Point2D[];
   targetPose: AvatarPose;
+  lastSeen: number;
 }
 
 interface PetSimState {
@@ -350,6 +348,7 @@ export function HotelClient({
   player,
   rooms,
   roomFurniMap,
+  roomOccupancyMap = {},
   npcs,
   customBadges = [],
   catalogPages,
@@ -362,6 +361,9 @@ export function HotelClient({
   onBackToCms,
   onSwitchRoom,
   onCreateRoom,
+  onDeleteRoom,
+  clientToastMessage = null,
+  onClearClientToast,
   onBuyCatalogueItem,
   onBuyPet,
   onSummonPetsToRoom,
@@ -430,6 +432,7 @@ export function HotelClient({
   const [commandsSubTab, setCommandsSubTab] = useState<'commands' | 'furni'>('commands');
   const [showRoomInfoPopover, setShowRoomInfoPopover] = useState(false);
   const [showActionsPopover, setShowActionsPopover] = useState(false);
+  const [showPursePopover, setShowPursePopover] = useState(false);
   const [showWardrobeModal, setShowWardrobeModal] = useState(false);
   const [showUserChooser, setShowUserChooser] = useState(false);
   const [showRoomSettingsModal, setShowRoomSettingsModal] = useState(false);
@@ -516,6 +519,20 @@ export function HotelClient({
   const canModerateRoom =
     isRoomOwnerOrAdmin(currentRoom, player) ||
     currentRoom.owner.toLowerCase() === player.username.toLowerCase();
+  const canDeleteCurrentRoom = Boolean(onDeleteRoom) && canDeleteRoom(currentRoom, player);
+  const [confirmDeleteCurrentRoom, setConfirmDeleteCurrentRoom] = useState(false);
+
+  useEffect(() => {
+    setConfirmDeleteCurrentRoom(false);
+  }, [currentRoom.id, showRoomInfoPopover]);
+
+  useEffect(() => {
+    if (!confirmDeleteCurrentRoom) return;
+    const timer = window.setTimeout(() => {
+      setConfirmDeleteCurrentRoom(false);
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [confirmDeleteCurrentRoom]);
 
   // Enable habboAudio only while HotelClient is mounted
   useEffect(() => {
@@ -718,6 +735,12 @@ export function HotelClient({
     setTimeout(() => setStatusToast((prev) => (prev === msg ? null : prev)), 2800);
   }, []);
 
+  useEffect(() => {
+    if (!clientToastMessage) return;
+    showToast(clientToastMessage);
+    onClearClientToast?.();
+  }, [clientToastMessage, onClearClientToast, showToast]);
+
   const requestSwitchRoom = useCallback(
     (roomId: string) => {
       const target = rooms.find((r) => r.id === roomId);
@@ -805,46 +828,49 @@ export function HotelClient({
       dir?: Direction;
     }): RemotePlayerState => {
       const sim = simRef.current;
+      const latest = latestRef.current;
+      const curPlayer = latest.player;
+      const curRoom = latest.currentRoom;
       const curX = Math.round(sim.px);
       const curY = Math.round(sim.py);
       const pBadge =
-        player.rank >= 5
+        curPlayer.rank >= 5
           ? 'ADM'
-          : player.rank === 4
+          : curPlayer.rank === 4
           ? 'MOD'
-          : player.rank === 3
+          : curPlayer.rank === 3
           ? 'EVT'
-          : player.hcDays > 0
-          ? 'HC'
+          : curPlayer.hcDays > 0
+          ? 'PC'
           : undefined;
       const swimmingNow =
         overrides?.swimming ??
-        (isSwimTile(latestRef.current.currentRoom, curX, curY) || sim.swimwearActive);
+        (isSwimTile(curRoom, curX, curY) || sim.swimwearActive);
       return {
         sessionId: sessionIdRef.current,
-        username: player.username,
-        motto: player.motto,
-        look: player.look,
+        username: curPlayer.username,
+        motto: curPlayer.motto,
+        look: curPlayer.look,
         x: curX,
         y: curY,
         targetX: overrides?.targetX ?? curX,
         targetY: overrides?.targetY ?? curY,
         dir: overrides?.dir ?? sim.dir,
         pose: overrides?.pose ?? sim.pose,
-        danceStyle: overrides?.danceStyle ?? danceStyle,
-        activeSign: overrides?.activeSign !== undefined ? overrides.activeSign : activeSign,
-        carryItem: overrides?.carryItem ?? carryItem,
-        moonwalk: overrides?.moonwalk ?? moonwalk,
+        danceStyle: overrides?.danceStyle ?? latest.danceStyle,
+        activeSign: overrides?.activeSign !== undefined ? overrides.activeSign : latest.activeSign,
+        carryItem: overrides?.carryItem ?? latest.carryItem,
+        moonwalk: overrides?.moonwalk ?? latest.moonwalk,
         swimming: swimmingNow,
         swimwearColor: overrides?.swimwearColor ?? sim.swimwearColor,
         badge: pBadge,
-        badges: player.unlockedBadges,
-        rank: player.rank,
-        respectCount: player.respectCount ?? 0,
+        badges: curPlayer.unlockedBadges,
+        rank: curPlayer.rank,
+        respectCount: curPlayer.respectCount ?? 0,
         updatedAt: Date.now(),
       };
     },
-    [activeSign, carryItem, danceStyle, moonwalk, player]
+    []
   );
 
   const broadcastAvatarMove = useCallback(
@@ -873,20 +899,21 @@ export function HotelClient({
     (text: string, opts?: { mode?: ChatDeliveryMode; bubbleStyle?: ChatBubbleStyle }) => {
       const ch = roomChannelRef.current;
       if (!ch || !roomChannelSubscribedRef.current) return;
+      const curPlayer = latestRef.current.player;
       ch.send({
         type: 'broadcast',
         event: 'avatar:chat',
         payload: {
           sessionId: sessionIdRef.current,
-          username: player.username,
-          look: player.look,
+          username: curPlayer.username,
+          look: curPlayer.look,
           text,
           mode: opts?.mode ?? 'say',
           bubbleStyle: opts?.bubbleStyle ?? 'classic',
         },
       }).catch(() => {});
     },
-    [player.look, player.username]
+    []
   );
 
   // Supabase Realtime Multiplayer Presence & Broadcast per Room
@@ -896,6 +923,7 @@ export function HotelClient({
     simRef.current.remotePlayers = {};
     setRemotePlayersCount(0);
     roomChannelSubscribedRef.current = false;
+    const pendingLeaveTimers = new Map<string, number>();
 
     const channel = supabase.channel(`pixl-room:${roomId}`, {
       config: {
@@ -904,34 +932,118 @@ export function HotelClient({
       },
     });
 
+    const upsertRemotePlayerPacket = (p: RemotePlayerState | null | undefined) => {
+      if (!p || !p.sessionId || p.sessionId === mySessionId) return;
+      const now = Date.now();
+      const existingTimer = pendingLeaveTimers.get(p.sessionId);
+      if (existingTimer !== undefined) {
+        window.clearTimeout(existingTimer);
+        pendingLeaveTimers.delete(p.sessionId);
+      }
+
+      const existing = simRef.current.remotePlayers[p.sessionId];
+      const roomDef = latestRef.current.currentRoom;
+      const furniList = latestRef.current.currentFurni;
+      const nextTargetX = typeof p.targetX === 'number' ? p.targetX : p.x;
+      const nextTargetY = typeof p.targetY === 'number' ? p.targetY : p.y;
+
+      if (!existing) {
+        const path =
+          nextTargetX !== p.x || nextTargetY !== p.y
+            ? findPath(roomDef, furniList, p.x, p.y, nextTargetX, nextTargetY)
+            : [];
+        simRef.current.remotePlayers[p.sessionId] = {
+          ...p,
+          targetX: nextTargetX,
+          targetY: nextTargetY,
+          path,
+          targetPose: p.pose || 'stand',
+          lastSeen: now,
+        };
+        setRemotePlayersCount(Object.keys(simRef.current.remotePlayers).length);
+        return;
+      }
+
+      const curTileX = Math.round(existing.x);
+      const curTileY = Math.round(existing.y);
+      let nextPath = existing.path;
+      if (nextTargetX !== curTileX || nextTargetY !== curTileY) {
+        const computed = findPath(roomDef, furniList, curTileX, curTileY, nextTargetX, nextTargetY);
+        if (computed.length > 0) {
+          nextPath = computed;
+        } else {
+          existing.x = nextTargetX;
+          existing.y = nextTargetY;
+          nextPath = [];
+        }
+      } else {
+        nextPath = [];
+      }
+
+      simRef.current.remotePlayers[p.sessionId] = {
+        ...existing,
+        username: p.username || existing.username,
+        motto: p.motto ?? existing.motto,
+        look: p.look || existing.look,
+        targetX: nextTargetX,
+        targetY: nextTargetY,
+        dir: p.dir ?? existing.dir,
+        pose: nextPath.length > 0 ? 'walk' : p.pose || 'stand',
+        targetPose: p.pose || 'stand',
+        danceStyle: p.danceStyle ?? existing.danceStyle,
+        activeSign: p.activeSign !== undefined ? p.activeSign : existing.activeSign,
+        carryItem: p.carryItem ?? existing.carryItem,
+        moonwalk: p.moonwalk ?? existing.moonwalk,
+        swimming: p.swimming ?? existing.swimming,
+        swimwearColor: p.swimwearColor ?? existing.swimwearColor,
+        badge: p.badge ?? existing.badge,
+        badges: p.badges ?? existing.badges,
+        rank: p.rank ?? existing.rank,
+        respectCount: p.respectCount ?? existing.respectCount,
+        updatedAt: p.updatedAt ?? now,
+        path: nextPath,
+        lastSeen: now,
+      };
+      setRemotePlayersCount(Object.keys(simRef.current.remotePlayers).length);
+    };
+
+    // Safe presence sync: NEVER delete existing remotePlayers missing from a partial snapshot
     const syncPresenceMap = () => {
       const state = channel.presenceState<RemotePlayerState>();
       const existing = simRef.current.remotePlayers;
       const nextMap: Record<string, RemotePlayerSim> = { ...existing };
+      const now = Date.now();
 
       for (const [key, presences] of Object.entries(state)) {
         if (key === mySessionId || !Array.isArray(presences) || presences.length === 0) continue;
         const p = presences[presences.length - 1];
-        if (!p || p.sessionId === mySessionId) continue;
+        if (!p || !p.sessionId || p.sessionId === mySessionId) continue;
+
+        const existingTimer = pendingLeaveTimers.get(p.sessionId);
+        if (existingTimer !== undefined) {
+          window.clearTimeout(existingTimer);
+          pendingLeaveTimers.delete(p.sessionId);
+        }
 
         const prev = existing[p.sessionId];
         if (prev) {
           // Never overwrite interpolated x/y while remote player is walking
           nextMap[p.sessionId] = {
             ...prev,
-            username: p.username,
-            motto: p.motto,
-            look: p.look,
-            danceStyle: p.danceStyle,
-            activeSign: p.activeSign,
-            carryItem: p.carryItem,
-            moonwalk: p.moonwalk,
-            swimming: p.swimming,
-            swimwearColor: p.swimwearColor,
-            badge: p.badge,
-            badges: p.badges,
-            rank: p.rank,
-            respectCount: p.respectCount,
+            username: p.username || prev.username,
+            motto: p.motto ?? prev.motto,
+            look: p.look || prev.look,
+            danceStyle: p.danceStyle ?? prev.danceStyle,
+            activeSign: p.activeSign !== undefined ? p.activeSign : prev.activeSign,
+            carryItem: p.carryItem ?? prev.carryItem,
+            moonwalk: p.moonwalk ?? prev.moonwalk,
+            swimming: p.swimming ?? prev.swimming,
+            swimwearColor: p.swimwearColor ?? prev.swimwearColor,
+            badge: p.badge ?? prev.badge,
+            badges: p.badges ?? prev.badges,
+            rank: p.rank ?? prev.rank,
+            respectCount: p.respectCount ?? prev.respectCount,
+            lastSeen: now,
           };
         } else {
           const roomDef = latestRef.current.currentRoom;
@@ -943,7 +1055,8 @@ export function HotelClient({
           nextMap[p.sessionId] = {
             ...p,
             path: initPath,
-            targetPose: p.pose,
+            targetPose: p.pose || 'stand',
+            lastSeen: now,
           };
         }
       }
@@ -952,84 +1065,85 @@ export function HotelClient({
       setRemotePlayersCount(Object.keys(nextMap).length);
     };
 
+    const scheduleGracefulLeaveCheck = (sid: string) => {
+      if (!sid || sid === mySessionId) return;
+      const prevTimer = pendingLeaveTimers.get(sid);
+      if (prevTimer !== undefined) {
+        window.clearTimeout(prevTimer);
+      }
+      const timerId = window.setTimeout(() => {
+        pendingLeaveTimers.delete(sid);
+        const state = channel.presenceState<RemotePlayerState>();
+        const stillInPresence = Object.entries(state).some(
+          ([k, list]) =>
+            k === sid ||
+            (Array.isArray(list) && list.some((entry) => entry?.sessionId === sid))
+        );
+        if (stillInPresence) return;
+        const rp = simRef.current.remotePlayers[sid];
+        if (!rp) return;
+        // If we received a heartbeat during the 4s grace window, keep the player alive
+        if (Date.now() - rp.lastSeen < 3800) return;
+        const nextMap = { ...simRef.current.remotePlayers };
+        delete nextMap[sid];
+        simRef.current.remotePlayers = nextMap;
+        setRemotePlayersCount(Object.keys(nextMap).length);
+      }, 4000);
+      pendingLeaveTimers.set(sid, timerId);
+    };
+
     channel
       .on('presence', { event: 'sync' }, syncPresenceMap)
       .on('presence', { event: 'join' }, syncPresenceMap)
       .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
-        const nextMap = { ...simRef.current.remotePlayers };
         if (key && key !== mySessionId) {
-          delete nextMap[key];
+          scheduleGracefulLeaveCheck(key);
         }
         if (Array.isArray(leftPresences)) {
           for (const lp of leftPresences) {
             const sid = (lp as { sessionId?: string })?.sessionId;
-            if (sid) delete nextMap[sid];
+            if (sid && sid !== mySessionId) {
+              scheduleGracefulLeaveCheck(sid);
+            }
           }
         }
-        simRef.current.remotePlayers = nextMap;
-        setRemotePlayersCount(Object.keys(nextMap).length);
       })
       .on('broadcast', { event: 'avatar:move' }, ({ payload }) => {
-        const p = payload as RemotePlayerState | null;
-        if (!p || !p.sessionId || p.sessionId === mySessionId) return;
-
-        const existing = simRef.current.remotePlayers[p.sessionId];
-        const roomDef = latestRef.current.currentRoom;
-        const furniList = latestRef.current.currentFurni;
-
-        if (!existing) {
-          const path =
-            p.targetX !== p.x || p.targetY !== p.y
-              ? findPath(roomDef, furniList, p.x, p.y, p.targetX, p.targetY)
-              : [];
-          simRef.current.remotePlayers[p.sessionId] = {
-            ...p,
-            path,
-            targetPose: p.pose,
-          };
-          setRemotePlayersCount(Object.keys(simRef.current.remotePlayers).length);
-          return;
+        upsertRemotePlayerPacket(payload as RemotePlayerState | null);
+      })
+      .on('broadcast', { event: 'avatar:heartbeat' }, ({ payload }) => {
+        upsertRemotePlayerPacket(payload as RemotePlayerState | null);
+      })
+      .on('broadcast', { event: 'avatar:action' }, ({ payload }) => {
+        upsertRemotePlayerPacket(payload as RemotePlayerState | null);
+      })
+      .on('broadcast', { event: 'avatar:who' }, ({ payload }) => {
+        const req = payload as { sessionId?: string } | null;
+        if (req?.sessionId === mySessionId || !roomChannelSubscribedRef.current) return;
+        const snap = buildLocalPresenceSnapshot();
+        channel
+          .send({
+            type: 'broadcast',
+            event: 'avatar:heartbeat',
+            payload: { type: 'avatar:heartbeat', ...snap },
+          })
+          .catch(() => {});
+      })
+      .on('broadcast', { event: 'avatar:leave' }, ({ payload }) => {
+        const msg = payload as { sessionId?: string } | null;
+        const sid = msg?.sessionId;
+        if (!sid || sid === mySessionId) return;
+        const existingTimer = pendingLeaveTimers.get(sid);
+        if (existingTimer !== undefined) {
+          window.clearTimeout(existingTimer);
+          pendingLeaveTimers.delete(sid);
         }
-
-        const curTileX = Math.round(existing.x);
-        const curTileY = Math.round(existing.y);
-        let nextPath = existing.path;
-        if (p.targetX !== curTileX || p.targetY !== curTileY) {
-          const computed = findPath(roomDef, furniList, curTileX, curTileY, p.targetX, p.targetY);
-          if (computed.length > 0) {
-            nextPath = computed;
-          } else {
-            existing.x = p.targetX;
-            existing.y = p.targetY;
-            nextPath = [];
-          }
-        } else {
-          nextPath = [];
+        if (simRef.current.remotePlayers[sid]) {
+          const nextMap = { ...simRef.current.remotePlayers };
+          delete nextMap[sid];
+          simRef.current.remotePlayers = nextMap;
+          setRemotePlayersCount(Object.keys(nextMap).length);
         }
-
-        simRef.current.remotePlayers[p.sessionId] = {
-          ...existing,
-          username: p.username,
-          motto: p.motto,
-          look: p.look,
-          targetX: p.targetX,
-          targetY: p.targetY,
-          dir: p.dir,
-          pose: nextPath.length > 0 ? 'walk' : p.pose,
-          targetPose: p.pose,
-          danceStyle: p.danceStyle,
-          activeSign: p.activeSign,
-          carryItem: p.carryItem,
-          moonwalk: p.moonwalk,
-          swimming: p.swimming,
-          swimwearColor: p.swimwearColor,
-          badge: p.badge,
-          badges: p.badges,
-          rank: p.rank,
-          respectCount: p.respectCount,
-          updatedAt: p.updatedAt,
-          path: nextPath,
-        };
       })
       .on('broadcast', { event: 'room:kick' }, ({ payload }) => {
         const msg = payload as { targetUsername?: string; kickedBy?: string } | null;
@@ -1039,6 +1153,14 @@ export function HotelClient({
         ) {
           habboAudio.playError();
           showToast(`You were kicked from the room by ${msg.kickedBy || 'Room Owner'}.`);
+          latestRef.current.onSwitchRoom('welcome_lounge');
+        }
+      })
+      .on('broadcast', { event: 'room:deleted' }, ({ payload }) => {
+        const msg = payload as { roomId?: string } | null;
+        if (!msg?.roomId || msg.roomId === roomId) {
+          habboAudio.playError();
+          showToast(t(lang, 'room_deleted'));
           latestRef.current.onSwitchRoom('welcome_lounge');
         }
       })
@@ -1070,6 +1192,10 @@ export function HotelClient({
           bubbleStyle?: ChatBubbleStyle;
         } | null;
         if (!chat || !chat.sessionId || chat.sessionId === mySessionId || !chat.text) return;
+        const rp = simRef.current.remotePlayers[chat.sessionId];
+        if (rp) {
+          rp.lastSeen = Date.now();
+        }
         pushBubble(
           chat.sessionId,
           chat.username || 'Guest',
@@ -1096,7 +1222,20 @@ export function HotelClient({
               syncPresenceMap();
             })
             .catch(() => {});
-          channel.send({ type: 'broadcast', event: 'avatar:move', payload: snap }).catch(() => {});
+          channel
+            .send({
+              type: 'broadcast',
+              event: 'avatar:heartbeat',
+              payload: { type: 'avatar:heartbeat', ...snap },
+            })
+            .catch(() => {});
+          channel
+            .send({
+              type: 'broadcast',
+              event: 'avatar:who',
+              payload: { type: 'avatar:who', sessionId: mySessionId },
+            })
+            .catch(() => {});
           latestRef.current.onRefreshRoomFurni?.(roomId);
         } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           roomChannelSubscribedRef.current = false;
@@ -1105,15 +1244,34 @@ export function HotelClient({
 
     roomChannelRef.current = channel;
 
-    // 3.5s periodic heartbeat so late joiners and existing players always see each other
+    // 3.0s periodic keep-alive heartbeat so idle standing players remain visible indefinitely
     const heartbeatId = window.setInterval(() => {
       if (!roomChannelSubscribedRef.current) return;
       const snap = buildLocalPresenceSnapshot();
-      channel.send({ type: 'broadcast', event: 'avatar:move', payload: snap }).catch(() => {});
-    }, 3500);
+      channel
+        .send({
+          type: 'broadcast',
+          event: 'avatar:heartbeat',
+          payload: { type: 'avatar:heartbeat', ...snap },
+        })
+        .catch(() => {});
+    }, 3000);
 
     return () => {
       window.clearInterval(heartbeatId);
+      for (const timerId of pendingLeaveTimers.values()) {
+        window.clearTimeout(timerId);
+      }
+      pendingLeaveTimers.clear();
+      if (roomChannelSubscribedRef.current) {
+        channel
+          .send({
+            type: 'broadcast',
+            event: 'avatar:leave',
+            payload: { type: 'avatar:leave', sessionId: mySessionId },
+          })
+          .catch(() => {});
+      }
       roomChannelSubscribedRef.current = false;
       roomChannelRef.current = null;
       channel.untrack().catch(() => {});
@@ -1522,8 +1680,25 @@ export function HotelClient({
         }
       }
 
-      // Smoothly advance remote multiplayer players along their paths
-      for (const rp of Object.values(sim.remotePlayers)) {
+      // Smoothly advance remote multiplayer players along their paths (and prune only after 45s of complete silence + missing presence)
+      const nowMs = Date.now();
+      let prunedRemote = false;
+      for (const [sid, rp] of Object.entries(sim.remotePlayers)) {
+        if (nowMs - (rp.lastSeen || nowMs) > 45_000) {
+          const presState = roomChannelRef.current?.presenceState<RemotePlayerState>() ?? {};
+          const stillInPresence = Object.entries(presState).some(
+            ([k, list]) =>
+              k === sid ||
+              (Array.isArray(list) && list.some((entry) => entry?.sessionId === sid))
+          );
+          if (!stillInPresence) {
+            delete sim.remotePlayers[sid];
+            prunedRemote = true;
+            continue;
+          } else {
+            rp.lastSeen = nowMs;
+          }
+        }
         if (rp.path.length > 0) {
           const target = rp.path[0];
           const dx = target.x - rp.x;
@@ -1552,6 +1727,9 @@ export function HotelClient({
             rp.y += (dy / dist) * moveDist;
           }
         }
+      }
+      if (prunedRemote) {
+        setRemotePlayersCount(Object.keys(sim.remotePlayers).length);
       }
 
       // Autonomous A* roaming & trick animation for owned pets in room
@@ -1744,7 +1922,6 @@ export function HotelClient({
       }
 
       // Expire speech bubbles after 7s
-      const nowMs = Date.now();
       if (sim.bubbles.length > 0) {
         sim.bubbles = sim.bubbles.filter((b) => nowMs - b.timestamp < 7000);
       }
@@ -1840,6 +2017,17 @@ export function HotelClient({
             ctx.stroke();
           }
         }
+      }
+
+      // Crimson & Gold Doormat protruding onto the entrance doorstep tile in front of the 3D doorway
+      drawRoomDoorMat(ctx, room, originX, originY);
+
+      // Animated Golden-Yellow Destination Arrow above target tile while walking
+      if (sim.path.length > 0) {
+        const dest = sim.path[sim.path.length - 1];
+        const destZ = getTileHeight(room, dest.x, dest.y);
+        const destPos = gridToScreen(dest.x, dest.y, originX, originY, destZ);
+        drawDestinationArrow(ctx, destPos.x, destPos.y, sim.animTick);
       }
 
       // Rooftop Pool Scenery: Animated Rocky Cliff Waterfall + Floating Lane Buoys
@@ -1975,7 +2163,7 @@ export function HotelClient({
               npcInWater
             );
             const seatOffset = npc.pose === 'sit' ? -5 : npcInWater ? 7 : 0;
-            ctx.drawImage(sprite, Math.round(pos.x - 22), Math.round(pos.y + 16 - 66 + seatOffset));
+            ctx.drawImage(sprite, Math.round(pos.x - 26), Math.round(pos.y + 16 - 66 + seatOffset));
             if (npcInWater) drawPoolRipple(pos.x, pos.y);
             drawNameTag(
               pos.x,
@@ -2001,7 +2189,7 @@ export function HotelClient({
                 bot.path.length > 0 ? 'walk' : 'stand',
                 sim.animTick
               );
-              ctx.drawImage(sprite, Math.round(pos.x - 22), Math.round(pos.y + 16 - 66));
+              ctx.drawImage(sprite, Math.round(pos.x - 26), Math.round(pos.y + 16 - 66));
               drawNameTag(
                 pos.x,
                 pos.y - 54,
@@ -2034,7 +2222,7 @@ export function HotelClient({
               rp.danceStyle ?? 1
             );
             const seatOffset = rp.pose === 'sit' ? -5 : rpInWater ? 7 : 0;
-            ctx.drawImage(sprite, Math.round(pos.x - 22), Math.round(pos.y + 16 - 66 + seatOffset));
+            ctx.drawImage(sprite, Math.round(pos.x - 26), Math.round(pos.y + 16 - 66 + seatOffset));
             if (rpInWater) drawPoolRipple(pos.x, pos.y);
 
             if (rp.carryItem && rp.carryItem !== 'none') {
@@ -2075,7 +2263,7 @@ export function HotelClient({
               pDanceStyle
             );
             const seatOffset = sim.pose === 'sit' ? -5 : pInWater ? 7 : 0;
-            ctx.drawImage(sprite, Math.round(pos.x - 22), Math.round(pos.y + 16 - 66 + seatOffset));
+            ctx.drawImage(sprite, Math.round(pos.x - 26), Math.round(pos.y + 16 - 66 + seatOffset));
             if (pInWater) drawPoolRipple(pos.x, pos.y);
 
             if (heldItem !== 'none') {
@@ -2120,12 +2308,9 @@ export function HotelClient({
         ctx.restore();
       }
 
-      // Draw Classic 2009 Sharp Habbo Speech Bubbles
+      // Draw Avatar-Anchored Overhead 2008 Habbo Speech Bubbles with Downward Pixel Pointer Tail
       const bubbleList = sim.bubbles;
-      let nextBottomY = Math.max(
-        92,
-        Math.min(Math.round((originY - 36) * zoom), Math.round(vh * 0.24))
-      );
+      let stackOffset = 0;
       for (let i = bubbleList.length - 1; i >= 0; i--) {
         const b = bubbleList[i];
         const styleDef =
@@ -2137,26 +2322,79 @@ export function HotelClient({
             ? 'bold 11px Tahoma, Verdana, sans-serif'
             : '11px Tahoma, Verdana, sans-serif';
         const textW = ctx.measureText(lineText).width;
-        const boxW = Math.min(vw - 32, Math.max(140, Math.ceil(textW) + 52));
+        const boxW = Math.min(vw - 24, Math.max(132, Math.ceil(textW) + 50));
         const boxH = 26;
-        const bx = Math.round(vw / 2 - boxW / 2);
-        const by = nextBottomY - boxH;
-        nextBottomY -= boxH + 5;
-        if (by < 52) break;
 
-        ctx.fillStyle = b.senderId === 'player' ? styleDef.bg : '#ffffff';
-        ctx.strokeStyle =
+        // Locate speaker's isometric head screen coordinates
+        let spkTileX = sim.px;
+        let spkTileY = sim.py;
+        if (b.senderId !== 'player') {
+          const npcMatch = npcsInRoom.find(
+            (n) => n.id === b.senderId || n.name === b.senderName
+          );
+          if (npcMatch) {
+            spkTileX = npcMatch.x;
+            spkTileY = npcMatch.y;
+          } else {
+            const rpMatch = Object.values(sim.remotePlayers).find(
+              (rp) =>
+                rp.sessionId === b.senderId ||
+                rp.username.toLowerCase() === b.senderName.toLowerCase()
+            );
+            if (rpMatch) {
+              spkTileX = rpMatch.x;
+              spkTileY = rpMatch.y;
+            }
+          }
+        }
+        const spkZ = getTileHeight(room, spkTileX, spkTileY);
+        const spkPos = gridToScreen(spkTileX, spkTileY, originX, originY, spkZ);
+        const headScreenX = Math.round(spkPos.x * zoom);
+        const baseScreenY = Math.max(
+          52,
+          Math.min(vh - 96, Math.round((spkPos.y - 68) * zoom))
+        );
+
+        const bx = Math.max(8, Math.min(vw - boxW - 8, Math.round(headScreenX - boxW / 2)));
+        const by = baseScreenY - boxH - stackOffset;
+        stackOffset += boxH + 6;
+        if (by < 24) break;
+
+        const bgCol = b.senderId === 'player' ? styleDef.bg : '#ffffff';
+        const borderCol =
           b.mode === 'shout'
             ? '#d97706'
             : b.senderId === 'player'
             ? styleDef.border
             : '#000000';
+
+        // Crisp rounded pill speech bubble
+        ctx.fillStyle = bgCol;
+        ctx.strokeStyle = borderCol;
         ctx.lineWidth = b.mode === 'shout' ? 2 : 1;
         ctx.beginPath();
-        ctx.roundRect(bx, by, boxW, boxH, 3);
+        ctx.roundRect(bx, by, boxW, boxH, 4);
         ctx.fill();
         ctx.stroke();
 
+        // Downward-pointing pixel triangle tail aimed at speaker's head
+        const tailX = Math.max(bx + 16, Math.min(bx + boxW - 16, headScreenX));
+        ctx.beginPath();
+        ctx.moveTo(tailX - 5, by + boxH - 1);
+        ctx.lineTo(tailX, by + boxH + 5);
+        ctx.lineTo(tailX + 5, by + boxH - 1);
+        ctx.closePath();
+        ctx.fillStyle = bgCol;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(tailX - 5, by + boxH);
+        ctx.lineTo(tailX, by + boxH + 5);
+        ctx.lineTo(tailX + 5, by + boxH);
+        ctx.strokeStyle = borderCol;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Colored left avatar-head box
         ctx.fillStyle = b.senderId === 'player' ? styleDef.accent : '#2b6ca3';
         ctx.fillRect(bx + 2, by + 2, 24, boxH - 4);
 
@@ -2169,7 +2407,7 @@ export function HotelClient({
         const namePart = `${b.senderName}: `;
         const nameW = ctx.measureText(namePart).width;
         ctx.fillStyle = b.senderId === 'player' ? styleDef.text : '#111827';
-        ctx.fillText(namePart, bx + 32, by + boxH / 2);
+        ctx.fillText(namePart, bx + 30, by + boxH / 2);
 
         ctx.font =
           b.mode === 'whisper'
@@ -2178,7 +2416,7 @@ export function HotelClient({
             ? 'bold 11px Tahoma, Verdana, sans-serif'
             : '11px Tahoma, Verdana, sans-serif';
         ctx.fillStyle = b.senderId === 'player' ? styleDef.text : '#1f2937';
-        ctx.fillText(`${prefix}${b.text}`, bx + 32 + nameW, by + boxH / 2, boxW - 40 - nameW);
+        ctx.fillText(`${prefix}${b.text}`, bx + 30 + nameW, by + boxH / 2, boxW - 36 - nameW);
       }
 
       rafId = requestAnimationFrame(frame);
@@ -2387,9 +2625,12 @@ export function HotelClient({
         look: player.look,
         badges: getEquippedBadges(player),
         roleBadge:
-          player.rank >= 5 ? 'ADM' : player.rank === 4 ? 'MOD' : player.rank === 3 ? 'EVT' : player.hcDays > 0 ? 'HC' : undefined,
+          player.rank >= 5 ? 'ADM' : player.rank === 4 ? 'MOD' : player.rank === 3 ? 'EVT' : player.hcDays > 0 ? 'PC' : undefined,
         roleLabel: player.rank >= 5 ? 'Hotel Manager' : player.rank >= 4 ? 'Moderator' : 'Citizen',
         respectCount: player.respectCount ?? 0,
+        credits: player.credits,
+        duckets: player.duckets,
+        hcDays: player.hcDays,
         isSelf: true,
         isNpc: false,
         isStaff: player.rank >= 3,
@@ -2433,6 +2674,8 @@ export function HotelClient({
             'fire_dragon',
             'jade_dragon',
             'silver_dragon',
+            'gold_dragon',
+            'frost_dragon',
             'jukebox',
             'dj_turntable',
             'fireplace',
@@ -2507,11 +2750,26 @@ export function HotelClient({
       return;
     }
 
-    if (def.id === 'fire_dragon' || def.id === 'jade_dragon' || def.id === 'silver_dragon') {
+    if (
+      def.id === 'fire_dragon' ||
+      def.id === 'jade_dragon' ||
+      def.id === 'silver_dragon' ||
+      def.id === 'gold_dragon' ||
+      def.id === 'frost_dragon' ||
+      def.id.includes('dragon')
+    ) {
       const nextState = targetFurni.state === 1 ? 0 : 1;
       onToggleFurniState(currentRoom.id, targetFurni.uid, nextState);
       habboAudio.playDragonFlame();
-      spawnParticles(pt.x, pt.y - 16, def.id === 'jade_dragon' ? '#22c55e' : '#f97316', 14);
+      const particleColor =
+        def.id === 'jade_dragon'
+          ? '#4ade80'
+          : def.id === 'silver_dragon' || def.id === 'frost_dragon'
+          ? '#38bdf8'
+          : def.id === 'gold_dragon'
+          ? '#fef08a'
+          : '#fb923c';
+      spawnParticles(pt.x, pt.y - 16, particleColor, 14);
       return;
     }
 
@@ -2899,6 +3157,9 @@ export function HotelClient({
           look: player.look,
           badges: selfEquippedBadges,
           respectCount: player.respectCount ?? infoTarget.respectCount,
+          credits: player.credits,
+          duckets: player.duckets,
+          hcDays: player.hcDays,
         }
       : {
           ...infoTarget,
@@ -2917,7 +3178,7 @@ export function HotelClient({
       username: player.username,
       motto: player.motto,
       look: player.look,
-      roleBadge: player.rank >= 5 ? 'ADM' : player.rank === 4 ? 'MOD' : player.hcDays > 0 ? 'HC' : undefined,
+      roleBadge: player.rank >= 5 ? 'ADM' : player.rank === 4 ? 'MOD' : player.hcDays > 0 ? 'PC' : undefined,
       isSelf: true,
     },
     ...Object.values(simRef.current.remotePlayers).map((rp) => ({
@@ -2955,258 +3216,66 @@ export function HotelClient({
         className="block h-full w-full cursor-pointer"
       />
 
-      {/* POINTER-THROUGH RETRO DARK HABBO HUD LAYER */}
+      {/* POINTER-THROUGH RETRO 2008 HABBO SHOCKWAVE HUD LAYER */}
       <div className="pointer-events-none fixed inset-0 z-20 flex flex-col justify-between">
-        {/* TOP DARK TRANSLUCENT HABBO HUD + ROOM BANNER */}
-        <div className="flex flex-col gap-1.5 p-2 sm:p-2.5">
-          <div className="flex items-start justify-between gap-2">
-            {/* Top-Left: Dark Translucent Room Pill + (i) Room Info Popover + Compact Tools */}
-            <div className="pointer-events-auto relative flex flex-wrap items-center gap-1.5">
-              <div className="flex items-center gap-1.5 border border-[#3a3a3a] bg-[rgba(20,20,20,0.88)] px-2.5 py-1 text-white rounded-[3px]">
-                <span className="max-w-[140px] sm:max-w-[220px] truncate text-[12px] font-bold text-white">
-                  {currentRoom.name}
-                </span>
-
+        {/* TOP STRIP: ONLY CRISP WHITE "CLOSE HOTEL" TEXT LINK IN TOP-RIGHT (ZERO FLOATING CURRENCY PILLS!) */}
+        <div className="flex flex-col gap-1.5 px-3 pt-2">
+          <div className="flex items-start justify-end gap-3">
+            {carryItem !== 'none' && (
+              <div
+                data-testid="hud-carry-pill"
+                className="pointer-events-auto flex items-center gap-1.5 border border-black bg-[#ececec] px-2 py-0.5 text-[11px] font-bold text-black"
+              >
+                <span>{getCarryItemDef(carryItem).name}</span>
                 <button
                   type="button"
-                  data-testid="room-info-btn"
-                  aria-label="Room Info"
-                  aria-expanded={showRoomInfoPopover}
                   onClick={() => {
-                    habboAudio.playWindowToggle(!showRoomInfoPopover);
-                    setShowRoomInfoPopover((v) => !v);
+                    habboAudio.playUiClick();
+                    setCarryItem('none');
                   }}
-                  className={`flex h-5 w-5 items-center justify-center border text-[10px] font-bold cursor-pointer rounded-[2px] ${
-                    showRoomInfoPopover
-                      ? 'border-[#60a5fa] bg-[#245c8a] text-white'
-                      : 'border-[#4a4a4a] bg-[#2a2a2a] text-[#d1d5db] hover:bg-[#3a3a3a] hover:text-white'
-                  }`}
+                  className="habbo-btn-red px-1.5 py-0.5 text-[10px] font-bold cursor-pointer"
                 >
-                  <Info className="h-3 w-3" />
+                  Drop
                 </button>
-
-                <span
-                  data-testid="hud-live-players-count"
-                  title="Live players in this room via Supabase Realtime"
-                  className="inline-flex items-center gap-1 border border-[#166534] bg-[#14532d]/80 px-1.5 py-0.5 font-mono-num text-[10px] font-bold text-[#86efac] rounded-[2px]"
-                >
-                  <span className="h-1.5 w-1.5 bg-[#4ade80]" />
-                  {1 + remotePlayersCount}
-                </span>
               </div>
+            )}
 
-              <button
-                type="button"
-                data-testid="hud-moodlight-btn"
-                aria-label="Room Moodlight"
-                onClick={() => {
-                  habboAudio.playWindowToggle(!showMoodlightModal);
-                  setShowMoodlightModal((v) => !v);
-                }}
-                title="Room Moodlight & Floor/Wall Customizer"
-                className={`flex h-7 items-center gap-1 border px-2 text-[11px] font-bold cursor-pointer rounded-[3px] ${
-                  moodlight.enabled
-                    ? 'border-[#60a5fa] bg-[#245c8a] text-white'
-                    : 'border-[#3a3a3a] bg-[rgba(20,20,20,0.88)] text-[#e5e7eb] hover:bg-[#2a2a2a]'
-                }`}
-              >
-                <Lightbulb className="h-3.5 w-3.5 text-[#facc15]" />
-                <span className="hidden lg:inline">Moodlight</span>
-              </button>
-
-              <button
-                type="button"
-                data-testid="hud-trax-btn"
-                aria-label="Traxmachine"
-                onClick={() => {
-                  habboAudio.playWindowToggle(!showTraxModal);
-                  setShowTraxModal((v) => !v);
-                }}
-                title="PIXL Traxmachine & Jukebox"
-                className={`flex h-7 items-center gap-1 border px-2 text-[11px] font-bold cursor-pointer rounded-[3px] ${
-                  activeTrax !== null
-                    ? 'border-[#f59e0b] bg-[#92400e] text-[#fef08a]'
-                    : 'border-[#3a3a3a] bg-[rgba(20,20,20,0.88)] text-[#e5e7eb] hover:bg-[#2a2a2a]'
-                }`}
-              >
-                <Disc className={`h-3.5 w-3.5 ${activeTrax !== null ? 'animate-spin' : 'text-[#38bdf8]'}`} />
-                <span className="hidden lg:inline">
-                  {activeTrax !== null ? `Trax #${activeTrax + 1}` : 'Trax'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={onToggleMute}
-                aria-label={muted ? 'Unmute audio' : 'Mute audio'}
-                className="flex h-7 w-7 items-center justify-center border border-[#3a3a3a] bg-[rgba(20,20,20,0.88)] text-[#e5e7eb] hover:bg-[#2a2a2a] cursor-pointer rounded-[3px]"
-              >
-                {muted ? <VolumeX className="h-3.5 w-3.5 text-[#f87171]" /> : <Volume2 className="h-3.5 w-3.5" />}
-              </button>
-
-              {/* (i) Room Info Popover */}
-              {showRoomInfoPopover && (
-                <div
-                  data-testid="room-info-popover"
-                  className="absolute top-9 left-0 z-30 w-64 border border-[#4a4a4a] bg-[rgba(20,20,20,0.95)] p-2.5 text-white rounded-[3px]"
-                >
-                  <div className="flex items-start justify-between gap-2 border-b border-[#3a3a3a] pb-1.5">
-                    <div className="min-w-0">
-                      <p className="text-[12px] font-bold text-white truncate">{currentRoom.name}</p>
-                      <p className="text-[10px] text-[#9ca3af]">
-                        Owner:{' '}
-                        <strong className="text-[#fde047]">
-                          {currentRoom.owner === 'PixelGuest' ? player.username : currentRoom.owner}
-                        </strong>
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowRoomInfoPopover(false)}
-                      aria-label="Close room info"
-                      className="text-[#9ca3af] hover:text-white cursor-pointer"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                  <p className="mt-1.5 text-[11px] leading-snug text-[#d1d5db]">
-                    {currentRoom.description || 'Welcome to PIXL Hotel!'}
-                  </p>
-                  <div className="mt-2 flex items-center justify-between gap-2 border-t border-[#3a3a3a] pt-2">
-                    <span className="font-mono-num text-[10px] text-[#86efac]">
-                      {1 + remotePlayersCount} in room · Drag to pan, wheel to zoom
-                    </span>
-                    <button
-                      type="button"
-                      data-testid="like-room-btn"
-                      disabled={hasLikedCurrentRoom}
-                      onClick={() => {
-                        habboAudio.playCoinsPurchase();
-                        setLikedRooms((prev) => ({ ...prev, [currentRoom.id]: true }));
-                        setRoomLikes((prev) => ({
-                          ...prev,
-                          [currentRoom.id]: (prev[currentRoom.id] ?? 24) + 1,
-                        }));
-                        showToast(`You liked ${currentRoom.name}! (+1 Room Rating)`);
-                      }}
-                      title="Like this room"
-                      className={`inline-flex items-center gap-1 border px-2 py-0.5 font-mono-num text-[10px] font-bold rounded-[2px] ${
-                        hasLikedCurrentRoom
-                          ? 'border-[#b91c1c] bg-[#7f1d1d] text-[#fecaca] cursor-default'
-                          : 'border-[#4a4a4a] bg-[#2a2a2a] text-white hover:bg-[#3a3a3a] cursor-pointer'
-                      }`}
-                    >
-                      <ThumbsUp className="h-3 w-3 text-[#f87171]" />
-                      {currentRoomLikes}
-                    </button>
-                  </div>
-                  {(canModerateRoom ||
-                    currentRoom.owner.toLowerCase() === player.username.toLowerCase()) && (
-                    <button
-                      type="button"
-                      data-testid="room-settings-btn"
-                      onClick={() => {
-                        habboAudio.playWindowToggle(true);
-                        setShowRoomInfoPopover(false);
-                        setShowRoomSettingsModal(true);
-                      }}
-                      className="mt-2 flex w-full items-center justify-center gap-1.5 border border-[#000000] bg-[#2b6ca3] py-1 text-[11px] font-bold text-white hover:bg-[#3582c4] rounded-[2px] cursor-pointer"
-                    >
-                      <Settings className="h-3 w-3 text-[#fef08a]" />
-                      Room Settings
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Top-Right: Carry Item Pill + Dark Translucent Habbo Purse Strip */}
-            <div className="pointer-events-auto flex items-center gap-1.5 shrink-0">
-              {carryItem !== 'none' && (
-                <div
-                  data-testid="hud-carry-pill"
-                  className="flex items-center gap-1.5 border border-[#3a3a3a] bg-[rgba(20,20,20,0.88)] px-2 py-1 text-[11px] font-bold text-white rounded-[3px]"
-                >
-                  <Coffee className="h-3.5 w-3.5 text-[#fbbf24]" />
-                  <span className="hidden sm:inline">{getCarryItemDef(carryItem).name}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      habboAudio.playUiClick();
-                      setCarryItem('none');
-                    }}
-                    className="habbo-btn-red px-1.5 py-0.5 text-[10px] font-bold cursor-pointer"
-                  >
-                    Drop
-                  </button>
-                </div>
-              )}
-
-              <div className="flex items-center gap-2 border border-[#3a3a3a] bg-[rgba(20,20,20,0.88)] px-2.5 py-1 text-white rounded-[3px]">
-                <div className="flex items-center gap-1">
-                  <Coins className="h-3.5 w-3.5 text-[#fbbf24]" />
-                  <span
-                    className="font-mono-num text-[11px] font-bold text-white"
-                    data-testid="hud-credits"
-                  >
-                    {player.credits}
-                  </span>
-                </div>
-                <div className="h-3.5 w-px bg-[#3a3a3a]" />
-                <div className="flex items-center gap-1">
-                  <Sparkles className="h-3.5 w-3.5 text-[#c084fc]" />
-                  <span
-                    className="font-mono-num text-[11px] font-bold text-white"
-                    data-testid="hud-duckets"
-                  >
-                    {player.duckets}
-                  </span>
-                </div>
-                <div className="hidden sm:block h-3.5 w-px bg-[#3a3a3a]" />
-                <div className="hidden sm:flex items-center gap-1">
-                  <Crown className="h-3.5 w-3.5 text-[#facc15]" />
-                  <span className="font-mono-num text-[11px] font-bold text-[#fde047]">
-                    {player.hcDays}d HC
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* LIDO POOL QUICK TIP BANNER */}
-          {isLidoRoom && (
-            <div
-              data-testid="lido-hint-banner"
-              className="pointer-events-none mx-auto hidden sm:block border border-[#3a3a3a] bg-[rgba(20,20,20,0.88)] px-3 py-1 text-[11px] font-bold text-[#7dd3fc] rounded-[3px]"
+            <button
+              type="button"
+              data-testid="back-to-cms"
+              onClick={onBackToCms}
+              title="Leave Room / Return to Hotel View (CMS)"
+              aria-label="Close Hotel"
+              className="pointer-events-auto text-[11px] font-bold uppercase tracking-wide text-white hover:text-[#fde047] hover:underline cursor-pointer drop-shadow-[0_1px_0_#000000]"
             >
-              Lido Deck: Click a Changing Booth for swimwear, or walk up the Diving Board to splash into the pool!
-            </div>
-          )}
+              {lang === 'de' ? 'HOTEL VERLASSEN ×' : 'CLOSE HOTEL ×'}
+            </button>
+          </div>
 
           {/* BATTLE BANZAI ARENA SCOREBOARD HUD */}
           {isBanzaiRoom && (
             <div
               data-testid="banzai-hud"
-              className="pointer-events-auto mx-auto flex max-w-full flex-wrap items-center justify-center gap-2 border-2 border-[#22d3ee] bg-[#0f172a] px-3 py-1.5 text-white rounded-[2px]"
+              className="pointer-events-auto mx-auto flex max-w-full flex-wrap items-center justify-center gap-2 client-window px-3 py-1.5 text-[#111827]"
             >
-              <div className="flex items-center gap-1.5 font-pixel text-[10px] text-[#22d3ee]">
+              <div className="flex items-center gap-1.5 font-pixel text-[10px] text-[#1d4ed8]">
                 <Gamepad2 className="h-3.5 w-3.5" />
                 BATTLE BANZAI
               </div>
 
               <div className="flex flex-wrap items-center justify-center gap-1.5 font-mono-num text-[11px] font-bold">
-                <span className="border border-[#60a5fa] bg-[#1d4ed8] px-2 py-0.5 text-white">
+                <span className="border border-black bg-[#1d4ed8] px-2 py-0.5 text-white">
                   Blue (You): {banzaiHud.scores.blue}
                 </span>
-                <span className="border border-[#f87171] bg-[#b91c1c] px-2 py-0.5 text-white">
+                <span className="border border-black bg-[#b91c1c] px-2 py-0.5 text-white">
                   Red: {banzaiHud.scores.red}
                 </span>
-                <span className="border border-[#fef08a] bg-[#a16207] px-2 py-0.5 text-white">
+                <span className="border border-black bg-[#eab308] px-2 py-0.5 text-black">
                   Yellow: {banzaiHud.scores.yellow}
                 </span>
               </div>
 
-              <span className="border border-[#475569] bg-[#1e293b] px-2 py-0.5 font-mono-num text-[11px] font-bold text-[#fde047]">
+              <span className="border border-black bg-white px-2 py-0.5 font-mono-num text-[11px] font-bold text-black">
                 {banzaiHud.timeLeft}s
               </span>
 
@@ -3222,7 +3291,7 @@ export function HotelClient({
               )}
 
               {banzaiHud.resultSummary && (
-                <p className="w-full text-center text-[11px] font-bold text-[#fde047]">
+                <p className="w-full text-center text-[11px] font-bold text-[#991b1b]">
                   {banzaiHud.resultSummary}
                 </p>
               )}
@@ -3477,288 +3546,571 @@ export function HotelClient({
 
 
 
-        {/* AUTHENTIC 2008-2010 SLEEK #1B1B1B HABBO BOTTOM DOCK */}
-        <div className="pointer-events-auto relative w-full border-t border-[#3a3a3a] bg-[#1b1b1b] px-2 py-1.5 sm:h-[46px] sm:py-0">
-          {/* Compact Avatar Actions & Commands Popover above dock */}
-          {showActionsPopover && (
-            <div
-              data-testid="actions-popover"
-              className="absolute bottom-[52px] left-2 sm:left-auto sm:right-4 z-30 w-64 border border-[#4a4a4a] bg-[rgba(20,20,20,0.95)] p-2.5 text-white rounded-[3px]"
+        {/* BOTTOM-LEFT ROOM INFO DIRECTLY ON BLACK VOID (bottom: 52px; left: 12px — NO DARK BOX!) */}
+        <div
+          data-testid="bottom-left-room-info"
+          className="pointer-events-auto fixed bottom-[52px] left-[12px] z-20 flex flex-col items-start leading-tight text-white"
+        >
+          <button
+            type="button"
+            data-testid="room-info-btn"
+            aria-label="Room Info"
+            aria-expanded={showRoomInfoPopover}
+            onClick={() => {
+              habboAudio.playWindowToggle(!showRoomInfoPopover);
+              setShowRoomInfoPopover((v) => !v);
+            }}
+            className="text-left text-[12px] font-bold text-white hover:text-[#fde047] cursor-pointer drop-shadow-[0_1px_0_#000000]"
+          >
+            {currentRoom.name}
+          </button>
+          <span className="text-[11px] text-[#e5e7eb] drop-shadow-[0_1px_0_#000000]">
+            Owner: {currentRoom.owner === 'PixelGuest' ? player.username : currentRoom.owner}
+          </span>
+          <div className="mt-0.5 flex items-center gap-2 text-[11px] text-[#e5e7eb] drop-shadow-[0_1px_0_#000000]">
+            <span>Room rating: {currentRoomLikes}</span>
+            <button
+              type="button"
+              data-testid="like-room-btn"
+              disabled={hasLikedCurrentRoom}
+              onClick={() => {
+                habboAudio.playCoinsPurchase();
+                setLikedRooms((prev) => ({ ...prev, [currentRoom.id]: true }));
+                setRoomLikes((prev) => ({
+                  ...prev,
+                  [currentRoom.id]: (prev[currentRoom.id] ?? 24) + 1,
+                }));
+                showToast(`You liked ${currentRoom.name}! (+1 Room Rating)`);
+              }}
+              title="Give Room Rating (+1)"
+              className={`border border-black px-1.5 py-0 font-mono-num text-[10px] font-bold leading-tight ${
+                hasLikedCurrentRoom
+                  ? 'bg-[#b91c1c] text-white cursor-default'
+                  : 'bg-white text-black hover:bg-[#fef08a] cursor-pointer'
+              }`}
             >
-              <div className="flex items-center justify-between border-b border-[#3a3a3a] pb-1.5 mb-2">
-                <span className="text-[11px] font-bold text-[#fde047]">Avatar Actions &amp; Style</span>
-                <button
-                  type="button"
-                  onClick={() => setShowActionsPopover(false)}
-                  aria-label="Close actions menu"
-                  className="text-[#9ca3af] hover:text-white cursor-pointer"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <div className="grid grid-cols-3 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerAction('wave');
-                    setShowActionsPopover(false);
-                  }}
-                  className={`habbo-dock-btn justify-center ${
-                    playerPoseUI === 'wave' ? 'habbo-dock-btn-active' : ''
-                  }`}
-                >
-                  <Hand className="h-3.5 w-3.5" />
-                  <span>Wave</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerAction('dance');
-                    setShowActionsPopover(false);
-                  }}
-                  className={`habbo-dock-btn justify-center ${
-                    playerPoseUI === 'dance' ? 'habbo-dock-btn-active' : ''
-                  }`}
-                >
-                  <Music className="h-3.5 w-3.5" />
-                  <span>Dance</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerAction('sit');
-                    setShowActionsPopover(false);
-                  }}
-                  className={`habbo-dock-btn justify-center ${
-                    playerPoseUI === 'sit' ? 'habbo-dock-btn-active' : ''
-                  }`}
-                >
-                  <span>Sit</span>
-                </button>
-              </div>
-              <div className="mt-2 flex items-center gap-1.5">
-                <button
-                  type="button"
-                  data-testid="hud-commands-btn"
-                  onClick={() => {
-                    habboAudio.playWindowToggle(true);
-                    setCommandsSubTab('commands');
-                    setShowCommandsModal(true);
-                    setShowActionsPopover(false);
-                  }}
-                  className="habbo-dock-btn flex-1 justify-center"
-                >
-                  <Terminal className="h-3.5 w-3.5 text-[#5eead4]" />
-                  <span>:commands &amp; :furni</span>
-                </button>
-              </div>
-              <div className="mt-2">
-                <label
-                  htmlFor="hud-bubble-style"
-                  className="block text-[10px] font-bold text-[#9ca3af] mb-1"
-                >
-                  Speech Bubble Style
-                </label>
-                <select
-                  id="hud-bubble-style"
-                  aria-label="Speech bubble style"
-                  data-testid="chat-bubble-style-select"
-                  value={bubbleStyle}
-                  onChange={(e) => setBubbleStyle(e.target.value as ChatBubbleStyle)}
-                  className="w-full border border-[#4a4a4a] bg-[#2b2b2b] px-2 py-1 text-[11px] font-bold text-white rounded-[2px] cursor-pointer"
-                >
-                  {CHAT_BUBBLE_STYLES.map((st) => (
-                    <option key={st.id} value={st.id}>
-                      {st.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          )}
+              ♥ +1
+            </button>
+            <span
+              data-testid="hud-live-players-count"
+              title="Live players in this room"
+              className="font-mono-num text-[10px] font-bold text-[#86efac]"
+            >
+              ({1 + remotePlayersCount} online)
+            </span>
+          </div>
 
-          <div className="mx-auto flex h-full max-w-7xl flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
-            {/* Left Retro Square Icon Rail */}
-            <div className="flex items-center justify-between sm:justify-start gap-1 shrink-0 overflow-x-auto no-scrollbar">
-              <div className="flex items-center gap-1">
+          {/* Classic Beveled 2008 Habbo Room Info / Zoom / Ambiance / Settings Window */}
+          {showRoomInfoPopover && (
+            <div
+              data-testid="room-info-popover"
+              className="client-window mt-2 w-64 text-[#111827]"
+            >
+              <div className="client-window-bar flex items-center justify-between px-2.5 py-1">
+                <span>Room Info &amp; Controls</span>
                 <button
                   type="button"
-                  data-testid="back-to-cms"
-                  onClick={onBackToCms}
-                  title="Return to Hotel View (CMS)"
-                  aria-label="Hotel View"
-                  className="habbo-dock-btn px-2 py-1"
+                  onClick={() => setShowRoomInfoPopover(false)}
+                  aria-label="Close room info"
+                  className="client-close-btn"
                 >
-                  <Home className="h-3.5 w-3.5 text-[#60a5fa]" />
-                  <span className="hidden md:inline">Hotel</span>
+                  ×
                 </button>
-                <button
-                  type="button"
-                  data-testid="hud-navigator-btn"
-                  onClick={() => {
-                    habboAudio.playWindowToggle(!showNavigator);
-                    setShowNavigator((v) => !v);
-                  }}
-                  title="Navigator"
-                  aria-label="Navigator"
-                  className={`habbo-dock-btn px-2 py-1 ${showNavigator ? 'habbo-dock-btn-active' : ''}`}
-                >
-                  <DoorOpen className="h-3.5 w-3.5 text-[#86efac]" />
-                  <span className="hidden sm:inline">Navigator</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    habboAudio.playWindowToggle(!showCatalogue);
-                    setShowCatalogue((v) => !v);
-                  }}
-                  title="Shop / Catalogue"
-                  aria-label="Shop"
-                  className={`habbo-dock-btn px-2 py-1 ${showCatalogue ? 'habbo-dock-btn-active' : ''}`}
-                >
-                  <ShoppingBag className="h-3.5 w-3.5 text-[#fde047]" />
-                  <span className="hidden sm:inline">Shop</span>
-                </button>
-                <button
-                  type="button"
-                  data-testid="hud-wardrobe-btn"
-                  onClick={() => {
-                    habboAudio.playWindowToggle(!showWardrobeModal);
-                    setShowWardrobeModal((v) => !v);
-                  }}
-                  title="Change Looks (Wardrobe)"
-                  aria-label="Change Looks"
-                  className={`habbo-dock-btn px-2 py-1 ${showWardrobeModal ? 'habbo-dock-btn-active' : ''}`}
-                >
-                  <Shirt className="h-3.5 w-3.5 text-[#f9a8d4]" />
-                  <span className="hidden lg:inline">Looks</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    habboAudio.playWindowToggle(!showInventory);
-                    setInventoryTab('furni');
-                    setShowInventory((v) => !v);
-                    setPlacingFurniId(null);
-                  }}
-                  title="Inventory"
-                  aria-label="Inventory"
-                  className={`habbo-dock-btn px-2 py-1 ${showInventory ? 'habbo-dock-btn-active' : ''}`}
-                >
-                  <Package className="h-3.5 w-3.5 text-[#7dd3fc]" />
-                  <span className="hidden sm:inline">Inventory</span>
-                </button>
-                <button
-                  type="button"
-                  data-testid="hud-console-btn"
-                  onClick={() => {
-                    habboAudio.playWindowToggle(!showFriendsConsole);
-                    setShowFriendsConsole((v) => !v);
-                    onClearUnreadPms?.();
-                  }}
-                  title="Habbo Console — Friends & Messages"
-                  aria-label="Friends Console"
-                  className={`habbo-dock-btn px-2 py-1 relative ${
-                    unreadPmCount > 0
-                      ? 'animate-pulse !border-[#f97316] !bg-[#ea580c] !text-white'
-                      : showFriendsConsole
-                      ? '!border-[#facc15] !bg-[#a16207] !text-[#fef08a]'
-                      : '!border-[#ca8a04] !bg-[#854d0e]/60 !text-[#fde047] hover:!bg-[#a16207]/75'
-                  }`}
-                >
-                  <Users
-                    className={`h-3.5 w-3.5 ${
-                      unreadPmCount > 0 ? 'text-white' : 'text-[#fde047]'
-                    }`}
-                  />
-                  <span className="hidden md:inline">Friends</span>
-                  {unreadPmCount > 0 && (
-                    <span className="ml-0.5 rounded-[2px] bg-[#000000] px-1 text-[9px] font-bold text-[#fde047]">
-                      {unreadPmCount}
-                    </span>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  data-testid="hud-actions-btn"
-                  onClick={() => {
-                    habboAudio.playWindowToggle(!showActionsPopover);
-                    setShowActionsPopover((v) => !v);
-                  }}
-                  title="Avatar Actions & :commands"
-                  aria-label="Avatar Actions"
-                  className={`habbo-dock-btn px-2 py-1 ${
-                    showActionsPopover ? 'habbo-dock-btn-active' : ''
-                  }`}
-                >
-                  <Hand className="h-3.5 w-3.5 text-[#5eead4]" />
-                  <span className="hidden lg:inline">Actions</span>
-                </button>
-                {canModerateRoom && (
+              </div>
+              <div className="p-2.5 space-y-2 text-[11px]">
+                <p className="font-bold text-[#111827]">{currentRoom.name}</p>
+                <p className="text-[#374151] leading-snug">
+                  {currentRoom.description || 'Welcome to PIXL Hotel!'}
+                </p>
+
+                {/* Camera Zoom Controls */}
+                <div className="flex items-center justify-between border-t border-[#999999] pt-2">
+                  <span className="font-bold text-[#111827]">Room Zoom:</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        habboAudio.playUiClick();
+                        simRef.current.userZoom = Math.max(0.7, simRef.current.userZoom - 0.15);
+                      }}
+                      className="habbo-btn-silver px-2 py-0.5 font-bold cursor-pointer"
+                    >
+                      −
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        habboAudio.playUiClick();
+                        simRef.current.userZoom = 1;
+                        simRef.current.panOffset = { x: 0, y: 0 };
+                      }}
+                      className="habbo-btn-silver px-2 py-0.5 font-bold cursor-pointer"
+                    >
+                      1:1
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        habboAudio.playUiClick();
+                        simRef.current.userZoom = Math.min(1.8, simRef.current.userZoom + 0.15);
+                      }}
+                      className="habbo-btn-silver px-2 py-0.5 font-bold cursor-pointer"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* Room Ambiance: Moodlight & Traxmachine */}
+                <div className="grid grid-cols-2 gap-1.5 pt-1">
                   <button
                     type="button"
+                    data-testid="hud-moodlight-btn"
                     onClick={() => {
-                      habboAudio.playWindowToggle(!showAdminTools);
-                      setShowAdminTools((v) => !v);
+                      habboAudio.playWindowToggle(true);
+                      setShowRoomInfoPopover(false);
+                      setShowMoodlightModal(true);
                     }}
-                    title="Staff Room Admin"
-                    aria-label="Admin Tools"
-                    className="habbo-btn-red inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold cursor-pointer"
+                    className="habbo-btn-blue py-1 text-[11px] font-bold cursor-pointer"
                   >
-                    <ShieldAlert className="h-3.5 w-3.5 text-[#fde047]" />
-                    <span className="hidden lg:inline">Admin</span>
+                    Moodlight
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="hud-trax-btn"
+                    onClick={() => {
+                      habboAudio.playWindowToggle(true);
+                      setShowRoomInfoPopover(false);
+                      setShowTraxModal(true);
+                    }}
+                    className="habbo-btn-orange py-1 text-[11px] font-bold cursor-pointer"
+                  >
+                    {activeTrax !== null ? `Trax #${activeTrax + 1}` : 'Traxmachine'}
+                  </button>
+                </div>
+
+                {(canModerateRoom ||
+                  currentRoom.owner.toLowerCase() === player.username.toLowerCase()) && (
+                  <button
+                    type="button"
+                    data-testid="room-settings-btn"
+                    onClick={() => {
+                      habboAudio.playWindowToggle(true);
+                      setShowRoomInfoPopover(false);
+                      setShowRoomSettingsModal(true);
+                    }}
+                    className="habbo-btn-silver w-full py-1 text-[11px] font-bold cursor-pointer"
+                  >
+                    Room Settings
+                  </button>
+                )}
+
+                {canDeleteCurrentRoom && (
+                  <button
+                    type="button"
+                    data-testid="room-info-delete-btn"
+                    onClick={() => {
+                      habboAudio.playUiClick();
+                      if (!confirmDeleteCurrentRoom) {
+                        setConfirmDeleteCurrentRoom(true);
+                      } else {
+                        setConfirmDeleteCurrentRoom(false);
+                        setShowRoomInfoPopover(false);
+                        void onDeleteRoom?.(currentRoom.id);
+                      }
+                    }}
+                    className={`habbo-btn-red w-full py-1 text-[11px] font-bold cursor-pointer ${
+                      confirmDeleteCurrentRoom ? 'ring-2 ring-[#fef08a]' : ''
+                    }`}
+                  >
+                    {confirmDeleteCurrentRoom ? t(lang, 'confirm_prompt') : t(lang, 'delete_room')}
                   </button>
                 )}
               </div>
             </div>
+          )}
+        </div>
 
-            {/* Center Sleek Pill Chat Input */}
-            <form
-              onSubmit={handleSendChat}
-              className="flex min-w-0 flex-1 items-center gap-1 rounded-full border border-[#4a4a4a] bg-[#2b2b2b] px-1.5 py-0.5 sm:max-w-xl"
+        {/* SINGLE CLASSIC BEVELED METALLIC GREY BOTTOM TOOLBAR (height: 44px, #5e5e5e) */}
+        <div
+          data-testid="habbo-bottom-toolbar"
+          className="pointer-events-auto relative flex h-[44px] w-full items-center justify-between gap-2 border-t border-[#000000] bg-[#5e5e5e] px-2 sm:px-3"
+          style={{
+            boxShadow: 'inset 0 1px 0 #8f8f8f, inset 0 -1px 0 #3f3f3f',
+          }}
+        >
+          {/* Coin Purse Classic Beveled Window (Triggered by Brown Coin Purse Dock Icon) */}
+          {showPursePopover && (
+            <div
+              data-testid="coin-purse-popover"
+              className="client-window absolute bottom-[50px] right-2 sm:right-24 z-30 w-64 text-[#111827]"
             >
-              <button
-                type="button"
-                data-testid="chat-mode-select"
-                onClick={() => {
-                  habboAudio.playUiClick();
-                  setChatMode((prev) =>
-                    prev === 'say' ? 'shout' : prev === 'shout' ? 'whisper' : 'say'
-                  );
-                }}
-                title="Cycle Say / Shout / Whisper"
-                className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold cursor-pointer shrink-0 ${
-                  chatMode === 'shout'
-                    ? 'bg-[#d97706] text-white'
-                    : chatMode === 'whisper'
-                    ? 'bg-[#4b5563] text-[#e5e7eb]'
-                    : 'bg-[#3a3a3a] text-[#e5e7eb] hover:bg-[#4a4a4a]'
-                }`}
-              >
-                {chatMode === 'shout' ? 'Shout' : chatMode === 'whisper' ? 'Whisper' : 'Say'}
-              </button>
+              <div className="client-window-bar flex items-center justify-between px-2.5 py-1">
+                <span>PIXL Coin Purse</span>
+                <button
+                  type="button"
+                  onClick={() => setShowPursePopover(false)}
+                  aria-label="Close Coin Purse"
+                  className="client-close-btn"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="p-2.5 space-y-1.5 text-[11px]">
+                <div className="flex items-center justify-between border border-[#999999] bg-white px-2.5 py-1.5">
+                  <span className="font-bold text-[#111827]">Taler (Credits):</span>
+                  <span
+                    data-testid="purse-credits"
+                    className="font-mono-num font-bold text-[#b45309]"
+                  >
+                    {player.credits}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between border border-[#999999] bg-white px-2.5 py-1.5">
+                  <span className="font-bold text-[#111827]">Duckets:</span>
+                  <span
+                    data-testid="purse-duckets"
+                    className="font-mono-num font-bold text-[#6d28d9]"
+                  >
+                    {player.duckets}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between border border-[#999999] bg-white px-2.5 py-1.5">
+                  <span className="font-bold text-[#111827]">PIXL Club (PC):</span>
+                  <span
+                    data-testid="purse-pc-days"
+                    className="font-mono-num font-bold text-[#d97706]"
+                  >
+                    {player.hcDays} Days
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    habboAudio.playWindowToggle(true);
+                    setShowPursePopover(false);
+                    setShowCatalogue(true);
+                  }}
+                  className="habbo-btn-green w-full py-1 text-[11px] font-bold cursor-pointer"
+                >
+                  Open Catalogue Shop
+                </button>
+              </div>
+            </div>
+          )}
 
-              <label htmlFor="hotel-chat-input" className="sr-only">
-                Chat message
-              </label>
-              <input
-                id="hotel-chat-input"
-                ref={chatInputRef}
-                type="text"
-                value={chatText}
-                onChange={(e) => setChatText(e.target.value)}
-                maxLength={96}
-                placeholder="Click here to chat or type :commands, sit..."
-                className="min-w-0 flex-1 bg-transparent px-2 py-1 text-[11px] font-semibold text-white placeholder-[#9ca3af] focus:outline-none"
-              />
-              <button
-                type="submit"
-                aria-label="Send chat message"
-                className="flex h-6 w-6 items-center justify-center rounded-full bg-[#3d8b18] text-white hover:bg-[#4ea822] cursor-pointer shrink-0"
-              >
-                <Send className="h-3 w-3" />
-              </button>
-            </form>
+          {/* Classic Beveled Help & Avatar Actions Window (Triggered by Blue ? Dock Icon) */}
+          {showActionsPopover && (
+            <div
+              data-testid="actions-popover"
+              className="client-window absolute bottom-[50px] right-2 z-30 w-64 text-[#111827]"
+            >
+              <div className="client-window-bar flex items-center justify-between px-2.5 py-1">
+                <span>Help, Looks &amp; Commands</span>
+                <button
+                  type="button"
+                  onClick={() => setShowActionsPopover(false)}
+                  aria-label="Close actions menu"
+                  className="client-close-btn"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="p-2.5 space-y-2 text-[11px]">
+                <button
+                  type="button"
+                  data-testid="hud-wardrobe-btn"
+                  onClick={() => {
+                    habboAudio.playWindowToggle(true);
+                    setShowActionsPopover(false);
+                    setShowWardrobeModal(true);
+                  }}
+                  className="habbo-btn-blue w-full py-1.5 text-[11px] font-bold cursor-pointer"
+                >
+                  Change Looks / Wardrobe
+                </button>
+
+                <div className="grid grid-cols-3 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerAction('wave');
+                      setShowActionsPopover(false);
+                    }}
+                    className="habbo-btn-silver py-1 text-[11px] font-bold cursor-pointer"
+                  >
+                    Wave
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerAction('dance');
+                      setShowActionsPopover(false);
+                    }}
+                    className="habbo-btn-silver py-1 text-[11px] font-bold cursor-pointer"
+                  >
+                    Dance
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerAction('sit');
+                      setShowActionsPopover(false);
+                    }}
+                    className="habbo-btn-silver py-1 text-[11px] font-bold cursor-pointer"
+                  >
+                    Sit
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1">
+                  <button
+                    type="button"
+                    data-testid="hud-commands-btn"
+                    onClick={() => {
+                      habboAudio.playWindowToggle(true);
+                      setCommandsSubTab('commands');
+                      setShowCommandsModal(true);
+                      setShowActionsPopover(false);
+                    }}
+                    className="habbo-btn-silver py-1 text-[11px] font-bold cursor-pointer"
+                  >
+                    :commands
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      habboAudio.playWindowToggle(true);
+                      setShowUserChooser(true);
+                      setShowActionsPopover(false);
+                    }}
+                    className="habbo-btn-silver py-1 text-[11px] font-bold cursor-pointer"
+                  >
+                    :chooser
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      habboAudio.playWindowToggle(true);
+                      setShowMoodlightModal(true);
+                      setShowActionsPopover(false);
+                    }}
+                    className="habbo-btn-silver py-1 text-[11px] font-bold cursor-pointer"
+                  >
+                    Moodlight
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      habboAudio.playWindowToggle(true);
+                      setShowTraxModal(true);
+                      setShowActionsPopover(false);
+                    }}
+                    className="habbo-btn-silver py-1 text-[11px] font-bold cursor-pointer"
+                  >
+                    Traxmachine
+                  </button>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="hud-bubble-style"
+                    className="block text-[10px] font-bold text-[#374151] mb-1"
+                  >
+                    Speech Bubble Style
+                  </label>
+                  <select
+                    id="hud-bubble-style"
+                    aria-label="Speech bubble style"
+                    data-testid="chat-bubble-style-select"
+                    value={bubbleStyle}
+                    onChange={(e) => setBubbleStyle(e.target.value as ChatBubbleStyle)}
+                    className="w-full border border-[#000000] bg-white px-2 py-1 text-[11px] font-bold text-[#111827] cursor-pointer"
+                  >
+                    {CHAT_BUBBLE_STYLES.map((st) => (
+                      <option key={st.id} value={st.id}>
+                        {st.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {canModerateRoom && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      habboAudio.playWindowToggle(true);
+                      setShowAdminTools(true);
+                      setShowActionsPopover(false);
+                    }}
+                    className="habbo-btn-red w-full py-1 text-[11px] font-bold cursor-pointer"
+                  >
+                    Staff Room Moderation
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={onBackToCms}
+                  className="habbo-btn-silver w-full py-1 text-[11px] font-bold cursor-pointer"
+                >
+                  Leave Hotel (Return to CMS)
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* LEFT + CENTER: Classic White Square "Say ▾" Selector + Long White Rounded-Pill Chat Input */}
+          <form
+            onSubmit={handleSendChat}
+            className="flex min-w-0 flex-1 items-center gap-1.5 sm:max-w-2xl"
+          >
+            <button
+              type="button"
+              data-testid="chat-mode-select"
+              onClick={() => {
+                habboAudio.playUiClick();
+                setChatMode((prev) =>
+                  prev === 'say' ? 'shout' : prev === 'shout' ? 'whisper' : 'say'
+                );
+              }}
+              title="Cycle Say / Shout / Whisper"
+              className="shrink-0 rounded-[2px] border border-black bg-white px-2.5 py-1 text-[11px] font-bold text-black hover:bg-[#f3f4f6] cursor-pointer shadow-[inset_0_1px_0_#ffffff]"
+            >
+              {chatMode === 'shout' ? 'Shout ▾' : chatMode === 'whisper' ? 'Whisper ▾' : 'Say ▾'}
+            </button>
+
+            <label htmlFor="hotel-chat-input" className="sr-only">
+              Chat message
+            </label>
+            <input
+              id="hotel-chat-input"
+              ref={chatInputRef}
+              type="text"
+              value={chatText}
+              onChange={(e) => setChatText(e.target.value)}
+              maxLength={96}
+              placeholder="Click here to chat or type :commands, :chooser, sit..."
+              className="min-w-0 flex-1 rounded-full border border-black bg-white px-3.5 py-1 text-[12px] font-semibold text-black placeholder-[#6b7280] focus:outline-none shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)]"
+            />
+          </form>
+
+          {/* RIGHT: 7 Authentic 2008 Habbo 30x30 2D Pixel-Art Sprites Directly on #5e5e5e Bar */}
+          <div
+            data-testid="habbo-dock-icons"
+            className="flex items-center gap-1 sm:gap-1.5 shrink-0"
+          >
+            {/* 1. Yellow Habbo Console */}
+            <button
+              type="button"
+              data-testid="hud-console-btn"
+              onClick={() => {
+                habboAudio.playWindowToggle(!showFriendsConsole);
+                setShowFriendsConsole((v) => !v);
+                onClearUnreadPms?.();
+              }}
+              title="Habbo Console — Friends & 1:1 Messenger"
+              aria-label="Friends Console"
+              className="relative flex h-[36px] w-[36px] items-center justify-center bg-transparent hover:-translate-y-[1px] active:translate-y-0 transition-transform cursor-pointer"
+            >
+              <ConsolePhoneIcon unread={unreadPmCount > 0} />
+              {unreadPmCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 border border-black bg-[#ef4444] px-1 font-pixel text-[8px] leading-tight text-white">
+                  {unreadPmCount}
+                </span>
+              )}
+            </button>
+
+            {/* 2. Hotel Navigator Building */}
+            <button
+              type="button"
+              data-testid="hud-navigator-btn"
+              onClick={() => {
+                habboAudio.playWindowToggle(!showNavigator);
+                setShowNavigator((v) => !v);
+              }}
+              title="Room Navigator"
+              aria-label="Navigator"
+              className="flex h-[36px] w-[36px] items-center justify-center bg-transparent hover:-translate-y-[1px] active:translate-y-0 transition-transform cursor-pointer"
+            >
+              <HotelNavigatorIcon />
+            </button>
+
+            {/* 3. Brown Coin Purse & Gold Coins */}
+            <button
+              type="button"
+              data-testid="hud-purse-btn"
+              onClick={() => {
+                habboAudio.playWindowToggle(!showPursePopover);
+                setShowPursePopover((v) => !v);
+                setShowActionsPopover(false);
+              }}
+              title="Coin Purse — Taler, Duckets & PIXL Club"
+              aria-label="Coin Purse"
+              className="flex h-[36px] w-[36px] items-center justify-center bg-transparent hover:-translate-y-[1px] active:translate-y-0 transition-transform cursor-pointer"
+            >
+              <CoinPurseIcon />
+            </button>
+
+            {/* 4. Open Catalogue Book */}
+            <button
+              type="button"
+              data-testid="hud-catalogue-btn"
+              onClick={() => {
+                habboAudio.playWindowToggle(!showCatalogue);
+                setShowCatalogue((v) => !v);
+              }}
+              title="Shop / Furniture Catalogue"
+              aria-label="Shop"
+              className="flex h-[36px] w-[36px] items-center justify-center bg-transparent hover:-translate-y-[1px] active:translate-y-0 transition-transform cursor-pointer"
+            >
+              <CatalogueBookIcon />
+            </button>
+
+            {/* 5. Iconic Big Pixel Hand (Inventory & Room Builder) */}
+            <button
+              type="button"
+              data-testid="hud-inventory-btn"
+              onClick={() => {
+                habboAudio.playWindowToggle(!showInventory);
+                setInventoryTab('furni');
+                setShowInventory((v) => !v);
+                setPlacingFurniId(null);
+              }}
+              title="My Hand / Inventory & Badges"
+              aria-label="Inventory"
+              className="flex h-[36px] w-[36px] items-center justify-center bg-transparent hover:-translate-y-[1px] active:translate-y-0 transition-transform cursor-pointer"
+            >
+              <HabboHandIcon />
+            </button>
+
+            {/* 6. Blue/Silver Speaker (Audio Mute Toggle) */}
+            <button
+              type="button"
+              data-testid="hud-mute-btn"
+              onClick={onToggleMute}
+              title={muted ? 'Unmute Hotel Audio' : 'Mute Hotel Audio'}
+              aria-label={muted ? 'Unmute audio' : 'Mute audio'}
+              className="flex h-[36px] w-[36px] items-center justify-center bg-transparent hover:-translate-y-[1px] active:translate-y-0 transition-transform cursor-pointer"
+            >
+              <SpeakerIcon muted={muted} />
+            </button>
+
+            {/* 7. Big Blue Question Mark (Help, Looks, Commands & Room Tools) */}
+            <button
+              type="button"
+              data-testid="hud-actions-btn"
+              onClick={() => {
+                habboAudio.playWindowToggle(!showActionsPopover);
+                setShowActionsPopover((v) => !v);
+                setShowPursePopover(false);
+              }}
+              title="Help, Change Looks & :commands"
+              aria-label="Avatar Actions"
+              className="flex h-[36px] w-[36px] items-center justify-center bg-transparent hover:-translate-y-[1px] active:translate-y-0 transition-transform cursor-pointer"
+            >
+              <BlueQuestionIcon />
+            </button>
           </div>
         </div>
       </div>
@@ -3998,10 +4350,20 @@ export function HotelClient({
           rooms={rooms}
           currentRoomId={currentRoom.id}
           playerUsername={player.username}
+          player={player}
+          lang={lang}
+          roomOccupancyMap={{
+            ...roomOccupancyMap,
+            [currentRoom.id]: Math.max(
+              roomOccupancyMap[currentRoom.id] ?? 1,
+              1 + remotePlayersCount
+            ),
+          }}
           onSelectRoom={(rid) => {
             requestSwitchRoom(rid);
           }}
           onCreateRoom={onCreateRoom}
+          onDeleteRoom={onDeleteRoom}
           onClose={() => {
             habboAudio.playWindowToggle(false);
             setShowNavigator(false);
@@ -4171,9 +4533,12 @@ export function HotelClient({
                 look: player.look,
                 badges: selfEquippedBadges,
                 roleBadge:
-                  player.rank >= 5 ? 'ADM' : player.rank === 4 ? 'MOD' : player.hcDays > 0 ? 'HC' : undefined,
+                  player.rank >= 5 ? 'ADM' : player.rank === 4 ? 'MOD' : player.hcDays > 0 ? 'PC' : undefined,
                 roleLabel: player.rank >= 5 ? 'Hotel Manager' : 'Citizen',
                 respectCount: player.respectCount ?? 0,
+                credits: player.credits,
+                duckets: player.duckets,
+                hcDays: player.hcDays,
                 isSelf: true,
                 isNpc: false,
                 isStaff: player.rank >= 3,
@@ -4248,6 +4613,11 @@ export function HotelClient({
       {showRoomSettingsModal && (
         <RoomSettingsModal
           room={currentRoom}
+          lang={lang}
+          canDelete={canDeleteCurrentRoom}
+          onDeleteRoom={() => {
+            void onDeleteRoom?.(currentRoom.id);
+          }}
           onSaveSettings={(patch) => {
             onUpdateRoomSettings?.(currentRoom.id, patch);
             habboAudio.playCoinsPurchase();

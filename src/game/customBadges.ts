@@ -119,8 +119,12 @@ export function getAllBadgeDefs(customBadges: CustomBadgeDef[] = []): BadgeDef[]
 const LEGACY_BADGE_CODE_TO_ID: Record<string, string> = {
   HTL: 'badge_checkin',
   ACH_LOGIN1: 'badge_checkin',
+  PC: 'badge_hc',
+  PC1: 'badge_hc',
   HC: 'badge_hc',
   HC1: 'badge_hc',
+  PC2: 'PC2',
+  HC2: 'PC2',
   ADM: 'badge_admin',
   MOD: 'badge_mod',
   EVT: 'badge_evt',

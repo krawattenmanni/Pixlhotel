@@ -117,7 +117,7 @@ export function CmsHeader({
                 |
               </span>
               <span className="inline-flex items-center gap-1 font-mono-num text-amber-200">
-                {hcDays}d HC
+                {hcDays}d PIXL Club
               </span>
             </div>
 

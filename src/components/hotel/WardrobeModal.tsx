@@ -80,7 +80,7 @@ export function WardrobeModal({
             Change Your Looks
             {isHcMember && (
               <span className="inline-flex items-center gap-0.5 border border-[#000000] bg-[#eab308] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#1c1917] rounded-[2px]">
-                <Crown className="h-2.5 w-2.5" /> HC ACTIVE
+                <Crown className="h-2.5 w-2.5" /> PIXL CLUB ACTIVE
               </span>
             )}
           </span>
@@ -126,7 +126,16 @@ export function WardrobeModal({
                   key={g}
                   type="button"
                   data-testid={`wardrobe-gender-${g.toLowerCase()}`}
-                  onClick={() => setDraft((prev) => ({ ...prev, gender: g }))}
+                  onClick={() =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      gender: g,
+                      accessory:
+                        g === 'F' && (prev.accessory as string) === 'beard'
+                          ? 'none'
+                          : prev.accessory,
+                    }))
+                  }
                   className={`flex-1 border py-1 text-[10px] font-bold rounded-[2px] cursor-pointer ${
                     (draft.gender ?? 'M') === g
                       ? g === 'F'

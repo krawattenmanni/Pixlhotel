@@ -388,10 +388,7 @@ export function mapRoomRowToRoomDef(row: DbRoomRow): RoomDef {
     layout: matchedTemplate?.layout ?? STANDARD_ROOM_LAYOUT,
     spawn: matchedTemplate?.spawn ?? theme.spawn,
     initialFurni: [],
-    baseOccupancy:
-      typeof row.users_now === 'number' && row.users_now > 0
-        ? row.users_now
-        : matchedTemplate?.baseOccupancy ?? 0,
+    baseOccupancy: 0,
   };
 }
 
@@ -544,8 +541,12 @@ export function mapBadgeCodeToCatalogId(codeOrId: string): string {
   const legacyMap: Record<string, string> = {
     HTL: 'badge_checkin',
     ACH_LOGIN1: 'badge_checkin',
+    PC: 'badge_hc',
+    PC1: 'badge_hc',
     HC: 'badge_hc',
     HC1: 'badge_hc',
+    PC2: 'PC2',
+    HC2: 'PC2',
     ADM: 'badge_admin',
     MOD: 'badge_mod',
     EVT: 'badge_evt',
@@ -894,7 +895,7 @@ async function ensurePublicRoomsAndItemsInSupabase(
           description: tpl.description,
           model_name: tpl.modelName || 'model_a',
           state: 'open',
-          users_now: tpl.baseOccupancy ?? 3,
+          users_now: 0,
           users_max: tpl.usersMax ?? 25,
           category: tpl.categoryNum ?? 1,
         });
@@ -905,7 +906,8 @@ async function ensurePublicRoomsAndItemsInSupabase(
           matched.caption !== tpl.name ||
           matched.description !== tpl.description ||
           matched.model_name !== targetModel ||
-          matched.owner !== tpl.owner
+          matched.owner !== tpl.owner ||
+          (matched.users_now ?? 0) > 0
         ) {
           const { data: updatedRow } = await supabase
             .from('rooms')
@@ -914,7 +916,7 @@ async function ensurePublicRoomsAndItemsInSupabase(
               owner: tpl.owner,
               description: tpl.description,
               model_name: targetModel,
-              users_now: tpl.baseOccupancy ?? matched.users_now,
+              users_now: 0,
             })
             .eq('id', matched.id)
             .select('*')
@@ -1861,6 +1863,32 @@ export async function deleteCatalogItemInSupabase(itemId: number): Promise<boole
     const { error } = await supabase.from('catalog_items').delete().eq('id', itemId);
     return !error;
   } catch {
+    return false;
+  }
+}
+
+export async function deleteRoomInSupabase(roomId: string): Promise<boolean> {
+  try {
+    const numericRoomId = Number(roomId);
+    const dbRoomId = Number.isFinite(numericRoomId) ? numericRoomId : null;
+
+    if (dbRoomId) {
+      await supabase.from('items').update({ room_id: 0, x: 0, y: 0, z: 0, rot: 0 }).eq('room_id', dbRoomId);
+      const { error: roomErr } = await supabase.from('rooms').delete().eq('id', dbRoomId);
+      if (roomErr) {
+        console.warn('[Supabase rooms] delete error:', roomErr.message);
+        return false;
+      }
+    } else {
+      const { error: roomErr } = await supabase.from('rooms').delete().eq('id', roomId);
+      if (roomErr) {
+        console.warn('[Supabase rooms] delete error:', roomErr.message);
+        return false;
+      }
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase rooms] delete unexpected:', err);
     return false;
   }
 }

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Coins, Crown, Flame, PawPrint, Sparkles, Star, Trophy, X } from 'lucide-react';
+import { Coins, Crown, Flame, PawPrint, Sparkles, Star, Trophy } from 'lucide-react';
 import {
   CATALOG_ITEMS_SEED,
   CATALOG_PAGES_SEED,
@@ -30,10 +30,15 @@ interface CatalogueModalProps {
 }
 
 const SECTION_DESCRIPTIONS: Record<string, { banner: string; headerBg: string; tag?: string }> = {
-  'HC Classics': {
-    banner: 'Iconic velvet HC Club Sofas, Imperial Teleporters, Mahogany Desks, Butler Statues & Gramophones.',
+  'PIXL Club': {
+    banner: 'Iconic velvet PIXL Club Sofas, Imperial Teleporters, Mahogany Desks, Butler Statues & Gramophones.',
     headerBg: 'from-[#d97706] to-[#92400e]',
-    tag: 'HC',
+    tag: 'PC',
+  },
+  'HC Classics': {
+    banner: 'Iconic velvet PIXL Club Sofas, Imperial Teleporters, Mahogany Desks, Butler Statues & Gramophones.',
+    headerBg: 'from-[#d97706] to-[#92400e]',
+    tag: 'PC',
   },
   'Rares & Dragons': {
     banner: 'Collector Thrones, Fire/Jade/Silver/Gold/Sky/Frost Dragon Lamps, Dino Eggs & Habbo Colas.',
@@ -179,31 +184,48 @@ export function CatalogueModal({
       aria-label="PIXL Catalogue"
       data-testid="client-catalogue-modal"
     >
-      {/* Classic Habbo #ececec Window with 1px black border + bevel */}
+      {/* Classic 2008 Habbo Shockwave #ececec Window with 1px black border + pixel bevel */}
       <div className="client-window w-full max-w-4xl max-h-[92vh] overflow-y-auto">
-        <div className="client-window-bar flex items-center justify-between px-3 py-1.5">
-          <div className="flex items-center gap-2">
-            <span className="border border-[#000000] bg-[#facc15] px-1.5 py-0.5 font-pixel text-[9px] text-[#111827] rounded-[2px]">
-              SHOP
-            </span>
-            <span className="text-[12px] font-bold">PIXL Hotel Catalogue ({allEntries.length} items)</span>
-          </div>
+        <div className="client-window-bar relative flex items-center justify-between px-3 py-1.5">
+          <span className="font-bold text-[11px] text-white">
+            PIXL Hotel Catalogue ({allEntries.length} Items)
+          </span>
 
-          <div className="flex items-center gap-2 text-[11px]">
-            <span className="inline-flex items-center gap-1 border border-[#000000] bg-[#1e293b] px-2 py-0.5 font-mono-num font-bold text-[#ffd400] rounded-[2px]">
-              <Coins className="h-3 w-3" /> {player.credits}
-            </span>
-            <span className="inline-flex items-center gap-1 border border-[#000000] bg-[#1e293b] px-2 py-0.5 font-mono-num font-bold text-[#d8b4fe] rounded-[2px]">
-              <Sparkles className="h-3 w-3" /> {player.duckets}
-            </span>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close Catalogue"
-              className="client-close-btn"
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close Catalogue"
+            className="client-close-btn"
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Classic Habbo Catalogue Top Purse Strip (Taler, Duckets & PIXL Club) */}
+        <div
+          data-testid="catalogue-purse-strip"
+          className="flex flex-wrap items-center justify-between gap-2 border-b border-[#999999] bg-[#dfdfdf] px-3 py-1.5 text-[11px] font-bold text-[#111827]"
+        >
+          <span>Your PIXL Purse:</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              data-testid="catalogue-credits"
+              className="inline-flex items-center gap-1 border border-[#000000] bg-[#fef08a] px-2 py-0.5 font-mono-num text-[11px] font-bold text-[#111827]"
             >
-              <X className="h-3 w-3" />
-            </button>
+              {player.credits} Taler (Credits)
+            </span>
+            <span
+              data-testid="catalogue-duckets"
+              className="inline-flex items-center gap-1 border border-[#000000] bg-[#e9d5ff] px-2 py-0.5 font-mono-num text-[11px] font-bold text-[#111827]"
+            >
+              {player.duckets} Duckets
+            </span>
+            <span
+              data-testid="catalogue-pc-days"
+              className="inline-flex items-center gap-1 border border-[#000000] bg-[#fed7aa] px-2 py-0.5 font-mono-num text-[11px] font-bold text-[#111827]"
+            >
+              {player.hcDays}d PIXL Club (PC)
+            </span>
           </div>
         </div>
 
@@ -240,14 +262,14 @@ export function CatalogueModal({
                       <span className="inline-flex items-center gap-1.5 truncate">
                         {sMeta?.tag === 'RARE' || sMeta?.tag === 'LTD' ? (
                           <Flame className="h-3.5 w-3.5 shrink-0 text-[#f59e0b]" />
-                        ) : sMeta?.tag === 'HC' ? (
+                        ) : sMeta?.tag === 'PC' || sMeta?.tag === 'HC' ? (
                           <Crown className="h-3.5 w-3.5 shrink-0 text-[#eab308]" />
                         ) : pg.caption.includes('Trophies') ? (
                           <Trophy className="h-3.5 w-3.5 shrink-0 text-[#d97706]" />
                         ) : (
                           <Star className="h-3.5 w-3.5 shrink-0 text-[#38bdf8]" />
                         )}
-                        <span className="truncate">{pg.caption}</span>
+                        <span className="truncate">{pg.caption === 'HC Classics' ? 'PIXL Club' : pg.caption}</span>
                       </span>
                       <span className="flex items-center gap-1 shrink-0">
                         {sMeta?.tag && (
@@ -255,7 +277,7 @@ export function CatalogueModal({
                             className={`border border-[#000000] px-1 py-0.5 font-pixel text-[7px] leading-none rounded-[2px] ${
                               sMeta.tag === 'RARE' || sMeta.tag === 'LTD'
                                 ? 'bg-[#b91c1c] text-white'
-                                : sMeta.tag === 'HC'
+                                : sMeta.tag === 'PC' || sMeta.tag === 'HC'
                                 ? 'bg-[#eab308] text-[#111827]'
                                 : 'bg-[#3d8b18] text-white'
                             }`}
@@ -455,7 +477,7 @@ export function CatalogueModal({
                         )}
                         {item.hcOnly && (
                           <span className="absolute top-1 right-1 border border-[#000000] bg-[#eab308] px-1 py-0.5 font-pixel text-[7px] leading-none text-[#111827] rounded-[1px]">
-                            HC
+                            PC
                           </span>
                         )}
                         {item.amount > 1 && (

@@ -30,6 +30,45 @@ export function isRoomOwnerOrAdmin(room: RoomDef, player: PlayerState): boolean 
   return room.owner.toLowerCase() === player.username.toLowerCase();
 }
 
+export function canDeleteRoom(room: RoomDef, player: PlayerState): boolean {
+  if (!player || !room) return false;
+  const roleStr = String((player as { role?: string }).role ?? '').trim().toUpperCase();
+  const rankRaw = (player as { rank?: number | string }).rank;
+  const rankStr = String(rankRaw ?? '').trim().toUpperCase();
+  const rankNum = Number(rankRaw);
+  const hasNumericRank = Number.isFinite(rankNum) && rankNum > 0;
+
+  const isAdmin = hasNumericRank
+    ? rankNum >= 5
+    : rankStr === 'ADM' ||
+      rankStr === 'ADMIN' ||
+      roleStr === 'ADM' ||
+      roleStr === 'ADMIN';
+  const isModOrAdmin =
+    isAdmin ||
+    (hasNumericRank && rankNum >= 4) ||
+    rankStr === 'MOD' ||
+    rankStr === 'MODERATOR' ||
+    roleStr === 'MOD' ||
+    roleStr === 'MODERATOR' ||
+    (!hasNumericRank && roleStr === 'ADMIN');
+
+  const roomOwnerName = room.owner?.trim().toLowerCase() ?? '';
+  const playerUsername = player.username?.trim().toLowerCase() ?? '';
+  const roomOwnerId = (room as { ownerId?: string | number }).ownerId;
+  const playerId = (player as { id?: string | number }).id ?? player.numericId;
+  const isOwner =
+    (Boolean(roomOwnerName) && roomOwnerName === playerUsername) ||
+    (roomOwnerId !== undefined &&
+      playerId !== undefined &&
+      String(roomOwnerId) === String(playerId));
+
+  if (room.category === 'public' || (room as { isPublic?: boolean }).isPublic === true) {
+    return isAdmin;
+  }
+  return isOwner || isModOrAdmin;
+}
+
 const ROOM_NPC_ALIAS: Record<string, string> = {
   '1': 'welcome_lounge',
   '2': 'club_mammoth',

@@ -1,20 +1,4 @@
 import { useEffect, useState } from 'react';
-import {
-  Award,
-  Check,
-  Crown,
-  Edit3,
-  Heart,
-  MessageCircle,
-  Music,
-  RefreshCw,
-  ShieldAlert,
-  Sparkles,
-  UserCheck,
-  UserMinus,
-  UserPlus,
-  X,
-} from 'lucide-react';
 import { findBadgeDefById } from '../../game/customBadges';
 import type { CustomBadgeDef, LookConfig } from '../../game/types';
 import { PixelAvatarCanvas, PixelBadge, PixelBadgeSprite } from '../PixelSpriteCanvas';
@@ -28,6 +12,9 @@ export interface InfoStandTarget {
   roleBadge?: string;
   roleLabel?: string;
   respectCount: number;
+  credits?: number;
+  duckets?: number;
+  hcDays?: number;
   isSelf: boolean;
   isNpc: boolean;
   isStaff: boolean;
@@ -83,6 +70,8 @@ export function AvatarInfoStand({
   }, [target.key, target.motto]);
 
   const equippedFive = target.badges.slice(0, 5);
+  const primaryBadgeId = equippedFive[0];
+  const extraBadges = equippedFive.slice(1);
 
   const commitMotto = () => {
     if (!onSaveMotto) return;
@@ -90,268 +79,293 @@ export function AvatarInfoStand({
     setEditingMotto(false);
   };
 
+  const pillBtnClass =
+    'bg-white text-black border border-black rounded-full font-bold text-[11px] px-3 py-1 hover:bg-[#f3f4f6] active:translate-y-[1px] cursor-pointer text-center shadow-[0_1px_0_#000000] disabled:opacity-55 disabled:cursor-default';
+
   return (
     <aside
       data-testid="avatar-info-stand"
       aria-label={`Avatar info for ${target.username}`}
-      className="pointer-events-auto fixed bottom-14 right-3 z-30 w-[290px] border border-[#000000] bg-[#1e1e1e]/95 text-[#e5e7eb] rounded-[3px] shadow-[0_6px_20px_rgba(0,0,0,0.65)] overflow-hidden"
+      className="pointer-events-auto fixed bottom-[54px] right-[12px] z-30 flex flex-col items-end gap-1.5 text-white select-none"
     >
-      {/* Top 3D dark bar */}
-      <div className="flex items-center justify-between border-b border-[#000000] bg-[#2c2c2c] px-2.5 py-1.5">
-        <div className="flex items-center gap-1.5 min-w-0">
-          {target.roleBadge && <PixelBadge code={target.roleBadge} label={target.roleLabel} />}
-          <span className="truncate font-bold text-[12px] text-[#ffffff]" data-testid="infostand-username">
-            {target.username}
-          </span>
+      {/* Top Name + Close Row floating directly on #000000 void */}
+      <div className="flex items-center gap-1.5">
+        {target.roleBadge && <PixelBadge code={target.roleBadge} label={target.roleLabel} />}
+        <span
+          className="font-bold text-[13px] text-white drop-shadow-[0_1px_0_#000000]"
+          data-testid="infostand-username"
+        >
+          {target.username}
+        </span>
+        <span
+          className="font-mono-num text-[10px] font-bold text-[#fde047] drop-shadow-[0_1px_0_#000000]"
+          title="Respect received"
+          data-testid="infostand-respect-count"
+        >
+          (♥ {target.respectCount})
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close Avatar Info-Stand"
+          className="ml-1 flex h-4 w-4 items-center justify-center border border-black bg-white text-[10px] font-bold leading-none text-black hover:bg-[#e5e7eb] cursor-pointer"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Avatar Pedestal + Floating 40x40 Shaped Badge */}
+      <div className="flex items-center gap-2.5">
+        {/* Shaped 40x40 PixelBadgeSprite floating next to avatar */}
+        <div className="flex flex-col items-end gap-1">
+          {primaryBadgeId && (
+            <button
+              type="button"
+              title={
+                findBadgeDefById(primaryBadgeId, customBadges)?.name ?? primaryBadgeId
+              }
+              onClick={() => onSelectBadge?.(primaryBadgeId)}
+              className="flex h-[42px] w-[42px] items-center justify-center cursor-pointer hover:scale-105 transition-transform"
+            >
+              <PixelBadgeSprite
+                badgeId={primaryBadgeId}
+                unlocked
+                size={40}
+                customBadges={customBadges}
+              />
+            </button>
+          )}
+          {extraBadges.length > 0 && (
+            <div className="flex items-center gap-1">
+              {extraBadges.map((bId) => {
+                const def = findBadgeDefById(bId, customBadges);
+                return (
+                  <button
+                    key={bId}
+                    type="button"
+                    title={def ? `${def.name} (${def.code})` : bId}
+                    onClick={() => onSelectBadge?.(bId)}
+                    className="flex h-[28px] w-[28px] items-center justify-center cursor-pointer"
+                  >
+                    <PixelBadgeSprite
+                      badgeId={bId}
+                      unlocked
+                      size={26}
+                      customBadges={customBadges}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <span
-            className="inline-flex items-center gap-1 border border-[#000000] bg-[#111827] px-1.5 py-0.5 font-mono-num text-[10px] font-bold text-[#fde047] rounded-[2px]"
-            title="Respect received"
-            data-testid="infostand-respect-count"
-          >
-            <Heart className="h-2.5 w-2.5 fill-[#ef4444] text-[#ef4444]" />
-            {target.respectCount}
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close Avatar Info-Stand"
-            className="flex h-4 w-4 items-center justify-center border border-[#000000] bg-[#b91c1c] text-white hover:bg-[#dc2626] rounded-[2px] cursor-pointer"
-          >
-            <X className="h-2.5 w-2.5" />
-          </button>
+
+        {/* Avatar standing on classic grey isometric tile pedestal */}
+        <div className="relative flex h-[86px] w-[68px] flex-col items-center justify-end">
+          <div
+            className="pointer-events-none absolute bottom-1.5 h-4 w-14 border border-black bg-[#9ca3af]"
+            style={{
+              clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
+            }}
+          />
+          <div className="relative z-10">
+            <PixelAvatarCanvas look={target.look} dir={0} pose="stand" scale={1.15} />
+          </div>
         </div>
       </div>
 
-      {/* Body */}
-      <div className="p-2.5 space-y-2.5">
-        <div className="flex items-start gap-2.5">
-          {/* Pixel Avatar Portrait Stage */}
-          <div className="flex h-[96px] w-[76px] shrink-0 items-center justify-center border border-[#000000] bg-gradient-to-b from-[#2f455c] to-[#1a2634] rounded-[2px] overflow-hidden">
-            <PixelAvatarCanvas look={target.look} dir={0} pose="stand" scale={1.45} />
-          </div>
-
-          <div className="min-w-0 flex-1 space-y-2">
-            {/* Motto Box (Click-to-Edit if Self) */}
-            <div>
-              <div className="text-[9px] font-bold uppercase tracking-wider text-[#9ca3af]">
-                Motto
-              </div>
-              {target.isSelf && editingMotto ? (
-                <div className="mt-0.5 flex items-center gap-1">
-                  <input
-                    type="text"
-                    value={mottoDraft}
-                    maxLength={64}
-                    onChange={(e) => setMottoDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') commitMotto();
-                      if (e.key === 'Escape') {
-                        setMottoDraft(target.motto);
-                        setEditingMotto(false);
-                      }
-                    }}
-                    aria-label="Edit your motto"
-                    data-testid="infostand-motto-input"
-                    autoFocus
-                    className="w-full border border-[#5c94c8] bg-[#111827] px-1.5 py-0.5 text-[11px] text-white focus:outline-none rounded-[2px]"
-                  />
-                  <button
-                    type="button"
-                    onClick={commitMotto}
-                    aria-label="Save Motto"
-                    data-testid="infostand-motto-save"
-                    className="border border-[#000000] bg-[#16a34a] p-1 text-white hover:bg-[#15803d] rounded-[2px] cursor-pointer"
-                  >
-                    <Check className="h-3 w-3" />
-                  </button>
-                </div>
-              ) : target.isSelf ? (
-                <button
-                  type="button"
-                  onClick={() => setEditingMotto(true)}
-                  data-testid="infostand-motto-edit"
-                  title="Click to edit your motto"
-                  className="mt-0.5 flex w-full items-center justify-between gap-1 border border-[#3f3f46] bg-[#141414] px-1.5 py-1 text-left text-[11px] italic text-[#f3f4f6] hover:border-[#60a5fa] rounded-[2px] cursor-pointer"
-                >
-                  <span className="truncate">
-                    &ldquo;{target.motto || 'Click to set motto...'}&rdquo;
-                  </span>
-                  <Edit3 className="h-3 w-3 shrink-0 text-[#9ca3af]" />
-                </button>
-              ) : (
-                <p className="mt-0.5 border border-[#333333] bg-[#141414] px-1.5 py-1 text-[11px] italic text-[#d1d5db] rounded-[2px] break-words">
-                  &ldquo;{target.motto || 'Living the PIXL dream!'}&rdquo;
-                </p>
-              )}
-            </div>
-
-            {/* 5 Equipped Tappable Badges */}
-            <div>
-              <div className="text-[9px] font-bold uppercase tracking-wider text-[#9ca3af]">
-                Badges ({equippedFive.length}/5)
-              </div>
-              <div className="mt-1 flex items-center gap-1">
-                {Array.from({ length: 5 }).map((_, idx) => {
-                  const badgeId = equippedFive[idx];
-                  if (!badgeId) {
-                    return (
-                      <span
-                        key={`empty-${idx}`}
-                        className="flex h-[32px] w-[32px] items-center justify-center border border-[#333333] bg-[#141414] rounded-[2px] text-[9px] text-[#4b5563]"
-                      >
-                        —
-                      </span>
-                    );
-                  }
-                  const def = findBadgeDefById(badgeId, customBadges);
-                  return (
-                    <button
-                      key={badgeId}
-                      type="button"
-                      title={def ? `${def.name} (${def.code})` : badgeId}
-                      onClick={() => onSelectBadge?.(badgeId)}
-                      className="flex h-[32px] w-[32px] items-center justify-center border border-[#000000] bg-[#27272a] hover:border-[#facc15] rounded-[2px] cursor-pointer"
-                    >
-                      <PixelBadgeSprite
-                        badgeId={badgeId}
-                        unlocked
-                        size={26}
-                        customBadges={customBadges}
-                      />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        {target.isSelf ? (
-          <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-[#333333]">
+      {/* Motto Line (♡ {motto}) */}
+      <div className="max-w-[230px] text-right">
+        {target.isSelf && editingMotto ? (
+          <div className="flex items-center gap-1">
+            <input
+              type="text"
+              value={mottoDraft}
+              maxLength={64}
+              onChange={(e) => setMottoDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitMotto();
+                if (e.key === 'Escape') {
+                  setMottoDraft(target.motto);
+                  setEditingMotto(false);
+                }
+              }}
+              aria-label="Edit your motto"
+              data-testid="infostand-motto-input"
+              autoFocus
+              className="w-40 border border-black bg-white px-2 py-0.5 text-[11px] font-bold text-black focus:outline-none"
+            />
             <button
               type="button"
-              onClick={onOpenWardrobe}
-              data-testid="infostand-change-looks"
-              className="flex items-center justify-center gap-1 border border-[#000000] bg-[#2b6ca3] px-2 py-1.5 text-[11px] font-bold text-white hover:bg-[#3582c4] rounded-[2px] cursor-pointer"
+              onClick={commitMotto}
+              aria-label="Save Motto"
+              data-testid="infostand-motto-save"
+              className="border border-black bg-white px-2 py-0.5 text-[10px] font-bold text-black hover:bg-[#e5e7eb] cursor-pointer"
             >
-              <RefreshCw className="h-3 w-3" /> Change Looks
+              OK
             </button>
+          </div>
+        ) : target.isSelf ? (
+          <button
+            type="button"
+            onClick={() => setEditingMotto(true)}
+            data-testid="infostand-motto-edit"
+            title="Click to edit your motto"
+            className="text-[11px] font-bold text-[#e5e7eb] hover:text-[#fde047] underline decoration-dotted cursor-pointer"
+          >
+            ♡ {target.motto || 'Click to set motto...'}
+          </button>
+        ) : (
+          <p className="text-[11px] font-bold text-[#e5e7eb] break-words">
+            ♡ {target.motto || 'Living the PIXL dream!'}
+          </p>
+        )}
+      </div>
+
+      {/* Own Avatar Purse Readout: Taler (Credits), Duckets, and PIXL Club days */}
+      {target.isSelf && (
+        <div
+          data-testid="infostand-self-purse"
+          className="flex flex-wrap items-center justify-end gap-1.5 text-[11px] font-bold"
+        >
+          <span
+            data-testid="infostand-credits"
+            className="border border-black bg-[#fef08a] px-2 py-0.5 font-mono-num text-[10px] font-bold text-black"
+          >
+            {target.credits ?? 0} Taler
+          </span>
+          <span
+            data-testid="infostand-duckets"
+            className="border border-black bg-[#e9d5ff] px-2 py-0.5 font-mono-num text-[10px] font-bold text-black"
+          >
+            {target.duckets ?? 0} Duckets
+          </span>
+          <span
+            data-testid="infostand-pc-days"
+            className="border border-black bg-[#fed7aa] px-2 py-0.5 font-mono-num text-[10px] font-bold text-black"
+          >
+            {target.hcDays ?? 0}d PIXL Club
+          </span>
+        </div>
+      )}
+
+      {/* Vertical Stack of Crisp White Pill Action Buttons */}
+      {target.isSelf ? (
+        <div className="flex flex-col items-end gap-1 pt-0.5">
+          <button
+            type="button"
+            onClick={onOpenWardrobe}
+            data-testid="infostand-change-looks"
+            className={pillBtnClass}
+          >
+            Change Looks
+          </button>
+          <button
+            type="button"
+            onClick={onOpenBadges}
+            data-testid="infostand-my-badges"
+            className={pillBtnClass}
+          >
+            My Badges
+          </button>
+          <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={onOpenBadges}
-              data-testid="infostand-my-badges"
-              className="flex items-center justify-center gap-1 border border-[#000000] bg-[#3f3f46] px-2 py-1.5 text-[11px] font-bold text-white hover:bg-[#52525b] rounded-[2px] cursor-pointer"
+              onClick={() => onSelfPose?.('wave')}
+              data-testid="infostand-wave"
+              className={pillBtnClass}
             >
-              <Award className="h-3 w-3 text-[#facc15]" /> My Badges
+              Wave
             </button>
             <button
               type="button"
               onClick={() => onSelfPose?.('dance')}
               data-testid="infostand-dance"
-              className="flex items-center justify-center gap-1 border border-[#000000] bg-[#3f3f46] px-2 py-1 text-[11px] font-bold text-white hover:bg-[#52525b] rounded-[2px] cursor-pointer"
+              className={pillBtnClass}
             >
-              <Music className="h-3 w-3 text-[#38bdf8]" /> Dance
+              Dance
             </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col items-end gap-1 pt-0.5">
+          {target.isFriend ? (
             <button
               type="button"
-              onClick={() => onSelfPose?.('wave')}
-              data-testid="infostand-wave"
-              className="flex items-center justify-center gap-1 border border-[#000000] bg-[#3f3f46] px-2 py-1 text-[11px] font-bold text-white hover:bg-[#52525b] rounded-[2px] cursor-pointer"
+              onClick={() => onFriendAction?.('remove')}
+              className={pillBtnClass}
             >
-              <Sparkles className="h-3 w-3 text-[#fde047]" /> Wave
+              Remove Friend
             </button>
-          </div>
-        ) : (
-          <div className="space-y-1.5 pt-1 border-t border-[#333333]">
-            <div className="grid grid-cols-2 gap-1.5">
-              {target.isFriend ? (
-                <button
-                  type="button"
-                  onClick={() => onFriendAction?.('remove')}
-                  className="flex items-center justify-center gap-1 border border-[#000000] bg-[#3f3f46] px-2 py-1 text-[11px] font-bold text-[#fca5a5] hover:bg-[#52525b] rounded-[2px] cursor-pointer"
-                >
-                  <UserMinus className="h-3 w-3" /> Remove Friend
-                </button>
-              ) : target.requestReceived ? (
-                <button
-                  type="button"
-                  onClick={() => onFriendAction?.('accept')}
-                  className="flex items-center justify-center gap-1 border border-[#000000] bg-[#15803d] px-2 py-1 text-[11px] font-bold text-white hover:bg-[#16a34a] rounded-[2px] cursor-pointer"
-                >
-                  <UserCheck className="h-3 w-3" /> Accept Friend
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled={target.requestSent}
-                  onClick={() => onFriendAction?.('add')}
-                  className="flex items-center justify-center gap-1 border border-[#000000] bg-[#2b6ca3] px-2 py-1 text-[11px] font-bold text-white hover:bg-[#3582c4] disabled:opacity-60 rounded-[2px] cursor-pointer"
-                >
-                  <UserPlus className="h-3 w-3" />
-                  {target.requestSent ? 'Request Sent' : 'Add Friend'}
-                </button>
-              )}
+          ) : target.requestReceived ? (
+            <button
+              type="button"
+              onClick={() => onFriendAction?.('accept')}
+              className={pillBtnClass}
+            >
+              Accept Friend Request
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={target.requestSent}
+              onClick={() => onFriendAction?.('add')}
+              className={pillBtnClass}
+            >
+              {target.requestSent ? 'Friend Request Sent' : 'Ask to be a Friend'}
+            </button>
+          )}
 
+          <button
+            type="button"
+            onClick={() => onTrade?.(target.username)}
+            data-testid="infostand-trade"
+            className={pillBtnClass}
+          >
+            Trade
+          </button>
+
+          <button
+            type="button"
+            disabled={respectRemaining <= 0}
+            onClick={() => onGiveRespect?.(target)}
+            data-testid="infostand-respect-btn"
+            className={pillBtnClass}
+          >
+            Give Respect ({respectRemaining})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onWhisper?.(target.username)}
+            data-testid="infostand-whisper"
+            className={pillBtnClass}
+          >
+            Whisper
+          </button>
+
+          {canModerateRoom && !target.isNpc && (
+            <div className="flex items-center gap-1 pt-0.5">
               <button
                 type="button"
-                onClick={() => onWhisper?.(target.username)}
-                data-testid="infostand-whisper"
-                className="flex items-center justify-center gap-1 border border-[#000000] bg-[#3f3f46] px-2 py-1 text-[11px] font-bold text-white hover:bg-[#52525b] rounded-[2px] cursor-pointer"
+                onClick={() => onKickUser?.(target.username)}
+                data-testid="infostand-kick"
+                className={pillBtnClass}
               >
-                <MessageCircle className="h-3 w-3 text-[#bae6fd]" /> Whisper
+                Kick
               </button>
-
               <button
                 type="button"
-                onClick={() => onTrade?.(target.username)}
-                data-testid="infostand-trade"
-                className="flex items-center justify-center gap-1 border border-[#000000] bg-[#d97706] px-2 py-1 text-[11px] font-bold text-white hover:bg-[#ea580c] rounded-[2px] cursor-pointer"
+                onClick={() => onToggleRoomRights?.(target.username)}
+                data-testid="infostand-rights"
+                className={pillBtnClass}
               >
-                Trade
-              </button>
-
-              <button
-                type="button"
-                disabled={respectRemaining <= 0}
-                onClick={() => onGiveRespect?.(target)}
-                data-testid="infostand-respect-btn"
-                className="flex items-center justify-center gap-1 border border-[#000000] bg-[#16a34a] px-2 py-1 text-[10px] font-bold text-white hover:bg-[#15803d] disabled:bg-[#3f3f46] disabled:text-[#9ca3af] rounded-[2px] cursor-pointer"
-              >
-                <Heart className="h-3 w-3 fill-current" /> Respect ({respectRemaining} left)
+                {target.hasRoomRights ? 'Remove Rights' : 'Give Rights'}
               </button>
             </div>
-
-            {canModerateRoom && !target.isNpc && (
-              <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-[#333333]">
-                <button
-                  type="button"
-                  onClick={() => onKickUser?.(target.username)}
-                  data-testid="infostand-kick"
-                  className="flex items-center justify-center gap-1 border border-[#000000] bg-[#991b1b] px-2 py-1 text-[10px] font-bold text-white hover:bg-[#b91c1c] rounded-[2px] cursor-pointer"
-                >
-                  <ShieldAlert className="h-3 w-3" /> Kick
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onToggleRoomRights?.(target.username)}
-                  data-testid="infostand-rights"
-                  className={`flex items-center justify-center gap-1 border border-[#000000] px-2 py-1 text-[10px] font-bold rounded-[2px] cursor-pointer ${
-                    target.hasRoomRights
-                      ? 'bg-[#b45309] text-white hover:bg-[#d97706]'
-                      : 'bg-[#3f3f46] text-white hover:bg-[#52525b]'
-                  }`}
-                >
-                  <Crown className="h-3 w-3 text-[#fde047]" />
-                  {target.hasRoomRights ? 'Remove Rights' : 'Give Rights'}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </aside>
   );
 }

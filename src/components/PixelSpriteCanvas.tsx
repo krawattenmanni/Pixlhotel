@@ -38,7 +38,7 @@ export function PixelAvatarCanvas({
   className = '',
 }: AvatarCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const w = 44 * scale;
+  const w = 52 * scale;
   const h = 76 * scale;
 
   useEffect(() => {
@@ -203,7 +203,7 @@ export function PixelBadge({
   code,
   label,
 }: {
-  code: 'HC' | 'ADM' | 'MOD' | 'EVT' | 'VIP' | 'USR' | string;
+  code: 'PC' | 'HC' | 'ADM' | 'MOD' | 'EVT' | 'VIP' | 'USR' | string;
   label?: string;
 }) {
   const colors =

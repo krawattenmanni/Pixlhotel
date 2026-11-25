@@ -58,6 +58,7 @@ interface MeDashboardProps {
   onInspectPlayer: (profileId: string) => void;
   onEquipBadge?: (badgeId: string) => void;
   onCarePet?: (petId: string, kind: 'feed' | 'play') => void;
+  roomOccupancyMap?: Record<string, number>;
 }
 
 type RoomFilter = 'all' | 'public' | 'games' | 'private';
@@ -246,6 +247,7 @@ export function MeDashboard({
   onInspectPlayer,
   onEquipBadge,
   onCarePet,
+  roomOccupancyMap = {},
 }: MeDashboardProps) {
   const [mottoDraft, setMottoDraft] = useState(player.motto);
   const [editingMotto, setEditingMotto] = useState(false);
@@ -447,7 +449,7 @@ export function MeDashboard({
 
               <div className="flex items-center gap-1">
                 {player.role === 'admin' && <PixelBadge code="ADM" label="Hotel Manager" />}
-                {player.hcDays > 0 && <PixelBadge code="HC" label="PIXL Club VIP" />}
+                {player.hcDays > 0 && <PixelBadge code="PC" label="PIXL Club VIP" />}
               </div>
             </div>
 
@@ -565,7 +567,7 @@ export function MeDashboard({
                 <span className="inline-flex items-center gap-1.5">
                   <PixelHcCrownIcon />
                   <span className="font-mono-num text-[#fcd34d]">{player.hcDays}</span>
-                  <span className="text-slate-200">HC Days</span>
+                  <span className="text-slate-200">PIXL Club Days</span>
                 </span>
               </div>
 
@@ -588,7 +590,7 @@ export function MeDashboard({
                   title="Extend PIXL Club (+31 days for 50 Credits)"
                   className="habbo-btn-blue px-2 py-1 text-[10px] font-bold cursor-pointer"
                 >
-                  +HC (50c)
+                  Extend PIXL Club (50c)
                 </button>
               </div>
             </div>
@@ -831,11 +833,13 @@ export function MeDashboard({
 
             <div className="divide-y divide-[#cbd5e1] bg-white">
               {filteredRooms.map((room) => {
-                const occ = room.baseOccupancy;
-                const maxOcc = room.usersMax ?? 25;
+                const maxOcc = room.usersMax || 25;
+                const occ = Math.min(maxOcc, roomOccupancyMap[room.id] ?? 0);
                 const occTone =
-                  occ >= 15
-                    ? 'border-[#7c2d12] bg-[#ffedd5] text-[#c2410c]'
+                  occ === 0
+                    ? 'border-[#9ca3af] bg-[#e5e7eb] text-[#4b5563]'
+                    : occ >= maxOcc
+                    ? 'border-[#dc2626] bg-[#fee2e2] text-[#7f1d1d]'
                     : 'border-[#14532d] bg-[#dcfce7] text-[#15803d]';
                 return (
                   <div

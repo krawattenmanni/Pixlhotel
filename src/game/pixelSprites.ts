@@ -1,7 +1,11 @@
 import { normalizeBadgeSpriteKey } from './clientFeatures';
 import {
+  ditherIsoFace,
   drawExtendedBadgeSprite,
   drawExtendedFurniSprite,
+  drawSelOutIsoBox,
+  drawSelOutRect,
+  fillIsoDiamond,
   renderExtendedAvatarSprite,
 } from './pixelSpritesExtended';
 import type {
@@ -24,8 +28,15 @@ const roomThumbCache = new Map<string, string>();
 
 const FURNI_SPRITE_ALIASES: Record<string, string> = {
   rare_dragon_fire: 'fire_dragon',
+  dragon_fire: 'fire_dragon',
   rare_dragon_jade: 'jade_dragon',
+  dragon_jade: 'jade_dragon',
   rare_dragon_silver: 'silver_dragon',
+  dragon_silver: 'silver_dragon',
+  rare_dragon_gold: 'gold_dragon',
+  dragon_gold: 'gold_dragon',
+  rare_dragon_frost: 'frost_dragon',
+  dragon_frost: 'frost_dragon',
   club_sofa: 'hc_sofa',
   rare_throne: 'throne',
   throne_gold: 'throne',
@@ -33,11 +44,30 @@ const FURNI_SPRITE_ALIASES: Record<string, string> = {
   rare_fountain_gold: 'golden_fountain',
   royal_persian_rug: 'persian_rug',
   hc_dicemaster: 'holo_dice',
-  hc_imperial_teleporter: 'imperial_teleport',
+  hc_imperial_teleporter: 'imperial_teleporter',
+  imperial_teleport: 'imperial_teleporter',
+  disco_tile: 'disco_floor',
+  dj_turntable: 'dj_booth',
+  plant_bonsai: 'bonsai',
 };
 
 function resolveFurniSpriteId(id: string): string {
   return FURNI_SPRITE_ALIASES[id] ?? id;
+}
+
+export function isDragonLampId(furniId: string): boolean {
+  const lower = resolveFurniSpriteId(furniId).toLowerCase();
+  if (lower === 'pet_dragon' || lower === 'baby_dragon' || lower === 'badge_dragon') {
+    return false;
+  }
+  return (
+    lower === 'fire_dragon' ||
+    lower === 'jade_dragon' ||
+    lower === 'silver_dragon' ||
+    lower === 'gold_dragon' ||
+    lower === 'frost_dragon' ||
+    lower.includes('dragon')
+  );
 }
 
 function makeOffscreen(w: number, h: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
@@ -102,6 +132,53 @@ function drawIsoPoly(
   }
 }
 
+/**
+ * Automatic 1px Outer Silhouette Only (`applyPixelOutline`):
+ * Places a crisp 1px solid #141414 outline strictly around the outer non-transparent
+ * silhouette of the furniture scratch canvas, leaving all internal sel-out seams untouched.
+ */
+export function applyPixelOutline(
+  srcCanvas: HTMLCanvasElement,
+  targetCtx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  outlineRgb: [number, number, number] = [0x14, 0x14, 0x14]
+) {
+  const sCtx = srcCanvas.getContext('2d', { willReadFrequently: true })!;
+  const srcImg = sCtx.getImageData(0, 0, w, h);
+  const srcData = srcImg.data;
+  const outLayer = makeOffscreen(w, h);
+  const outImg = outLayer.ctx.createImageData(w, h);
+  const outData = outImg.data;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+      if (srcData[idx + 3] > 100) {
+        outData[idx] = srcData[idx];
+        outData[idx + 1] = srcData[idx + 1];
+        outData[idx + 2] = srcData[idx + 2];
+        outData[idx + 3] = srcData[idx + 3];
+      } else {
+        const hasNeighbor =
+          (x > 0 && srcData[idx - 4 + 3] > 100) ||
+          (x < w - 1 && srcData[idx + 4 + 3] > 100) ||
+          (y > 0 && srcData[idx - w * 4 + 3] > 100) ||
+          (y < h - 1 && srcData[idx + w * 4 + 3] > 100);
+        if (hasNeighbor) {
+          outData[idx] = outlineRgb[0];
+          outData[idx + 1] = outlineRgb[1];
+          outData[idx + 2] = outlineRgb[2];
+          outData[idx + 3] = 255;
+        }
+      }
+    }
+  }
+
+  outLayer.ctx.putImageData(outImg, 0, 0);
+  targetCtx.drawImage(outLayer.canvas, 0, 0);
+}
+
 export function getLookHash(look: LookConfig): string {
   return [
     look.gender ?? 'M',
@@ -118,8 +195,8 @@ export function getLookHash(look: LookConfig): string {
 }
 
 /**
- * Renders an authentic 45-degree 3/4 isometric Habbo pixel character onto a 44x76 offscreen canvas.
- * Feet anchor point is (22, 66). Uses a scratch canvas + 1px #141414 silhouette outline pass.
+ * Renders an authentic 2008 Habbo 3/4 isometric pixel character onto a 52x76 offscreen canvas.
+ * Feet anchor point is (26, 66). Uses a scratch canvas + 1px #141414 silhouette outline pass.
  */
 export function getAvatarSprite(
   look: LookConfig,
@@ -132,14 +209,13 @@ export function getAvatarSprite(
   danceStyle: 1 | 2 | 3 | 4 = 1
 ): HTMLCanvasElement {
   const animStep = frame % 4;
-  const hasSwimwear = inWater || wearingSwimwear;
   const swimKey = inWater
     ? `water:${swimwearColor}`
     : wearingSwimwear
     ? `decksw:${swimwearColor}`
     : '0';
   const danceKey = pose === 'dance' ? danceStyle : 0;
-  const key = `av35|${getLookHash(look)}|${dir}|${pose}|d${danceKey}|${animStep}|${swimKey}`;
+  const key = `av52v2|${getLookHash(look)}|${dir}|${pose}|d${danceKey}|${animStep}|${swimKey}`;
   const cached = spriteCache.get(key);
   if (cached) return cached;
 
@@ -155,586 +231,530 @@ export function getAvatarSprite(
   );
   spriteCache.set(key, rendered);
   return rendered;
-
-  const W = 44;
-  const H = 76;
-  const { canvas, ctx } = makeOffscreen(W, H);
-  const { canvas: scratch, ctx: s } = makeOffscreen(W, H);
-
-  const facingBack = dir === 2 || dir === 3;
-  const mirrorX = dir === 1 || dir === 2;
-
-  const skin = look.skinColor;
-  const skinHi = shadeHex(skin, 20);
-  const skinLo = shadeHex(skin, -28);
-  const skinDeep = shadeHex(skin, -45);
-
-  const shirt = hasSwimwear ? skin : look.shirtColor;
-  const shirtHi = shadeHex(shirt, 24);
-  const shirtLo = shadeHex(shirt, -28);
-  const shirtDeep = shadeHex(shirt, -44);
-
-  const pants = hasSwimwear ? swimwearColor : look.pantsColor;
-  const pantsHi = shadeHex(pants, 22);
-  const pantsLo = shadeHex(pants, -26);
-
-  const shoes = hasSwimwear ? skinLo : look.shoesColor;
-  const shoesHi = shadeHex(shoes, 22);
-  const shoesLo = shadeHex(shoes, -22);
-
-  const hair = look.hairColor;
-  const hairHi = shadeHex(hair, 26);
-  const hairLo = shadeHex(hair, -28);
-
-  const cx = 22;
-  const baseY = 66;
-
-  // Special horizontal reclining pose (:lay / lounger)
-  if (pose === 'lay') {
-    // Extended legs & shoes toward +x
-    px(s, cx + 4, baseY - 14, 11, 5, hasSwimwear ? skin : pants);
-    px(s, cx + 5, baseY - 14, 9, 2, hasSwimwear ? skinHi : pantsHi);
-    px(s, cx + 4, baseY - 10, 11, 2, hasSwimwear ? skinLo : pantsLo);
-    if (hasSwimwear) {
-      px(s, cx + 3, baseY - 14, 5, 5, pants);
-    }
-    px(s, cx + 15, baseY - 15, 4, 6, shoes);
-    px(s, cx + 16, baseY - 15, 2, 2, shoesHi);
-
-    // Reclining torso
-    px(s, cx - 7, baseY - 16, 12, 8, shirt);
-    px(s, cx - 6, baseY - 17, 10, 2, shirtHi);
-    px(s, cx - 7, baseY - 10, 12, 2, shirtLo);
-    // Relaxed arm resting on side
-    px(s, cx - 4, baseY - 12, 8, 3, shirtHi);
-    px(s, cx + 4, baseY - 12, 3, 3, skin);
-
-    // Head propped slightly up on the left
-    const hx = cx - 18;
-    const hy = baseY - 24;
-    px(s, hx + 2, hy, 10, 1, skinHi);
-    px(s, hx + 1, hy + 1, 12, 11, skin);
-    px(s, hx + 2, hy + 12, 9, 2, skinLo);
-    if (!facingBack) {
-      px(s, hx + 6, hy + 6, 2, 2, '#141414');
-      px(s, hx + 10, hy + 6, 2, 2, '#141414');
-      px(s, hx + 7, hy + 10, 3, 1, '#7c2d12');
-    }
-    // Hair & crown/cap/shades
-    px(s, hx, hy - 2, 13, 5, hair);
-    px(s, hx + 2, hy - 2, 8, 2, hairHi);
-    if (look.hairStyle === 'long' || look.hairStyle === 'bob') {
-      px(s, hx - 1, hy + 2, 4, 10, hairLo);
-    }
-    if (look.accessory === 'sunglasses' && !facingBack) {
-      px(s, hx + 5, hy + 5, 8, 3, '#09090b');
-    } else if (look.accessory === 'crown') {
-      px(s, hx + 2, hy - 5, 9, 3, '#facc15');
-    }
-
-    const oriented = makeOffscreen(W, H);
-    if (mirrorX) {
-      oriented.ctx.translate(W, 0);
-      oriented.ctx.scale(-1, 1);
-    }
-    oriented.ctx.drawImage(scratch, 0, 0);
-
-    ctx.fillStyle = 'rgba(15, 20, 35, 0.28)';
-    ctx.beginPath();
-    ctx.ellipse(cx, baseY - 3, 16, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    const srcImg = oriented.ctx.getImageData(0, 0, W, H);
-    const srcData = srcImg.data;
-    const outlined = makeOffscreen(W, H);
-    const outImg = outlined.ctx.createImageData(W, H);
-    const outData = outImg.data;
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const idx = (y * W + x) * 4;
-        if (srcData[idx + 3] > 128) {
-          outData[idx] = srcData[idx];
-          outData[idx + 1] = srcData[idx + 1];
-          outData[idx + 2] = srcData[idx + 2];
-          outData[idx + 3] = 255;
-        } else {
-          const hasNeighbor =
-            (x > 0 && srcData[idx - 4 + 3] > 128) ||
-            (x < W - 1 && srcData[idx + 4 + 3] > 128) ||
-            (y > 0 && srcData[idx - W * 4 + 3] > 128) ||
-            (y < H - 1 && srcData[idx + W * 4 + 3] > 128);
-          if (hasNeighbor) {
-            outData[idx] = 0x14;
-            outData[idx + 1] = 0x14;
-            outData[idx + 2] = 0x14;
-            outData[idx + 3] = 255;
-          }
-        }
-      }
-    }
-    outlined.ctx.putImageData(outImg, 0, 0);
-    ctx.drawImage(outlined.canvas, 0, 0);
-    spriteCache.set(key, canvas);
-    return canvas;
-  }
-
-  // Animation offsets (staggered diagonal stride / 4 distinct dance styles)
-  let bobY = 0;
-  let nearLegDX = 0;
-  let nearLegDY = 0;
-  let farLegDX = 0;
-  let farLegDY = 0;
-  let nearArmDY = 0;
-  let farArmDY = 0;
-  let waveUp = false;
-
-  if (pose === 'walk') {
-    if (animStep === 1) {
-      bobY = -1;
-      nearLegDX = 2;
-      nearLegDY = -1;
-      farLegDX = -2;
-      farLegDY = 1;
-      nearArmDY = -2;
-      farArmDY = 2;
-    } else if (animStep === 3) {
-      bobY = -1;
-      nearLegDX = -2;
-      nearLegDY = 1;
-      farLegDX = 2;
-      farLegDY = -1;
-      nearArmDY = 2;
-      farArmDY = -2;
-    }
-  } else if (pose === 'dance') {
-    if (danceStyle === 2) {
-      // Pogo Mogo: energetic crouch & high pogo leap
-      bobY = animStep === 0 ? 2 : animStep === 1 ? -6 : animStep === 2 ? -3 : 0;
-      nearLegDY = animStep === 1 ? -3 : 0;
-      farLegDY = animStep === 1 ? -3 : 0;
-      nearArmDY = animStep === 1 || animStep === 2 ? -6 : 2;
-      farArmDY = animStep === 1 || animStep === 2 ? -6 : 2;
-    } else if (danceStyle === 3) {
-      // Duck Funk: wide side-step & flapping elbows
-      bobY = animStep % 2 === 0 ? -1 : 1;
-      nearLegDX = animStep === 0 ? -2 : animStep === 2 ? 2 : 0;
-      farLegDX = animStep === 0 ? -2 : animStep === 2 ? 2 : 0;
-      nearArmDY = animStep % 2 === 0 ? -4 : 2;
-      farArmDY = animStep % 2 === 0 ? -4 : 2;
-    } else if (danceStyle === 4) {
-      // The Rollie: alternating foot tap & shoulder roll
-      bobY = animStep === 1 || animStep === 3 ? -2 : 0;
-      nearLegDY = animStep === 1 ? -2 : 0;
-      farLegDY = animStep === 3 ? -2 : 0;
-      nearArmDY = animStep === 0 ? -5 : animStep === 2 ? 3 : -1;
-      farArmDY = animStep === 2 ? -5 : animStep === 0 ? 3 : -1;
-    } else {
-      // Classic Habbo Hop (:dance 1)
-      bobY = animStep % 2 === 0 ? -2 : 0;
-      nearLegDX = animStep === 1 ? -1 : 0;
-      farLegDX = animStep === 3 ? 1 : 0;
-      nearArmDY = animStep < 2 ? -5 : 1;
-      farArmDY = animStep >= 2 ? -5 : 1;
-    }
-  } else if (pose === 'wave') {
-    waveUp = animStep % 2 === 0;
-    bobY = waveUp ? -1 : 0;
-  }
-
-  // Draw SE (dir=0) or NE (dir=3) in local +x facing orientation on scratch canvas
-  const torsoY = (pose === 'sit' ? baseY - 33 : baseY - 32) + bobY;
-
-  const drawFarArm = () => {
-    // Far shoulder sits on right side (+x) slightly behind torso
-    const ax = cx + 4;
-    const ay = torsoY + 2 + farArmDY;
-    if (pose === 'wave' && !facingBack) {
-      const wy = waveUp ? torsoY - 8 : torsoY - 5;
-      px(s, cx + 5, wy + 2, 3, 9, shirtLo);
-      px(s, cx + 6, wy + 2, 2, 7, shirt);
-      px(s, cx + 5, wy - 1, 3, 3, skin);
-      return;
-    }
-    if (pose === 'dance' && farArmDY < 0) {
-      px(s, ax, ay, 3, 6, shirtLo);
-      px(s, ax, ay - 3, 3, 3, skin);
-      return;
-    }
-    px(s, ax, ay, 3, 6, shirtLo);
-    px(s, ax + 1, ay + 5, 3, 5, shirtDeep);
-    px(s, ax + 1, ay + 10, 3, 3, skinLo);
-  };
-
-  const drawNearArm = () => {
-    // Near arm sits on left/foreground shoulder, bent slightly at elbow
-    const ax = cx - 8;
-    const ay = torsoY + 2 + nearArmDY;
-    if (pose === 'dance' && nearArmDY < 0) {
-      px(s, ax - 1, ay, 3, 6, shirt);
-      px(s, ax - 1, ay - 3, 3, 3, skinHi);
-      return;
-    }
-    // Upper arm
-    px(s, ax, ay, 4, 6, shirt);
-    px(s, ax + 1, ay, 2, 5, shirtHi);
-    // Forearm bent forward (+x) at elbow
-    px(s, ax + 1, ay + 6, 4, 5, shirt);
-    px(s, ax + 2, ay + 6, 2, 4, shirtHi);
-    // Hand
-    px(s, ax + 2, ay + 11, 3, 3, skin);
-    px(s, ax + 3, ay + 11, 2, 2, skinHi);
-  };
-
-  // 1. LEGS & STAGGERED DIAGONAL SHOES
-  if (inWater) {
-    // Legs are completely hidden beneath the pool waterline; subtle swim waistband at waterline
-    const swimBob = animStep % 2 === 0 ? 0 : 1;
-    px(s, cx - 5, torsoY + 13 + swimBob, 10, 4, pants);
-    px(s, cx - 5, torsoY + 15 + swimBob, 10, 1, '#fef08a');
-  } else if (pose === 'sit') {
-    const sy = baseY - 16;
-    // Far leg tucked forward-right
-    px(s, cx + 1, sy, 5, 5, pantsLo);
-    px(s, cx + 3, sy + 4, 4, 6, pantsLo);
-    px(s, cx + 3, sy + 9, 6, 3, shoesLo);
-    px(s, cx + 7, sy + 10, 2, 2, '#d4d4d8');
-    // Near leg foreground staggered slightly left-down
-    px(s, cx - 5, sy + 2, 5, 5, pants);
-    px(s, cx - 3, sy + 6, 4, 6, pants);
-    px(s, cx - 2, sy + 6, 2, 5, pantsHi);
-    px(s, cx - 3, sy + 11, 6, 3, shoes);
-    px(s, cx - 2, sy + 11, 3, 1, shoesHi);
-    px(s, cx + 1, sy + 12, 2, 2, '#f8fafc');
-  } else {
-    // Far leg (back-right, slightly higher by 2px for 3/4 depth)
-    const flx = cx + 1 + farLegDX;
-    const fly = baseY - 17 + farLegDY;
-    px(s, flx, fly, 4, 11, hasSwimwear ? skinLo : pantsLo);
-    px(s, flx + 1, fly + 1, 2, 9, hasSwimwear ? skin : pants);
-    if (hasSwimwear) {
-      px(s, flx, fly, 4, 5, pantsLo); // Swim shorts upper leg
-    }
-    // Angled shoe/sandal pointing down-right
-    px(s, flx, fly + 11, 6, 3, shoesLo);
-    if (!hasSwimwear) px(s, flx + 4, fly + 12, 2, 2, '#e2e8f0');
-
-    // Near leg (foreground-left, 2px lower for true staggered isometric stance)
-    const nlx = cx - 5 + nearLegDX;
-    const nly = baseY - 15 + nearLegDY;
-    px(s, nlx, nly, 5, 11, hasSwimwear ? skin : pants);
-    px(s, nlx + 1, nly + 1, 2, 9, hasSwimwear ? skinHi : pantsHi);
-    px(s, nlx, nly + 1, 1, 9, hasSwimwear ? skinLo : pantsLo);
-    if (hasSwimwear) {
-      px(s, nlx, nly, 5, 5, pants);
-      px(s, nlx + 1, nly, 3, 4, pantsHi);
-    }
-    // Near angled isometric sneaker/sandal
-    px(s, nlx, nly + 11, 7, 3, shoes);
-    px(s, nlx + 1, nly + 11, 4, 1, shoesHi);
-    if (!hasSwimwear) px(s, nlx + 5, nly + 12, 2, 2, '#f8fafc');
-  }
-
-  // 2. FAR ARM (behind torso)
-  drawFarArm();
-
-  // 3. ANGLED ISOMETRIC TORSO & SHOULDERS
-  // Tapered, sloped 3/4 silhouette instead of a flat rectangle
-  px(s, cx - 6, torsoY + 1, 12, 15, shirt);
-  px(s, cx - 5, torsoY, 9, 2, shirtHi); // Angled top shoulder line
-  px(s, cx - 6, torsoY + 2, 2, 13, shirtLo); // Back edge shading
-  px(s, cx + 2, torsoY + 2, 3, 13, shirtHi); // Lit 3/4 front chest
-  px(s, cx - 5, torsoY + 15, 10, 2, shirtDeep); // Hem shadow
-
-  if (inWater) {
-    // Classic Habbo yellow duck swim ring around waist at waterline
-    const swimBob = animStep % 2 === 0 ? 0 : 1;
-    px(s, cx - 6, torsoY + 9 + swimBob, 12, 4, pants);
-    px(s, cx - 9, torsoY + 11 + swimBob, 18, 5, '#eab308');
-    px(s, cx - 8, torsoY + 12 + swimBob, 16, 3, '#facc15');
-    px(s, cx - 6, torsoY + 12 + swimBob, 10, 2, '#fef08a');
-    // Mini duck head & orange beak perched on front of float ring
-    if (!facingBack) {
-      px(s, cx + 4, torsoY + 7 + swimBob, 5, 5, '#facc15');
-      px(s, cx + 5, torsoY + 8 + swimBob, 3, 2, '#fef9c3');
-      px(s, cx + 9, torsoY + 9 + swimBob, 3, 2, '#f97316');
-      px(s, cx + 7, torsoY + 8 + swimBob, 1, 1, '#141414');
-    }
-  } else if (wearingSwimwear) {
-    // Bright resort swimwear trunks/suit on deck
-    px(s, cx - 6, torsoY + 11, 12, 5, pants);
-    px(s, cx - 5, torsoY + 12, 10, 2, pantsHi);
-    px(s, cx - 6, torsoY + 11, 12, 1, '#fef08a');
-  } else if (!facingBack) {
-    if (look.shirtStyle === 'suit') {
-      // Crisply angled suit jacket with white V-shirt, diagonal lapels, and necktie
-      px(s, cx + 1, torsoY + 1, 4, 8, '#f8fafc');
-      px(s, cx + 2, torsoY + 2, 2, 8, '#b91c1c'); // Tie
-      px(s, cx + 2, torsoY + 1, 2, 2, '#991b1b'); // Tie knot
-      px(s, cx, torsoY + 2, 1, 6, shirtDeep); // Left lapel
-      px(s, cx + 4, torsoY + 2, 1, 6, shirtDeep); // Right lapel
-      px(s, cx + 2, torsoY + 11, 1, 1, '#cbd5e1'); // Suit button
-    } else if (look.shirtStyle === 'hoodie') {
-      px(s, cx + 1, torsoY + 1, 1, 6, '#f8fafc');
-      px(s, cx + 3, torsoY + 1, 1, 6, '#f8fafc');
-      px(s, cx - 2, torsoY + 10, 7, 4, shirtLo); // Front pocket
-      px(s, cx - 4, torsoY - 1, 8, 2, shirtLo); // Hood rim
-    } else if (look.shirtStyle === 'stripes') {
-      px(s, cx - 5, torsoY + 4, 11, 2, '#f8fafc');
-      px(s, cx - 5, torsoY + 9, 11, 2, '#f8fafc');
-      px(s, cx - 5, torsoY + 13, 10, 1, '#f8fafc');
-    } else if (look.shirtStyle === 'tank') {
-      px(s, cx - 1, torsoY + 1, 5, 2, skin);
-      px(s, cx - 5, torsoY + 1, 2, 4, skin);
-      px(s, cx + 4, torsoY + 1, 2, 4, skin);
-    } else {
-      // Classic tee angled V-neck collar
-      px(s, cx + 1, torsoY + 1, 4, 2, skin);
-      px(s, cx + 2, torsoY + 3, 2, 1, skinLo);
-    }
-  } else {
-    // Back of hoodie/suit seam
-    if (look.shirtStyle === 'hoodie') {
-      px(s, cx - 5, torsoY, 10, 4, shirtLo);
-      px(s, cx - 4, torsoY + 1, 7, 2, shirtDeep);
-    } else if (look.shirtStyle === 'suit') {
-      px(s, cx - 1, torsoY + 10, 1, 6, shirtDeep);
-    }
-  }
-
-  // 4. NEAR ARM (drawn over torso edge for authentic 3/4 overlap)
-  drawNearArm();
-
-  // 5. ROUNDED / OVAL 3/4 ISOMETRIC HEAD + VISIBLE SIDE EAR
-  const hx = cx - 7;
-  const hy = torsoY - 18;
-  // Chamfered oval silhouette (no boxy corners!)
-  px(s, hx + 2, hy, 11, 1, skinHi);
-  px(s, hx + 1, hy + 1, 13, 2, skin);
-  px(s, hx, hy + 3, 15, 11, skin);
-  px(s, hx + 1, hy + 14, 13, 2, skin);
-  px(s, hx + 2, hy + 16, 10, 2, skinLo);
-  px(s, hx + 4, hy + 17, 6, 1, skinDeep);
-
-  // 3/4 volumetric cheek/crown shading
-  px(s, hx + 3, hy + 1, 8, 2, skinHi);
-  px(s, hx, hy + 4, 2, 10, skinLo);
-  px(s, hx + 12, hy + 4, 3, 9, skinHi);
-  px(s, hx + 2, hy + 14, 9, 2, skinLo);
-
-  // Visible side ear (on the left side of the 3/4 head)
-  px(s, hx - 2, hy + 8, 2, 4, skin);
-  px(s, hx - 1, hy + 9, 1, 2, skinLo);
-
-  // 6. ASYMMETRIC 3/4 FACE DETAILS (shifted toward right cheek)
-  if (!facingBack) {
-    const eyeY = hy + 8;
-    const nearEyeX = hx + 7;
-    const farEyeX = hx + 12;
-
-    if (look.expression === 'serene') {
-      px(s, nearEyeX, eyeY + 1, 2, 1, '#141414');
-      px(s, farEyeX, eyeY + 1, 2, 1, '#141414');
-      px(s, nearEyeX + 2, hy + 13, 3, 1, '#9a3412');
-    } else {
-      // Classic vertical Habbo eyes with white shine pixel
-      px(s, nearEyeX, eyeY, 2, 3, '#141414');
-      px(s, nearEyeX, eyeY, 1, 1, '#ffffff');
-      px(s, farEyeX, eyeY, 2, 3, '#141414');
-      px(s, farEyeX, eyeY, 1, 1, '#ffffff');
-
-      if (look.expression === 'cool') {
-        px(s, nearEyeX - 1, eyeY - 2, 3, 1, hairLo);
-        px(s, farEyeX - 1, eyeY - 2, 3, 1, hairLo);
-        px(s, nearEyeX + 2, hy + 13, 4, 1, '#7c2d12');
-      } else if (look.expression === 'cheeky') {
-        px(s, nearEyeX + 1, hy + 13, 5, 2, '#991b1b');
-        px(s, nearEyeX + 2, hy + 13, 3, 1, '#ffffff');
-      } else {
-        // happy
-        px(s, nearEyeX + 1, hy + 13, 4, 1, '#7c2d12');
-        px(s, nearEyeX + 2, hy + 14, 2, 1, '#dc2626');
-      }
-    }
-    // Subtle nose highlight pixel
-    px(s, hx + 11, hy + 10, 1, 2, skinLo);
-  }
-
-  // 7. MULTI-LAYERED 3/4 PIXEL HAIR WITH VOLUME, SHADING & BANGS
-  if (facingBack) {
-    // Full back coverage + nape contour
-    px(s, hx + 1, hy - 2, 13, 3, hairHi);
-    px(s, hx - 1, hy + 1, 16, 12, hair);
-    px(s, hx - 1, hy + 3, 3, 9, hairLo);
-    if (look.hairStyle === 'long') {
-      px(s, hx - 1, hy + 11, 15, 11, hair);
-      px(s, hx, hy + 12, 3, 10, hairLo);
-      px(s, hx + 10, hy + 12, 2, 9, hairHi);
-    } else if (look.hairStyle === 'mohawk') {
-      // Shaved sides, tall crest
-      px(s, hx, hy + 2, 14, 11, skinLo);
-      px(s, hx + 5, hy - 6, 4, 16, hair);
-      px(s, hx + 6, hy - 5, 2, 13, hairHi);
-    } else if (look.hairStyle === 'spiky') {
-      px(s, hx + 2, hy - 5, 3, 4, hairHi);
-      px(s, hx + 7, hy - 6, 3, 5, hair);
-      px(s, hx + 11, hy - 4, 3, 3, hairHi);
-    }
-  } else {
-    if (look.hairStyle === 'spiky') {
-      px(s, hx + 1, hy - 2, 13, 6, hair);
-      px(s, hx - 1, hy + 2, 4, 6, hairLo); // Back/sideburn
-      px(s, hx + 3, hy + 3, 11, 3, hairHi); // Angled front bangs
-      px(s, hx + 2, hy - 5, 3, 4, hairHi);
-      px(s, hx + 6, hy - 6, 3, 5, hair);
-      px(s, hx + 10, hy - 5, 3, 4, hairHi);
-    } else if (look.hairStyle === 'quiff') {
-      px(s, hx, hy - 1, 14, 5, hair);
-      px(s, hx - 1, hy + 2, 3, 6, hairLo); // Tapered sideburn
-      px(s, hx + 5, hy - 5, 9, 5, hair); // Swept 3/4 quiff volume
-      px(s, hx + 6, hy - 4, 7, 2, hairHi);
-      px(s, hx + 4, hy + 3, 9, 2, hairLo);
-    } else if (look.hairStyle === 'bob') {
-      px(s, hx, hy - 2, 15, 6, hair);
-      px(s, hx + 2, hy - 1, 10, 2, hairHi);
-      px(s, hx - 2, hy + 3, 5, 12, hairLo); // Framing back lock
-      px(s, hx + 13, hy + 3, 2, 11, hair); // Far front lock
-      px(s, hx + 4, hy + 3, 9, 3, hairHi); // Bangs
-    } else if (look.hairStyle === 'long') {
-      px(s, hx, hy - 2, 15, 6, hair);
-      px(s, hx + 2, hy - 1, 10, 2, hairHi);
-      px(s, hx - 2, hy + 3, 5, 19, hairLo); // Flowing back curtain
-      px(s, hx - 1, hy + 5, 2, 16, hair);
-      px(s, hx + 13, hy + 3, 2, 17, hair);
-      px(s, hx + 5, hy + 3, 8, 3, hairHi);
-    } else if (look.hairStyle === 'mohawk') {
-      px(s, hx + 4, hy - 7, 6, 11, hair);
-      px(s, hx + 6, hy - 6, 3, 9, hairHi);
-      px(s, hx, hy + 3, 2, 4, hairLo);
-    } else {
-      // curls
-      px(s, hx - 1, hy - 3, 16, 7, hair);
-      px(s, hx + 2, hy - 3, 4, 3, hairHi);
-      px(s, hx + 8, hy - 2, 4, 3, hairHi);
-      px(s, hx - 2, hy + 3, 4, 6, hairLo);
-      px(s, hx + 13, hy + 3, 2, 5, hair);
-    }
-  }
-
-  // 8. 3/4 ANGLED ACCESSORIES
-  if (look.accessory === 'crown') {
-    px(s, hx + 2, hy - 6, 11, 5, '#facc15');
-    px(s, hx + 3, hy - 8, 2, 3, '#fef08a');
-    px(s, hx + 7, hy - 9, 2, 4, '#fef08a');
-    px(s, hx + 11, hy - 8, 2, 3, '#facc15');
-    px(s, hx + 7, hy - 4, 2, 2, '#dc2626');
-    px(s, hx + 2, hy - 2, 11, 1, '#ca8a04');
-  } else if (look.accessory === 'headphones') {
-    px(s, hx + 1, hy - 3, 13, 3, '#475569');
-    px(s, hx - 2, hy + 6, 4, 7, '#1e293b');
-    px(s, hx - 1, hy + 7, 2, 4, '#38bdf8');
-    px(s, hx + 13, hy + 6, 3, 6, '#1e293b');
-    px(s, hx + 14, hy + 7, 1, 3, '#38bdf8');
-  } else if (look.accessory === 'sunglasses' && !facingBack) {
-    px(s, hx + 6, hy + 7, 5, 4, '#09090b');
-    px(s, hx + 11, hy + 7, 5, 4, '#09090b');
-    px(s, hx + 7, hy + 8, 2, 1, '#e4e4e7');
-    px(s, hx + 12, hy + 8, 2, 1, '#e4e4e7');
-    px(s, hx, hy + 8, 6, 1, '#18181b'); // Temple arm to ear
-  } else if (look.accessory === 'cap') {
-    px(s, hx, hy - 3, 14, 6, '#dc2626');
-    px(s, hx + 2, hy - 3, 9, 2, '#f87171');
-    if (!facingBack) {
-      // Angled 3/4 cap brim jutting toward +x
-      px(s, hx + 6, hy + 2, 11, 3, '#991b1b');
-      px(s, hx + 7, hy + 2, 9, 1, '#ef4444');
-    }
-  }
-
-  // Mirror horizontally for SW (dir=1) and NW (dir=2)
-  const oriented = makeOffscreen(W, H);
-  if (mirrorX) {
-    oriented.ctx.translate(W, 0);
-    oriented.ctx.scale(-1, 1);
-  }
-  oriented.ctx.drawImage(scratch, 0, 0);
-
-  // 9. Draw soft isometric oval ground shadow (or turquoise water ripple if submerged in pool)
-  if (inWater) {
-    ctx.strokeStyle = animStep % 2 === 0 ? 'rgba(224, 242, 254, 0.92)' : 'rgba(125, 211, 252, 0.78)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.ellipse(cx, baseY - 11, 14 + (animStep % 2) * 2, 6 + (animStep % 2), 0, 0, Math.PI * 2);
-    ctx.stroke();
-  } else {
-    ctx.fillStyle = 'rgba(15, 20, 35, 0.28)';
-    ctx.beginPath();
-    ctx.ellipse(cx, baseY + 1, 9, 4, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // 10. Crisp 1px #141414 silhouette outline pass around all opaque character pixels
-  const srcImg = oriented.ctx.getImageData(0, 0, W, H);
-  const srcData = srcImg.data;
-  const outlined = makeOffscreen(W, H);
-  const outImg = outlined.ctx.createImageData(W, H);
-  const outData = outImg.data;
-
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const idx = (y * W + x) * 4;
-      if (srcData[idx + 3] > 128) {
-        outData[idx] = srcData[idx];
-        outData[idx + 1] = srcData[idx + 1];
-        outData[idx + 2] = srcData[idx + 2];
-        outData[idx + 3] = 255;
-      } else {
-        const hasNeighbor =
-          (x > 0 && srcData[idx - 4 + 3] > 128) ||
-          (x < W - 1 && srcData[idx + 4 + 3] > 128) ||
-          (y > 0 && srcData[idx - W * 4 + 3] > 128) ||
-          (y < H - 1 && srcData[idx + W * 4 + 3] > 128);
-        if (hasNeighbor) {
-          outData[idx] = 0x14;
-          outData[idx + 1] = 0x14;
-          outData[idx + 2] = 0x14;
-          outData[idx + 3] = 255;
-        }
-      }
-    }
-  }
-
-  outlined.ctx.putImageData(outImg, 0, 0);
-  if (inWater) {
-    // Submerge lower torso below pool surface & add crisp white water foam collar
-    const clipH = baseY - 14;
-    ctx.drawImage(outlined.canvas, 0, 0, W, clipH, 0, 8, W, clipH);
-    px(ctx, cx - 10, baseY - 7, 20, 2, 'rgba(224, 242, 254, 0.85)');
-  } else {
-    ctx.drawImage(outlined.canvas, 0, 0);
-  }
-
-  spriteCache.set(key, canvas);
-  return canvas;
 }
 
 /**
  * Renders just the 3/4 isometric head & collar portrait (26x26) for Speech Bubbles, Friends, and Housekeeping rows.
  */
 export function getAvatarHeadSprite(look: LookConfig): HTMLCanvasElement {
-  const key = `head34|${getLookHash(look)}`;
+  const key = `head52v2|${getLookHash(look)}`;
   const cached = spriteCache.get(key);
   if (cached) return cached;
 
   const full = getAvatarSprite(look, 0, 'stand', 0);
   const { canvas, ctx } = makeOffscreen(26, 26);
-  ctx.drawImage(full, 9, 6, 26, 26, 0, 0, 26, 26);
+  ctx.drawImage(full, 13, 5, 26, 26, 0, 0, 26, 26);
   spriteCache.set(key, canvas);
   return canvas;
 }
 
+export interface DragonLampPalette {
+  scaleBase: string;
+  scaleHi: string;
+  scaleMid: string;
+  scaleLo: string;
+  bellyBase: string;
+  bellyHi: string;
+  bellyLo: string;
+  hornTip: string;
+  hornMid: string;
+  hornBase: string;
+  eyeIris: string;
+  eyeGlow: string;
+  rivet: string;
+  flameCore: string;
+  flameMid: string;
+  flameOuter: string;
+  floorGlow: string;
+}
+
+export function getDragonLampPalette(furniId: string): DragonLampPalette {
+  const canonical = resolveFurniSpriteId(furniId).toLowerCase();
+  if (canonical === 'jade_dragon' || canonical.includes('jade')) {
+    return {
+      scaleBase: '#059669',
+      scaleHi: '#34d399',
+      scaleMid: '#047857',
+      scaleLo: '#064e3b',
+      bellyBase: '#f59e0b',
+      bellyHi: '#fef3c7',
+      bellyLo: '#92400e',
+      hornTip: '#fef3c7',
+      hornMid: '#f59e0b',
+      hornBase: '#78350f',
+      eyeIris: '#ef4444',
+      eyeGlow: '#fef08a',
+      rivet: '#fbbf24',
+      flameCore: '#fef08a',
+      flameMid: '#4ade80',
+      flameOuter: '#16a34a',
+      floorGlow: 'rgba(74, 222, 128, 0.24)',
+    };
+  }
+  if (
+    canonical === 'silver_dragon' ||
+    canonical === 'frost_dragon' ||
+    canonical.includes('silver') ||
+    canonical.includes('frost')
+  ) {
+    return {
+      scaleBase: '#94a3b8',
+      scaleHi: '#f8fafc',
+      scaleMid: '#64748b',
+      scaleLo: '#334155',
+      bellyBase: '#bae6fd',
+      bellyHi: '#f8fafc',
+      bellyLo: '#0284c7',
+      hornTip: '#fef3c7',
+      hornMid: '#e2e8f0',
+      hornBase: '#475569',
+      eyeIris: '#38bdf8',
+      eyeGlow: '#fef08a',
+      rivet: '#94a3b8',
+      flameCore: '#fef08a',
+      flameMid: '#38bdf8',
+      flameOuter: '#0284c7',
+      floorGlow: 'rgba(56, 189, 248, 0.25)',
+    };
+  }
+  if (canonical === 'gold_dragon' || canonical.includes('gold')) {
+    return {
+      scaleBase: '#eab308',
+      scaleHi: '#fef9c3',
+      scaleMid: '#ca8a04',
+      scaleLo: '#854d0e',
+      bellyBase: '#f59e0b',
+      bellyHi: '#fef9c3',
+      bellyLo: '#92400e',
+      hornTip: '#fef3c7',
+      hornMid: '#fbbf24',
+      hornBase: '#78350f',
+      eyeIris: '#ef4444',
+      eyeGlow: '#fef08a',
+      rivet: '#fbbf24',
+      flameCore: '#fef08a',
+      flameMid: '#f59e0b',
+      flameOuter: '#d97706',
+      floorGlow: 'rgba(250, 204, 21, 0.26)',
+    };
+  }
+  // Default: fire_dragon (Fire Dragon Lamp)
+  return {
+    scaleBase: '#dc2626',
+    scaleHi: '#f87171',
+    scaleMid: '#b91c1c',
+    scaleLo: '#7f1d1d',
+    bellyBase: '#fbbf24',
+    bellyHi: '#fef3c7',
+    bellyLo: '#b45309',
+    hornTip: '#fef3c7',
+    hornMid: '#fbbf24',
+    hornBase: '#78350f',
+    eyeIris: '#ef4444',
+    eyeGlow: '#fef08a',
+    rivet: '#fbbf24',
+    flameCore: '#fef08a',
+    flameMid: '#fb923c',
+    flameOuter: '#dc2626',
+    floorGlow: 'rgba(251, 146, 60, 0.25)',
+  };
+}
+
 /**
- * Renders detailed pixel-art isometric furniture onto a 68x86 offscreen canvas.
- * Tile base diamond center is at (34, 68).
+ * Dedicated 1:1 2008 Sulake Habbo Hotel Rare Dragon Lamp pixel-art sculpting routine (`72x96` integer canvas).
+ * Supports all 4 rotations (`rot = 0` Front-Left, `rot = 1` Front-Right, `rot = 2` Back-Right, `rot = 3` Back-Left),
+ * stepped obsidian plinth, S-curved scaled torso, 6 segmented belly plates, 4 curved dorsal spines,
+ * fierce roaring head with swept horns & fangs, layered scalloped wings, and 4-frame animated pixel flame.
+ */
+export function drawDragonLamp(
+  s: CanvasRenderingContext2D,
+  outCtx: CanvasRenderingContext2D,
+  furniId: string,
+  rot: Direction,
+  state: number,
+  animTick: number,
+  cx = 36,
+  cy = 72
+): void {
+  const pal = getDragonLampPalette(furniId);
+  const facingBack = rot === 2 || rot === 3;
+  // rot = 0 (Front-Left) and rot = 3 (Back-Left) point along -X; rot = 1 (Front-Right) and rot = 2 (Back-Right) point along +X
+  const fx = rot === 1 || rot === 2 ? 1 : -1;
+  const plot = (dx: number, dyFromCy: number, w: number, h: number, color: string) => {
+    const x = fx === 1 ? cx + dx : cx - dx - w;
+    px(s, x, cy + dyFromCy, w, h, color);
+  };
+
+  // Warm floor light pool cast on the tile in front when Dragon Lamp is ON (state === 1)
+  if (state === 1) {
+    const glowX = cx + fx * 15;
+    const glowY = facingBack ? cy - 6 : cy + 8;
+    outCtx.fillStyle = pal.floorGlow;
+    outCtx.beginPath();
+    outCtx.ellipse(glowX, glowY, 18, 9, 0, 0, Math.PI * 2);
+    outCtx.fill();
+  }
+
+  // ============================================================================
+  // 1. STEPPED ISOMETRIC STONE/OBSIDIAN PLINTH (64x32 Base Footprint)
+  // ============================================================================
+  // Tier 1: Lower wide octagonal/isometric carved obsidian base (#27272a top, #18181b left, #09090b right)
+  const r1x = 26;
+  const r1y = 13;
+  const h1 = 6;
+  const top1Y = cy - h1;
+  for (let dx = -r1x; dx < 0; dx++) {
+    const yEdge = top1Y + r1y - Math.floor(((dx + r1x) * r1y) / r1x);
+    px(s, cx + dx, yEdge, 1, h1, '#18181b');
+    px(s, cx + dx, yEdge, 1, 1, '#3f3f46');
+    // Carved horizontal stone groove line along left face
+    px(s, cx + dx, yEdge + 3, 1, 1, '#09090b');
+    px(s, cx + dx, yEdge + 4, 1, 1, '#27272a');
+    px(s, cx + dx, yEdge + h1 - 1, 1, 1, '#09090b');
+  }
+  for (let dx = 0; dx < r1x; dx++) {
+    const yEdge = top1Y + r1y - Math.floor(((r1x - 1 - dx) * r1y) / r1x);
+    px(s, cx + dx, yEdge, 1, h1, '#09090b');
+    px(s, cx + dx, yEdge, 1, 1, '#27272a');
+    // Carved horizontal stone groove line along right shadow face
+    px(s, cx + dx, yEdge + 3, 1, 1, '#18181b');
+  }
+  fillIsoDiamond(s, cx, top1Y, r1x, r1y, '#27272a', '#3f3f46', '#18181b');
+
+  // Tier 2: Upper stepped octagonal plinth block
+  const r2x = 19;
+  const r2y = 9;
+  const h2 = 6;
+  const top2Y = cy - h1 - h2;
+  for (let dx = -r2x; dx < 0; dx++) {
+    const yEdge = top2Y + r2y - Math.floor(((dx + r2x) * r2y) / r2x);
+    px(s, cx + dx, yEdge, 1, h2, '#18181b');
+    px(s, cx + dx, yEdge, 1, 1, '#3f3f46');
+    px(s, cx + dx, yEdge + 3, 1, 1, '#09090b');
+    px(s, cx + dx, yEdge + h2 - 1, 1, 1, '#09090b');
+  }
+  for (let dx = 0; dx < r2x; dx++) {
+    const yEdge = top2Y + r2y - Math.floor(((r2x - 1 - dx) * r2y) / r2x);
+    px(s, cx + dx, yEdge, 1, h2, '#09090b');
+    px(s, cx + dx, yEdge, 1, 1, '#27272a');
+    px(s, cx + dx, yEdge + 3, 1, 1, '#18181b');
+  }
+  fillIsoDiamond(s, cx, top2Y, r2x, r2y, '#27272a', '#52525b', '#18181b');
+  fillIsoDiamond(s, cx, top2Y, 14, 7, '#18181b', '#3f3f46', '#09090b');
+
+  // 4 Metallic Corner Rivets on the Stepped Stone Plinth (#fbbf24 / #94a3b8)
+  px(s, cx - 22, cy - 6, 2, 2, pal.rivet);
+  px(s, cx - 22, cy - 6, 1, 1, '#ffffff');
+  px(s, cx - 1, cy + 3, 2, 2, pal.rivet);
+  px(s, cx - 1, cy + 3, 1, 1, '#ffffff');
+  px(s, cx + 20, cy - 6, 2, 2, pal.rivet);
+  px(s, cx - 15, cy - 11, 2, 2, pal.rivet);
+  px(s, cx + 13, cy - 11, 2, 2, pal.rivet);
+
+  // ============================================================================
+  // 2. COILED TAIL BASE, CLAWED FEET & S-CURVED TORSO / NECK (34px Tall)
+  // ============================================================================
+  if (!facingBack) {
+    // Far wing tip peeking behind the upper chest/neck for deep 3D parallax
+    plot(7, -45, 7, 11, pal.scaleLo);
+    plot(8, -46, 6, 2, pal.bellyLo);
+    plot(9, -43, 6, 8, pal.scaleMid);
+    plot(13, -47, 2, 2, pal.hornTip);
+
+    // Coiled muscular dragon tail wrapping around the rear of the upper plinth
+    plot(-17, -18, 12, 6, pal.scaleLo);
+    plot(-16, -19, 10, 5, pal.scaleBase);
+    plot(-15, -20, 8, 2, pal.scaleHi);
+    // Barbed curled tail tip on pedestal corner
+    plot(-20, -21, 4, 4, pal.scaleMid);
+    plot(-21, -23, 3, 2, pal.hornMid);
+    plot(-22, -24, 2, 2, pal.hornTip);
+
+    // Muscular dragon haunches & 3-toed talons gripping the plinth rim
+    plot(-9, -20, 14, 8, pal.scaleBase);
+    plot(-8, -21, 11, 3, pal.scaleHi);
+    plot(-9, -14, 14, 2, pal.scaleLo);
+    // Front & side clawed talons gripping the obsidian rim
+    plot(2, -13, 2, 3, pal.hornMid);
+    plot(4, -12, 2, 3, pal.hornTip);
+    plot(7, -13, 2, 3, pal.hornMid);
+    plot(-8, -12, 2, 3, pal.hornMid);
+    plot(-5, -11, 2, 3, pal.hornTip);
+
+    // Muscular S-Curved Dragon Torso & Arched Neck rising 34px above the pedestal (cy - 14 to cy - 48)
+    for (let dy = 0; dy < 34; dy++) {
+      const y = -14 - dy;
+      // Organic S-curve center X offset: swells forward at chest (dy=10..15), arches back at neck (dy=22..27), leans forward at head (dy=31..33)
+      const sCurve = Math.round(
+        Math.sin((dy / 17) * Math.PI) * 4.5 - Math.sin(((dy - 14) / 18) * Math.PI) * 2.2
+      );
+      const halfW = dy < 14 ? 7 - Math.floor(dy * 0.08) : Math.max(5, 7 - Math.floor((dy - 10) * 0.12));
+      const leftX = sCurve - halfW;
+      const totalW = halfW * 2 + 1;
+
+      // Deep back shadow edge
+      plot(leftX, y, totalW, 1, pal.scaleBase);
+      plot(leftX, y, 3, 1, pal.scaleLo);
+      // Staggered isometric scale dithering on the muscular side
+      if (dy % 3 === 0) {
+        plot(leftX + 3, y, Math.max(2, totalW - 6), 1, pal.scaleHi);
+      } else if (dy % 3 === 1) {
+        plot(leftX + 2, y, Math.max(2, totalW - 5), 1, pal.scaleMid);
+        plot(leftX + 4, y, 2, 1, pal.scaleHi);
+      }
+      // Front under-shadow before belly plates
+      plot(leftX + totalW - 3, y, 3, 1, pal.scaleMid);
+    }
+
+    // 4 Sharp Curved Dorsal Pixel Spines along the back ridge of the neck
+    const spineHeights = [7, 15, 23, 30];
+    for (const sDy of spineHeights) {
+      const sy = -14 - sDy;
+      const sCurve = Math.round(
+        Math.sin((sDy / 17) * Math.PI) * 4.5 - Math.sin(((sDy - 14) / 18) * Math.PI) * 2.2
+      );
+      const halfW = sDy < 14 ? 7 : 5;
+      const spineX = sCurve - halfW;
+      plot(spineX - 2, sy - 1, 3, 2, pal.hornBase);
+      plot(spineX - 4, sy - 2, 3, 2, pal.hornMid);
+      plot(spineX - 5, sy - 3, 2, 1, pal.hornTip);
+    }
+
+    // 6 Distinct Horizontal Segmented Belly-Scale Plates along the front chest & throat curve
+    const plateRows = [3, 8, 13, 18, 23, 28];
+    for (let pIdx = 0; pIdx < plateRows.length; pIdx++) {
+      const pDy = plateRows[pIdx];
+      const py = -14 - pDy;
+      const sCurve = Math.round(
+        Math.sin((pDy / 17) * Math.PI) * 4.5 - Math.sin(((pDy - 14) / 18) * Math.PI) * 2.2
+      );
+      const plateW = pIdx < 3 ? 8 : 7;
+      const plateX = sCurve + 1;
+      // Top 1px bright bevel
+      plot(plateX, py - 3, plateW, 1, pal.bellyHi);
+      // Middle 2px burnished plate body
+      plot(plateX, py - 2, plateW, 2, pal.bellyBase);
+      plot(plateX + plateW - 2, py - 2, 2, 2, pal.bellyHi);
+      // Bottom 1px darker sel-out crevice (no black internal lines)
+      plot(plateX - 1, py, plateW + 1, 1, pal.bellyLo);
+    }
+
+    // ============================================================================
+    // 3. LAYERED SCALLOPED DRAGON WING (rot = 0, 1 Near Shoulder 3D Relief)
+    // ============================================================================
+    // Shaded scalloped wing membrane fan stretching from shoulder (-4, -37) back to (-23, -24)
+    for (let wx = -22; wx <= -5; wx++) {
+      const dist = Math.abs(wx + 5);
+      const topArch = -38 - Math.round(Math.sin((dist / 17) * Math.PI) * 10);
+      // Scalloped 3-arch bottom membrane edge
+      const scallop = Math.round(Math.abs(Math.sin(((dist - 1) / 5.5) * Math.PI)) * 3);
+      const botArch = -22 - Math.floor(dist * 0.25) - scallop;
+      const memH = Math.max(2, botArch - topArch);
+      plot(wx, topArch, 1, memH, dist % 2 === 0 ? pal.scaleMid : pal.scaleLo);
+      // Highlighted upper wing-bone ridge (2px thick)
+      plot(wx, topArch, 1, 2, pal.scaleHi);
+      plot(wx, topArch + 2, 1, 1, pal.bellyBase);
+      // Bottom scalloped membrane sel-out rim
+      plot(wx, botArch - 1, 1, 1, pal.scaleLo);
+    }
+    // Sharp wing-apex thumb claw at (-17, -50)
+    plot(-18, -50, 2, 3, pal.hornTip);
+    plot(-16, -49, 2, 2, pal.hornMid);
+    // 3 internal wing-bone finger struts radiating down to the scalloped tips
+    for (let step = 0; step < 14; step++) {
+      plot(-15 - Math.floor(step * 0.45), -45 + step, 2, 1, pal.bellyBase);
+      plot(-14 - Math.floor(step * 0.1), -45 + step, 1, 1, pal.scaleHi);
+      plot(-12 + Math.floor(step * 0.25), -44 + step, 1, 1, pal.scaleHi);
+    }
+
+    // ============================================================================
+    // 4. FIERCE DRAGON HEAD, SWEPT HORNS & ROARING OPEN JAWS
+    // ============================================================================
+    // Far Swept-Back Tapered Horn (offset behind brow)
+    plot(-5, -57, 4, 3, pal.hornBase);
+    plot(-9, -60, 5, 3, pal.hornMid);
+    plot(-13, -63, 5, 2, pal.hornTip);
+    plot(-15, -64, 3, 2, pal.hornTip);
+
+    // Near Swept-Back Tapered Horn (#fef3c7 ivory/gold tips -> #78350f / #475569 base)
+    plot(-3, -55, 5, 3, pal.hornBase);
+    plot(-8, -57, 6, 3, pal.hornMid);
+    plot(-13, -59, 6, 2, pal.hornTip);
+    plot(-17, -61, 5, 2, pal.hornTip);
+    plot(-19, -62, 2, 1, '#ffffff');
+
+    // Sculpted Dragon Cranium & Cheek Armor
+    plot(-3, -54, 12, 9, pal.scaleBase);
+    plot(-2, -55, 10, 2, pal.scaleHi);
+    plot(-3, -47, 10, 2, pal.scaleLo);
+    // Cheek spikes along rear jaw
+    plot(-5, -49, 3, 2, pal.hornMid);
+    plot(-6, -48, 2, 2, pal.hornTip);
+
+    // Fierce Overhanging Brow Ridge & Bright Glowing Pixel Eye
+    plot(3, -54, 7, 2, pal.scaleHi);
+    plot(4, -52, 6, 1, pal.scaleLo);
+    // Glowing Eye (#ffffff catchlight + #fef08a / #ef4444 iris)
+    plot(4, -51, 3, 2, pal.eyeIris);
+    plot(5, -51, 2, 1, pal.eyeGlow);
+    plot(4, -51, 1, 1, '#ffffff');
+
+    // Upper Snout, Flared Nostril & Upper White Pixel Fangs
+    plot(8, -52, 10, 5, pal.scaleBase);
+    plot(8, -53, 8, 2, pal.scaleHi);
+    plot(16, -54, 3, 3, pal.scaleHi);
+    // Flared nostril pixel
+    plot(15, -52, 2, 2, pal.scaleLo);
+    plot(15, -52, 1, 1, '#450a0a');
+    // Upper jaw gum line
+    plot(8, -48, 10, 1, pal.scaleLo);
+    // Upper White Pixel Fangs (#ffffff)
+    plot(11, -47, 2, 2, '#ffffff');
+    plot(16, -47, 2, 3, '#ffffff');
+
+    // Dark Crimson Throat Interior (#450a0a) inside roaring open jaws
+    plot(6, -47, 8, 5, '#450a0a');
+
+    // Hinged Open Lower Jaw, Lower Fangs & Pointed Chin Spikes
+    plot(5, -43, 12, 3, pal.scaleBase);
+    plot(6, -41, 10, 2, pal.bellyBase);
+    plot(5, -40, 9, 1, pal.bellyLo);
+    // Lower White Pixel Fangs (#ffffff)
+    plot(13, -45, 1, 2, '#ffffff');
+    plot(16, -44, 2, 2, '#ffffff');
+    // Pointed Chin Spikes underneath
+    plot(7, -39, 2, 2, pal.hornTip);
+    plot(11, -39, 2, 2, pal.hornTip);
+
+    // ============================================================================
+    // 5. ANIMATED FLICKERING PIXEL FLAME (state === 1) OR THROAT EMBER (state === 0)
+    // ============================================================================
+    if (state === 1) {
+      const fTick = animTick % 4;
+      const dyShift = fTick === 0 ? 0 : fTick === 1 ? -1 : fTick === 2 ? 1 : -2;
+      const lenBoost = fTick === 1 || fTick === 3 ? 2 : 0;
+
+      // Outer flickering flame envelope & tongues
+      plot(13, -47 + dyShift, 6, 6, pal.flameOuter);
+      plot(18, -48 + dyShift, 8 + lenBoost, 9, pal.flameOuter);
+      plot(24, -46 + dyShift, 7 + lenBoost, 7, pal.flameOuter);
+      // Flickering upper & lower flame tongues
+      plot(20 + (fTick % 2), -51 + dyShift, 4, 3, pal.flameOuter);
+      plot(26 + lenBoost, -49 - (fTick % 2), 4, 3, pal.flameOuter);
+      plot(22, -39 + dyShift, 5, 2, pal.flameOuter);
+      plot(30 + lenBoost, -44 + dyShift, 3, 3, pal.flameOuter);
+
+      // Vibrant mid-flame
+      plot(12, -46 + dyShift, 7, 4, pal.flameMid);
+      plot(18, -46 + dyShift, 8 + lenBoost, 6, pal.flameMid);
+      plot(24, -45 + dyShift, 5 + lenBoost, 4, pal.flameMid);
+      plot(21, -49 + dyShift, 3, 2, pal.flameMid);
+
+      // Bright white-yellow inner plasma core (#ffffff -> #fef08a)
+      plot(10, -46, 5, 3, '#ffffff');
+      plot(14, -45 + dyShift, 6, 3, '#ffffff');
+      plot(18, -45 + dyShift, 6 + lenBoost, 3, pal.flameCore);
+      plot(23, -44 + dyShift, 3, 2, pal.flameCore);
+
+      // Floating pixel embers
+      plot(28 + (fTick % 3), -53 + dyShift, 2, 2, pal.flameMid);
+      plot(32, -48 - (fTick % 2), 2, 2, pal.flameOuter);
+      plot(25 + (fTick % 2), -36 + dyShift, 2, 1, pal.flameCore);
+    } else {
+      // OFF (state === 0): Tiny glowing ember deep inside the #450a0a throat
+      plot(8, -45, 3, 2, pal.flameOuter);
+      plot(9, -45, 2, 1, pal.flameCore);
+    }
+  } else {
+    // ============================================================================
+    // BACK / REAR-3/4 ROTATIONS (rot = 2 Back-Right, rot = 3 Back-Left)
+    // ============================================================================
+    // Coiled tail & muscular rear torso rising 34px above pedestal
+    plot(-14, -19, 18, 7, pal.scaleLo);
+    plot(-12, -20, 14, 5, pal.scaleBase);
+    plot(-17, -22, 5, 4, pal.scaleMid);
+    plot(-19, -24, 3, 2, pal.hornTip);
+
+    for (let dy = 0; dy < 34; dy++) {
+      const y = -14 - dy;
+      const sCurve = Math.round(Math.sin((dy / 18) * Math.PI) * 3);
+      const halfW = dy < 16 ? 7 : 5;
+      plot(sCurve - halfW, y, halfW * 2 + 1, 1, pal.scaleBase);
+      plot(sCurve - halfW, y, 3, 1, pal.scaleLo);
+      if (dy % 2 === 0) {
+        plot(sCurve - 2, y, 5, 1, pal.scaleMid);
+      }
+      plot(sCurve + halfW - 2, y, 2, 1, pal.scaleHi);
+    }
+
+    // Both Spread Back Wings flanking left and right shoulders (rot = 2, 3)
+    for (let wx = -23; wx <= -5; wx++) {
+      const dist = Math.abs(wx + 5);
+      const topY = -39 - Math.round(Math.sin((dist / 18) * Math.PI) * 10);
+      const scallop = Math.round(Math.abs(Math.sin(((dist - 1) / 5.5) * Math.PI)) * 3);
+      const botY = -23 - Math.floor(dist * 0.25) - scallop;
+      plot(wx, topY, 1, Math.max(2, botY - topY), dist % 2 === 0 ? pal.scaleMid : pal.scaleLo);
+      plot(wx, topY, 1, 2, pal.scaleHi);
+      plot(wx, topY + 2, 1, 1, pal.bellyBase);
+    }
+    plot(-19, -51, 2, 3, pal.hornTip);
+
+    for (let wx = 5; wx <= 21; wx++) {
+      const dist = wx - 5;
+      const topY = -43 - Math.round(Math.sin((dist / 16) * Math.PI) * 9);
+      const scallop = Math.round(Math.abs(Math.sin(((dist - 1) / 5) * Math.PI)) * 3);
+      const botY = -28 - Math.floor(dist * 0.25) - scallop;
+      plot(wx, topY, 1, Math.max(2, botY - topY), dist % 2 === 0 ? pal.scaleBase : pal.scaleMid);
+      plot(wx, topY, 1, 2, pal.scaleHi);
+      plot(wx, topY + 2, 1, 1, pal.bellyBase);
+    }
+    plot(16, -54, 2, 3, pal.hornTip);
+
+    // 4 Sharp Curved Dorsal Pixel Spines prominent down the center-back spine
+    for (const sDy of [7, 15, 23, 30]) {
+      const sy = -14 - sDy;
+      const sCurve = Math.round(Math.sin((sDy / 18) * Math.PI) * 3);
+      plot(sCurve - 2, sy - 1, 4, 3, pal.hornBase);
+      plot(sCurve - 3, sy - 2, 3, 2, pal.hornMid);
+      plot(sCurve - 4, sy - 3, 2, 2, pal.hornTip);
+    }
+
+    // Rear Dragon Skull, Swept-Back Horns & Angled Snout
+    plot(-5, -55, 13, 9, pal.scaleBase);
+    plot(-4, -56, 10, 2, pal.scaleHi);
+    // Twin Swept-Back Horns from rear view
+    plot(-8, -58, 5, 3, pal.hornBase);
+    plot(-13, -61, 6, 3, pal.hornMid);
+    plot(-17, -63, 5, 2, pal.hornTip);
+    plot(3, -59, 4, 3, pal.hornBase);
+    plot(6, -62, 5, 2, pal.hornMid);
+    plot(9, -64, 4, 2, pal.hornTip);
+    // Forward-angled snout & open jaw
+    plot(7, -54, 9, 5, pal.scaleBase);
+    plot(7, -55, 7, 2, pal.scaleHi);
+    plot(8, -49, 6, 3, '#450a0a');
+    plot(12, -50, 2, 2, '#ffffff');
+    plot(7, -46, 8, 2, pal.scaleMid);
+
+    if (state === 1) {
+      const fTick = animTick % 4;
+      const dyShift = fTick % 2 === 0 ? 0 : -2;
+      plot(14, -54 + dyShift, 11, 7, pal.flameOuter);
+      plot(21, -56 + dyShift, 9, 6, pal.flameOuter);
+      plot(15, -53 + dyShift, 9, 5, pal.flameMid);
+      plot(13, -52 + dyShift, 6, 3, '#ffffff');
+      plot(18, -53 + dyShift, 6, 3, pal.flameCore);
+      plot(28, -59 + dyShift, 2, 2, pal.flameMid);
+    } else {
+      plot(10, -49, 2, 2, pal.flameCore);
+    }
+  }
+}
+
+/**
+ * Renders authentic 2008 Sulake Habbo Hotel 2:1 isometric pixel-art furniture onto a 72x96 offscreen canvas.
+ * Tile base diamond center is at (36, 72).
+ * Uses selective internal shading ("sel-out") + automatic 1px #141414 outer silhouette pass (`applyPixelOutline`).
  */
 export function getFurniSprite(
   rawFurniId: string,
@@ -743,15 +763,52 @@ export function getFurniSprite(
   animTick = 0
 ): HTMLCanvasElement {
   const furniId = resolveFurniSpriteId(rawFurniId);
-  const frame = animTick % 3;
-  const key = `furni|${furniId}|${dir}|${state}|${frame}`;
+  const isDragon = isDragonLampId(furniId);
+  const frame = isDragon ? animTick % 4 : animTick % 3;
+  const key = `furni2008v3|${furniId}|${dir}|${state}|${frame}`;
   const cached = spriteCache.get(key);
   if (cached) return cached;
 
-  const { canvas, ctx } = makeOffscreen(72, 92);
+  const W = 72;
+  const H = 96;
+  const { canvas, ctx } = makeOffscreen(W, H);
+  const { canvas: scratch, ctx: s } = makeOffscreen(W, H);
   const cx = 36;
   const cy = 72;
 
+  if (isDragon) {
+    // Grounded contact shadow under the 64x32 dragon pedestal
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.34)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 2, 25, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    drawDragonLamp(s, ctx, furniId, dir, state, animTick, cx, cy);
+    applyPixelOutline(scratch, ctx, W, H, [0x14, 0x14, 0x14]);
+    spriteCache.set(key, canvas);
+    return canvas;
+  }
+
+  const isFlatFloorRugOrTile =
+    furniId === 'disco_floor' ||
+    furniId === 'petal_patch' ||
+    furniId === 'persian_rug' ||
+    furniId === 'hc_rug' ||
+    furniId === 'flower_bed' ||
+    furniId === 'koi_pond' ||
+    furniId === 'lodge_bear_rug' ||
+    furniId === 'pet_cushion' ||
+    furniId.startsWith('rug_');
+
+  const isWallItem =
+    furniId === 'sticky_note' ||
+    furniId.startsWith('poster_') ||
+    furniId === 'neon_habbo_sign' ||
+    furniId === 'lifebuoy_wall' ||
+    furniId === 'vintage_wall_clock' ||
+    furniId === 'gold_record_disc';
+
+  // Sel-out isometric box helper bound to scratch canvas (zero black internal outlines)
   const drawIsoBox = (
     topY: number,
     height: number,
@@ -763,313 +820,163 @@ export function getFurniSprite(
     offsetX = 0,
     offsetY = 0
   ) => {
-    const ox = cx + offsetX;
-    const oy = cy + offsetY - topY;
-    // Top face
-    drawIsoPoly(
-      ctx,
-      [
-        [ox, oy - ry],
-        [ox + rx, oy],
-        [ox, oy + ry],
-        [ox - rx, oy],
-      ],
-      topColor,
-      OUTLINE
-    );
-    // Left face
-    drawIsoPoly(
-      ctx,
-      [
-        [ox - rx, oy],
-        [ox, oy + ry],
-        [ox, oy + ry + height],
-        [ox - rx, oy + height],
-      ],
-      leftColor,
-      OUTLINE
-    );
-    // Right face
-    drawIsoPoly(
-      ctx,
-      [
-        [ox, oy + ry],
-        [ox + rx, oy],
-        [ox + rx, oy + height],
-        [ox, oy + ry + height],
-      ],
-      rightColor,
-      OUTLINE
-    );
+    void leftColor;
+    void rightColor;
+    drawSelOutIsoBox(s, cx, cy, topY, height, rx, ry, topColor, offsetX, offsetY);
   };
 
+  if (furniId === 'disco_floor') {
+    // Walkable 2:1 Isometric Disco Floor Tile (3px thick) with 2x2 glowing neon sub-diamonds & 1px silver rim (NO thick black borders!)
+    const palette = [
+      ['#ec4899', '#38bdf8', '#facc15', '#84cc16'],
+      ['#38bdf8', '#facc15', '#84cc16', '#ec4899'],
+      ['#facc15', '#84cc16', '#ec4899', '#38bdf8'],
+    ][frame % 3];
+    // 3px metallic silver/slate slab base
+    drawSelOutIsoBox(s, cx, cy, 3, 3, 30, 15, '#cbd5e1');
+    fillIsoDiamond(s, cx, cy - 3, 28, 14, '#1e293b', '#f8fafc', '#64748b');
+    // 2x2 grid of glowing neon sub-diamonds separated by 1px silver frame
+    fillIsoDiamond(s, cx, cy - 10, 12, 6, palette[0], '#ffffff', shadeHex(palette[0], -25));
+    fillIsoDiamond(s, cx + 13, cy - 3, 12, 6, palette[1], '#ffffff', shadeHex(palette[1], -25));
+    fillIsoDiamond(s, cx - 13, cy - 3, 12, 6, palette[2], '#ffffff', shadeHex(palette[2], -25));
+    fillIsoDiamond(s, cx, cy + 4, 12, 6, palette[3], '#ffffff', shadeHex(palette[3], -25));
+    // Directly composite Disco Tile onto canvas with silver 1px outer silhouette (no black border)
+    applyPixelOutline(scratch, ctx, W, H, [0x94, 0xa3, 0xb8]);
+    spriteCache.set(key, canvas);
+    return canvas;
+  }
+
   if (furniId === 'hc_sofa') {
-    // Classic red velvet HC Club Sofa with wooden feet & curved arms
-    drawIsoBox(12, 10, 24, 12, '#dc2626', '#991b1b', '#b91c1c');
-    // Plush seat cushion highlight dither
-    drawIsoBox(15, 4, 20, 10, '#ef4444', '#b91c1c', '#dc2626');
-    // Backrest oriented by dir
-    if (dir === 0 || dir === 3) {
-      drawIsoBox(30, 16, 12, 6, '#ef4444', '#7f1d1d', '#b91c1c', -11, -6);
-    } else {
-      drawIsoBox(30, 16, 12, 6, '#ef4444', '#991b1b', '#7f1d1d', 11, -6);
+    // Authentic 2008 PIXL Club (HC) Crimson Velvet Sofa with golden-oak side panels & gold studs
+    drawSelOutRect(s, cx - 22, cy - 3, 4, 4, '#451a03');
+    drawSelOutRect(s, cx + 18, cy - 3, 4, 4, '#451a03');
+    drawSelOutIsoBox(s, cx, cy, 11, 9, 25, 12, '#991b1b');
+    // Plush dithered crimson velvet seat cushions (divided into 2 cushions with sel-out seam)
+    drawSelOutIsoBox(s, cx, cy, 15, 5, 11, 5, '#dc2626', -6, 3, true);
+    drawSelOutIsoBox(s, cx, cy, 15, 5, 11, 5, '#dc2626', 6, -3, true);
+    // Tufted crimson backrest aligned to 2:1 isometric axis
+    drawSelOutIsoBox(s, cx, cy, 29, 15, 22, 11, '#ef4444', -6, -3, true);
+    // Gold tufting buttons on backrest
+    px(s, cx - 12, cy - 23, 2, 2, '#facc15');
+    px(s, cx - 5, cy - 26, 2, 2, '#facc15');
+    px(s, cx + 2, cy - 29, 2, 2, '#facc15');
+    // Curved golden-oak armrests with brass studs
+    drawSelOutIsoBox(s, cx, cy, 19, 10, 6, 3, '#b45309', -17, 6);
+    drawSelOutIsoBox(s, cx, cy, 19, 10, 6, 3, '#b45309', 17, -6);
+    px(s, cx - 18, cy - 13, 2, 2, '#fef08a');
+    px(s, cx + 16, cy - 25, 2, 2, '#fef08a');
+  } else if (furniId === 'throne' || furniId === 'ice_throne') {
+    const isIce = furniId === 'ice_throne';
+    const frameCol = isIce ? '#38bdf8' : '#eab308';
+    const frameHi = isIce ? '#e0f2fe' : '#fef08a';
+    const frameLo = isIce ? '#0284c7' : '#a16207';
+    const velvet = isIce ? '#bae6fd' : '#dc2626';
+    // Lion-paw gilded base & steps
+    drawSelOutIsoBox(s, cx, cy, 10, 9, 22, 11, frameCol);
+    // Plush tufted crimson/crystal velvet seat cushion
+    drawSelOutIsoBox(s, cx, cy, 15, 5, 16, 8, velvet, 0, 0, true);
+    // Tall gothic arched backrest angled along 2:1 isometric plane
+    for (let dx = -12; dx <= 12; dx++) {
+      const yIso = Math.round(-dx * 0.5);
+      const archLift = Math.max(0, 6 - Math.floor(Math.abs(dx) * 0.5));
+      const col = dx < -4 ? frameHi : dx > 6 ? frameLo : frameCol;
+      px(s, cx - 8 + dx, cy - 54 + yIso - archLift, 1, 38 + archLift, col);
+      if (Math.abs(dx) <= 9) {
+        const vCol = (dx + yIso) % 2 === 0 ? velvet : shadeHex(velvet, -16);
+        px(s, cx - 8 + dx, cy - 49 + yIso - archLift, 1, 29 + archLift, vCol);
+      }
     }
-    // Mahogany armrests & gold studs
-    outlinedRect(ctx, cx - 25, cy - 22, 6, 14, '#78350f', '#b45309', '#451a03');
-    outlinedRect(ctx, cx + 19, cy - 22, 6, 14, '#78350f', '#b45309', '#451a03');
-    px(ctx, cx - 23, cy - 17, 2, 2, '#facc15');
-    px(ctx, cx + 21, cy - 17, 2, 2, '#facc15');
-  } else if (furniId === 'throne') {
-    // Iconic 24k Golden Habbo Throne
-    drawIsoBox(10, 10, 22, 11, '#eab308', '#a16207', '#ca8a04');
-    // Crimson velvet seat cushion
-    drawIsoBox(16, 5, 16, 8, '#dc2626', '#991b1b', '#b91c1c');
-    // Tall ornate gold backrest
-    const backShiftX = dir === 1 || dir === 2 ? 10 : -10;
-    outlinedRect(ctx, cx + backShiftX - 11, cy - 58, 22, 42, '#eab308', '#fef08a', '#854d0e');
-    outlinedRect(ctx, cx + backShiftX - 7, cy - 52, 14, 30, '#b91c1c', '#ef4444', '#7f1d1d');
-    // Royal crown crest at top
-    outlinedRect(ctx, cx + backShiftX - 5, cy - 64, 10, 6, '#facc15', '#fef9c3');
-    px(ctx, cx + backShiftX - 1, cy - 62, 2, 2, '#2563eb');
-    // Golden armrests
-    outlinedRect(ctx, cx - 20, cy - 25, 6, 14, '#facc15', '#fef08a', '#a16207');
-    outlinedRect(ctx, cx + 14, cy - 25, 6, 14, '#facc15', '#fef08a', '#a16207');
+    // Tufting gems on backrest
+    px(s, cx - 12, cy - 38, 2, 2, frameHi);
+    px(s, cx - 6, cy - 41, 2, 2, frameHi);
+    px(s, cx - 9, cy - 31, 2, 2, frameHi);
+    // Twin gothic spire finials + royal crest gem at peak
+    drawSelOutRect(s, cx - 21, cy - 54, 4, 9, frameCol, frameHi, frameLo);
+    drawSelOutRect(s, cx + 2, cy - 66, 4, 9, frameCol, frameHi, frameLo);
+    drawSelOutRect(s, cx - 11, cy - 64, 7, 7, frameCol, frameHi, frameLo);
+    px(s, cx - 9, cy - 62, 3, 3, isIce ? '#ffffff' : '#2563eb');
+    // Sculpted armrests with lion-paw fronts
+    drawSelOutIsoBox(s, cx, cy, 21, 10, 6, 3, frameCol, -13, 5);
+    drawSelOutIsoBox(s, cx, cy, 21, 10, 6, 3, frameCol, 13, -5);
   } else if (furniId === 'majestic_chair') {
-    // Walnut & gold damask armchair
-    drawIsoBox(10, 8, 20, 10, '#f59e0b', '#78350f', '#92400e');
-    drawIsoBox(14, 4, 15, 7, '#fcd34d', '#d97706', '#f59e0b');
-    const backX = dir === 1 || dir === 2 ? 9 : -9;
-    outlinedRect(ctx, cx + backX - 9, cy - 42, 18, 26, '#78350f', '#b45309', '#451a03');
-    outlinedRect(ctx, cx + backX - 6, cy - 38, 12, 18, '#fbbf24', '#fef3c7', '#b45309');
-  } else if (furniId === 'fire_dragon') {
-    // Bronze pedestal + sculpted dragon head + animated pixel flame
-    drawIsoBox(12, 12, 18, 9, '#57534e', '#292524', '#44403c');
-    // Coiled dragon body
-    outlinedRect(ctx, cx - 10, cy - 38, 20, 26, '#b45309', '#f59e0b', '#78350f');
-    outlinedRect(ctx, cx - 12, cy - 52, 24, 16, '#92400e', '#fbbf24', '#451a03');
-    // Horns & glowing eyes
-    px(ctx, cx - 11, cy - 58, 3, 6, '#fde047');
-    px(ctx, cx + 8, cy - 58, 3, 6, '#fde047');
-    px(ctx, cx - 5, cy - 46, 3, 2, '#ef4444');
-    px(ctx, cx + 3, cy - 46, 3, 2, '#ef4444');
-    // Animated fire breath when active (state === 1)
-    if (state === 1) {
-      const fShift = frame === 0 ? 0 : frame === 1 ? -2 : 2;
-      const fx = dir === 1 ? cx - 22 : cx + 10;
-      px(ctx, fx, cy - 42 + fShift, 12, 8, '#ea580c');
-      px(ctx, fx + 2, cy - 40 + fShift, 8, 5, '#facc15');
-      px(ctx, fx + 4, cy - 39 + fShift, 4, 2, '#fef9c3');
-    }
-  } else if (furniId === 'mode_bar') {
-    drawIsoBox(24, 24, 26, 13, '#cbd5e1', '#475569', '#64748b');
-    // Top stainless steel bevel & chrome footrail
-    drawIsoBox(26, 3, 26, 13, '#f1f5f9', '#94a3b8', '#cbd5e1');
-    px(ctx, cx - 18, cy - 4, 14, 2, '#e2e8f0');
-    px(ctx, cx + 6, cy - 36, 8, 10, '#38bdf8');
-    outlinedRect(ctx, cx - 8, cy - 34, 6, 8, '#94a3b8', '#f8fafc');
-  } else if (furniId === 'exec_desk') {
-    // 4 oak legs
-    outlinedRect(ctx, cx - 18, cy - 14, 4, 14, '#78350f');
-    outlinedRect(ctx, cx + 14, cy - 14, 4, 14, '#78350f');
-    outlinedRect(ctx, cx - 2, cy - 6, 4, 12, '#451a03');
-    drawIsoBox(18, 5, 24, 12, '#d97706', '#78350f', '#92400e');
-    // Coffee mug on table
-    outlinedRect(ctx, cx - 3, cy - 26, 6, 6, '#f8fafc', '#ffffff', '#cbd5e1');
-    px(ctx, cx - 2, cy - 25, 4, 2, '#78350f');
-  } else if (furniId === 'fireplace') {
-    drawIsoBox(14, 14, 26, 13, '#78716c', '#44403c', '#57534e');
-    outlinedRect(ctx, cx - 18, cy - 58, 36, 44, '#78716c', '#a8a29e', '#44403c');
-    // Mantelpiece
-    outlinedRect(ctx, cx - 21, cy - 62, 42, 6, '#57534e', '#d6d3d1', '#292524');
-    // Hearth opening
-    outlinedRect(ctx, cx - 11, cy - 38, 22, 24, '#1c1917');
-    // Animated embers & flames
-    const h = 8 + (frame % 3) * 3;
-    px(ctx, cx - 7, cy - 20, 14, 4, '#78350f');
-    px(ctx, cx - 5, cy - 20 - h, 10, h, '#ea580c');
-    px(ctx, cx - 3, cy - 19 - Math.max(4, h - 3), 6, Math.max(4, h - 3), '#facc15');
-  } else if (furniId === 'jukebox') {
-    drawIsoBox(10, 10, 20, 10, '#451a03', '#292524', '#1c1917');
-    outlinedRect(ctx, cx - 15, cy - 58, 30, 48, '#78350f', '#b45309', '#451a03');
-    // Neon arch rainbow
-    const neonColors = ['#ef4444', '#facc15', '#22c55e', '#38bdf8', '#c084fc'];
-    const cShift = animTick % neonColors.length;
-    outlinedRect(ctx, cx - 11, cy - 54, 22, 22, neonColors[cShift]);
-    outlinedRect(ctx, cx - 7, cy - 50, 14, 14, '#0f172a');
-    px(ctx, cx - 4, cy - 46, 8, 6, '#f8fafc');
-    // Speaker grille
-    for (let y = -28; y <= -16; y += 3) {
-      px(ctx, cx - 10, cy + y, 20, 1, '#facc15');
-    }
-    if (state === 1) {
-      // Musical pixel note floating
-      const ny = cy - 68 - (frame * 3);
-      px(ctx, cx + 6, ny, 2, 6, '#38bdf8');
-      px(ctx, cx + 4, ny + 4, 3, 3, '#38bdf8');
-    }
-  } else if (furniId === 'palm_tree') {
-    // Terracotta pot
-    outlinedRect(ctx, cx - 10, cy - 16, 20, 16, '#c2410c', '#ea580c', '#7c2d12');
-    outlinedRect(ctx, cx - 12, cy - 18, 24, 4, '#ea580c', '#fb923c', '#9a3412');
-    // Ringed palm trunk
-    for (let i = 0; i < 6; i++) {
-      outlinedRect(ctx, cx - 3 + (i % 2), cy - 22 - i * 6, 6, 7, i % 2 === 0 ? '#92400e' : '#78350f');
-    }
-    // Tropical fronds
-    const frondY = cy - 62;
-    outlinedRect(ctx, cx - 24, frondY + 4, 18, 6, '#15803d', '#22c55e');
-    outlinedRect(ctx, cx + 6, frondY + 4, 18, 6, '#15803d', '#22c55e');
-    outlinedRect(ctx, cx - 18, frondY - 4, 16, 6, '#16a34a', '#4ade80');
-    outlinedRect(ctx, cx + 2, frondY - 4, 16, 6, '#16a34a', '#4ade80');
-    outlinedRect(ctx, cx - 7, frondY - 10, 14, 7, '#22c55e', '#86efac');
-  } else if (furniId === 'bonsai') {
-    outlinedRect(ctx, cx - 11, cy - 12, 22, 12, '#1d4ed8', '#3b82f6', '#1e3a8a');
-    outlinedRect(ctx, cx - 3, cy - 28, 6, 17, '#78350f', '#92400e');
-    outlinedRect(ctx, cx - 15, cy - 36, 16, 9, '#15803d', '#4ade80');
-    outlinedRect(ctx, cx - 2, cy - 42, 16, 9, '#16a34a', '#86efac');
-    outlinedRect(ctx, cx - 9, cy - 47, 14, 8, '#22c55e', '#bbf7d0');
-  } else if (furniId === 'holo_dice') {
-    drawIsoBox(10, 10, 16, 8, '#334155', '#0f172a', '#1e293b');
-    const glow = frame === 1 ? '#67e8f9' : '#22d3ee';
-    drawIsoBox(30, 18, 13, 7, glow, '#0891b2', '#06b6d4');
-    // Pip value displayed in center
-    const val = Math.max(1, Math.min(6, state || 1));
-    ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 11px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(String(val), cx, cy - 22);
-  } else if (furniId === 'persian_rug') {
-    drawIsoPoly(
-      ctx,
-      [
-        [cx, cy - 14],
-        [cx + 28, cy],
-        [cx, cy + 14],
-        [cx - 28, cy],
-      ],
-      '#991b1b',
-      '#facc15'
-    );
-    drawIsoPoly(
-      ctx,
-      [
-        [cx, cy - 9],
-        [cx + 18, cy],
-        [cx, cy + 9],
-        [cx - 18, cy],
-      ],
-      '#dc2626',
-      '#fef08a'
-    );
-    drawIsoPoly(
-      ctx,
-      [
-        [cx, cy - 4],
-        [cx + 8, cy],
-        [cx, cy + 4],
-        [cx - 8, cy],
-      ],
-      '#f59e0b'
-    );
-  } else if (furniId === 'petal_patch') {
-    // Classic Habbo Meadow Petal Patch (walkable turf + white daisies + dither blades)
-    drawIsoPoly(
-      ctx,
-      [
-        [cx, cy - 15],
-        [cx + 30, cy],
-        [cx, cy + 15],
-        [cx - 30, cy],
-      ],
-      '#228b22',
-      '#14532d'
-    );
-    drawIsoPoly(
-      ctx,
-      [
-        [cx, cy - 13],
-        [cx + 26, cy],
-        [cx, cy + 13],
-        [cx - 26, cy],
-      ],
-      '#34a832'
-    );
-    // Grass blade dither pixels
-    const tufts: [number, number, string][] = [
-      [-14, -2, '#4ade80'],
-      [-8, 4, '#166534'],
-      [10, -3, '#4ade80'],
-      [16, 2, '#166534'],
-      [0, -7, '#86efac'],
-      [-3, 6, '#15803d'],
-      [6, 5, '#4ade80'],
-    ];
-    for (const [dx, dy, col] of tufts) {
-      px(ctx, cx + dx, cy + dy, 2, 2, col);
-    }
-    // Iconic white daisies with yellow centers
-    const daisies: [number, number][] = [
-      [-11, 0],
-      [2, -5],
-      [12, 1],
-      [-2, 5],
-    ];
-    for (const [dx, dy] of daisies) {
-      px(ctx, cx + dx - 1, cy + dy - 1, 4, 4, '#ffffff');
-      px(ctx, cx + dx, cy + dy, 2, 2, '#facc15');
-    }
+    // Deep royal purple/gold tufted Majestic Chair with carved walnut frame
+    drawSelOutIsoBox(s, cx, cy, 10, 8, 20, 10, '#78350f', 0, 0, true);
+    drawSelOutIsoBox(s, cx, cy, 15, 5, 15, 7, '#7e22ce', 0, 0, true);
+    drawSelOutIsoBox(s, cx, cy, 34, 19, 13, 6, '#92400e', -7, -4);
+    drawSelOutIsoBox(s, cx, cy, 31, 15, 10, 5, '#9333ea', -6, -3, true);
+    px(s, cx - 9, cy - 26, 2, 2, '#facc15');
+    px(s, cx - 4, cy - 28, 2, 2, '#facc15');
+    drawSelOutIsoBox(s, cx, cy, 19, 9, 5, 3, '#b45309', -12, 4);
+    drawSelOutIsoBox(s, cx, cy, 19, 9, 5, 3, '#b45309', 12, -4);
   } else if (furniId === 'amber_lamp') {
-    // Classic Habbo Red Amber Lamp
-    drawIsoBox(8, 8, 16, 8, '#78350f', '#451a03', '#5c2d0c');
-    // Brass pedestal stem
-    outlinedRect(ctx, cx - 4, cy - 26, 8, 18, '#d97706', '#fde047', '#92400e');
-    // Glowing crimson crystal globe
-    const glow = state === 1 ? (frame === 1 ? '#ef4444' : '#f87171') : '#991b1b';
-    const core = state === 1 ? '#fecaca' : '#dc2626';
-    outlinedRect(ctx, cx - 12, cy - 52, 24, 26, glow, core, '#7f1d1d');
-    px(ctx, cx - 8, cy - 48, 6, 8, '#ffffff');
-    px(ctx, cx - 5, cy - 38, 10, 8, state === 1 ? '#fca5a5' : '#b91c1c');
-    // Top bronze finial
-    outlinedRect(ctx, cx - 4, cy - 57, 8, 5, '#f59e0b', '#fef08a');
+    // Ornate brass claw tripod base + glowing translucent egg-shaped red amber glass globe
+    drawSelOutIsoBox(s, cx, cy, 8, 7, 15, 7, '#b45309');
+    drawSelOutRect(s, cx - 4, cy - 23, 8, 15, '#eab308', '#fef08a', '#78350f');
+    const glow = state === 1 ? (frame === 1 ? '#ef4444' : '#f87171') : '#b91c1c';
+    const hi = state === 1 ? '#fecaca' : '#ef4444';
+    // Egg-shaped amber globe
+    drawSelOutRect(s, cx - 9, cy - 49, 18, 26, glow, hi, '#7f1d1d');
+    drawSelOutRect(s, cx - 12, cy - 44, 24, 16, glow, hi, '#7f1d1d');
+    if (state === 1) {
+      px(s, cx - 5, cy - 42, 10, 12, '#fca5a5');
+      px(s, cx - 3, cy - 39, 6, 6, '#fef08a');
+    }
+    px(s, cx - 6, cy - 45, 3, 6, '#ffffff');
+    drawSelOutRect(s, cx - 3, cy - 54, 6, 5, '#eab308', '#fef08a', '#78350f');
   } else if (furniId === 'golden_fountain') {
-    // 24k Golden Habbo Fountain with animated pixel water
-    drawIsoBox(12, 12, 24, 12, '#eab308', '#a16207', '#ca8a04');
-    // Basin water pool
-    drawIsoPoly(
-      ctx,
-      [
-        [cx, cy - 20],
-        [cx + 18, cy - 11],
-        [cx, cy - 2],
-        [cx - 18, cy - 11],
-      ],
-      '#38bdf8',
+    // 2-tier sculpted 24k Gold Basin Fountain with animated cascading pixel water droplets
+    drawSelOutIsoBox(s, cx, cy, 12, 11, 25, 12, '#eab308');
+    fillIsoDiamond(s, cx, cy - 12, 20, 10, '#0284c7', '#7dd3fc', '#0369a1', '#38bdf8');
+    drawSelOutRect(s, cx - 4, cy - 38, 8, 26, '#facc15', '#fef08a', '#a16207');
+    drawSelOutIsoBox(s, cx, cy, 40, 5, 14, 7, '#eab308');
+    fillIsoDiamond(s, cx, cy - 40, 11, 5, '#38bdf8', '#e0f2fe', '#0284c7');
+    // Cascading water arcs & droplets
+    const sprayY = cy - 54 - (frame % 2) * 3;
+    px(s, cx - 2, sprayY, 4, 14, '#bae6fd');
+    px(s, cx - 1, sprayY, 2, 8, '#ffffff');
+    px(s, cx - 9, cy - 38 + frame * 2, 2, 22, '#7dd3fc');
+    px(s, cx + 7, cy - 38 + ((frame + 1) % 3) * 2, 2, 22, '#7dd3fc');
+    px(s, cx - 12, cy - 14 + frame, 4, 2, '#ffffff');
+    px(s, cx + 9, cy - 13 - frame, 4, 2, '#ffffff');
+  } else if (furniId === 'imperial_teleporter') {
+    // Tall Octagonal Red & Gold Imperial Teleport Booth with windowed double doors
+    drawSelOutIsoBox(s, cx, cy, 9, 8, 22, 11, '#78350f');
+    drawSelOutIsoBox(s, cx, cy, 60, 51, 18, 9, '#b45309');
+    // Windowed double doors on front face
+    drawSelOutRect(s, cx - 10, cy - 50, 20, 40, '#991b1b', '#ef4444', '#450a0a');
+    drawSelOutRect(
+      s,
+      cx - 7,
+      cy - 46,
+      6,
+      14,
+      state === 1 ? '#fef08a' : '#38bdf8',
+      '#ffffff',
       '#0284c7'
     );
-    // Central gold pillar & upper bowl
-    outlinedRect(ctx, cx - 4, cy - 40, 8, 28, '#facc15', '#fef08a', '#a16207');
-    outlinedRect(ctx, cx - 12, cy - 46, 24, 7, '#eab308', '#fef08a', '#854d0e');
-    // Animated water arcs
-    const sprayY = cy - 56 - (frame % 2) * 3;
-    px(ctx, cx - 2, sprayY, 4, 10, '#bae6fd');
-    px(ctx, cx - 9, cy - 42 + frame * 2, 2, 12, '#7dd3fc');
-    px(ctx, cx + 7, cy - 42 + ((frame + 1) % 3) * 2, 2, 12, '#7dd3fc');
-    px(ctx, cx - 13, cy - 14 + frame, 3, 2, '#e0f2fe');
-    px(ctx, cx + 10, cy - 13 - frame, 3, 2, '#e0f2fe');
-  } else if (furniId === 'imperial_teleporter') {
-    // Ornate Mahogany & Crimson Velvet Teleport Booth
-    drawIsoBox(8, 8, 22, 11, '#451a03', '#291203', '#3b1806');
-    outlinedRect(ctx, cx - 15, cy - 64, 30, 56, '#78350f', '#b45309', '#451a03');
-    // Arched velvet door + shimmer
-    outlinedRect(ctx, cx - 10, cy - 54, 20, 44, '#991b1b', '#dc2626', '#450a0a');
+    drawSelOutRect(
+      s,
+      cx + 1,
+      cy - 46,
+      6,
+      14,
+      state === 1 ? '#fef08a' : '#38bdf8',
+      '#ffffff',
+      '#0284c7'
+    );
     if (state === 1) {
-      const shimmerY = cy - 50 + (frame * 12);
-      px(ctx, cx - 8, shimmerY, 16, 4, '#fef08a');
+      const shimmerY = cy - 44 + frame * 10;
+      px(s, cx - 8, shimmerY, 16, 5, '#fef08a');
+      px(s, cx - 5, shimmerY + 1, 10, 2, '#ffffff');
     }
-    // Gold pediment & handle
-    outlinedRect(ctx, cx - 17, cy - 68, 34, 6, '#eab308', '#fef08a', '#854d0e');
-    px(ctx, cx + 5, cy - 34, 3, 4, '#facc15');
-  } else if (furniId === 'gold_trophy' || furniId === 'silver_trophy' || furniId === 'bronze_trophy') {
+    // Crowned gold roof pediment
+    drawSelOutIsoBox(s, cx, cy, 65, 5, 21, 10, '#eab308');
+    px(s, cx + 5, cy - 28, 2, 4, '#facc15');
+  } else if (
+    furniId === 'gold_trophy' ||
+    furniId === 'silver_trophy' ||
+    furniId === 'bronze_trophy'
+  ) {
     const cupMain =
       furniId === 'gold_trophy'
         ? '#eab308'
@@ -1080,7 +987,7 @@ export function getFurniSprite(
       furniId === 'gold_trophy'
         ? '#fef9c3'
         : furniId === 'silver_trophy'
-        ? '#f8fafc'
+        ? '#ffffff'
         : '#fed7aa';
     const cupDark =
       furniId === 'gold_trophy'
@@ -1088,369 +995,380 @@ export function getFurniSprite(
         : furniId === 'silver_trophy'
         ? '#64748b'
         : '#7c2d12';
-    // Marble / Walnut plinth + Habbo Trophy Chalice
-    drawIsoBox(16, 16, 14, 7, '#e2e8f0', '#64748b', '#94a3b8');
-    // Engraved plaque
-    px(ctx, cx - 6, cy - 10, 12, 5, cupHi);
-    px(ctx, cx - 5, cy - 9, 10, 1, cupDark);
-    // Cup stem & chalice bowl
-    outlinedRect(ctx, cx - 3, cy - 30, 6, 12, cupMain, cupHi, cupDark);
-    outlinedRect(ctx, cx - 10, cy - 48, 20, 18, cupMain, cupHi, cupDark);
-    // Handles
-    outlinedRect(ctx, cx - 14, cy - 46, 4, 10, cupMain, cupHi, cupDark);
-    outlinedRect(ctx, cx + 10, cy - 46, 4, 10, cupMain, cupHi, cupDark);
-    // Specular glint
-    px(ctx, cx - 6, cy - 44, 3, 8, '#ffffff');
+    drawSelOutIsoBox(s, cx, cy, 15, 14, 14, 7, '#e2e8f0');
+    px(s, cx - 5, cy - 9, 10, 5, cupHi);
+    px(s, cx - 4, cy - 8, 8, 1, cupDark);
+    drawSelOutRect(s, cx - 3, cy - 29, 6, 14, cupMain, cupHi, cupDark);
+    drawSelOutRect(s, cx - 10, cy - 47, 20, 18, cupMain, cupHi, cupDark);
+    drawSelOutRect(s, cx - 14, cy - 44, 4, 10, cupMain, cupHi, cupDark);
+    drawSelOutRect(s, cx + 10, cy - 44, 4, 10, cupMain, cupHi, cupDark);
+    px(s, cx - 6, cy - 44, 3, 9, '#ffffff');
   } else if (furniId === 'banzai_barrier') {
-    // Glowing Neon Battle Banzai cyber rail pylon
-    drawIsoBox(10, 10, 18, 9, '#1e1b4b', '#09090b', '#312e81');
+    drawSelOutIsoBox(s, cx, cy, 10, 9, 18, 9, '#1e1b4b');
     const neonCol = frame % 2 === 0 ? '#22d3ee' : '#ec4899';
-    outlinedRect(ctx, cx - 14, cy - 34, 6, 26, '#334155', '#94a3b8', '#0f172a');
-    outlinedRect(ctx, cx + 8, cy - 34, 6, 26, '#334155', '#94a3b8', '#0f172a');
-    outlinedRect(ctx, cx - 12, cy - 30, 24, 6, neonCol, '#ffffff', '#0f172a');
-    outlinedRect(ctx, cx - 12, cy - 20, 24, 4, '#38bdf8', '#e0f2fe', '#0369a1');
-    px(ctx, cx - 13, cy - 37, 4, 3, neonCol);
-    px(ctx, cx + 9, cy - 37, 4, 3, neonCol);
+    drawSelOutRect(s, cx - 14, cy - 34, 6, 25, '#475569', '#94a3b8', '#0f172a');
+    drawSelOutRect(s, cx + 8, cy - 34, 6, 25, '#475569', '#94a3b8', '#0f172a');
+    drawSelOutRect(s, cx - 11, cy - 29, 22, 5, neonCol, '#ffffff', '#0f172a');
+    drawSelOutRect(s, cx - 11, cy - 19, 22, 4, '#38bdf8', '#e0f2fe', '#0369a1');
+    px(s, cx - 13, cy - 37, 4, 3, neonCol);
+    px(s, cx + 9, cy - 37, 4, 3, neonCol);
   } else if (furniId === 'mode_sofa') {
-    // Sleek steel-frame Mode Black Sofa
-    drawIsoBox(11, 9, 24, 12, '#334155', '#0f172a', '#1e293b');
-    drawIsoBox(15, 4, 20, 10, '#475569', '#1e293b', '#334155');
-    if (dir === 0 || dir === 3) {
-      drawIsoBox(29, 15, 11, 6, '#334155', '#0f172a', '#1e293b', -11, -6);
-    } else {
-      drawIsoBox(29, 15, 11, 6, '#334155', '#1e293b', '#0f172a', 11, -6);
+    // Sleek tubular steel-frame Mode Sofa (#8c96a4) with dark charcoal/crimson cushions
+    drawSelOutIsoBox(s, cx, cy, 10, 8, 25, 12, '#8c96a4');
+    drawSelOutIsoBox(s, cx, cy, 15, 5, 11, 5, '#334155', -6, 3, true);
+    drawSelOutIsoBox(s, cx, cy, 15, 5, 11, 5, '#334155', 6, -3, true);
+    drawSelOutIsoBox(s, cx, cy, 29, 14, 21, 10, '#475569', -6, -3, true);
+    drawSelOutIsoBox(s, cx, cy, 18, 9, 5, 3, '#cbd5e1', -17, 6);
+    drawSelOutIsoBox(s, cx, cy, 18, 9, 5, 3, '#cbd5e1', 17, -6);
+  } else if (furniId === 'mode_bar') {
+    drawSelOutIsoBox(s, cx, cy, 24, 22, 26, 13, '#64748b');
+    drawSelOutIsoBox(s, cx, cy, 27, 3, 27, 13, '#cbd5e1');
+    px(s, cx - 16, cy - 5, 14, 2, '#f8fafc');
+    drawSelOutRect(s, cx + 5, cy - 37, 6, 10, '#38bdf8', '#e0f2fe', '#0284c7');
+    drawSelOutRect(s, cx - 7, cy - 35, 5, 8, '#f8fafc', '#ffffff', '#94a3b8');
+  } else if (furniId === 'exec_desk') {
+    drawSelOutRect(s, cx - 19, cy - 14, 4, 14, '#78350f', '#b45309', '#451a03');
+    drawSelOutRect(s, cx + 15, cy - 14, 4, 14, '#78350f', '#b45309', '#451a03');
+    drawSelOutIsoBox(s, cx, cy, 19, 6, 25, 12, '#c67d38', 0, 0, true);
+    drawSelOutRect(s, cx - 3, cy - 26, 6, 6, '#f8fafc', '#ffffff', '#cbd5e1');
+    px(s, cx - 2, cy - 25, 4, 2, '#78350f');
+  } else if (furniId === 'fireplace') {
+    drawSelOutIsoBox(s, cx, cy, 14, 12, 26, 13, '#78716c', 0, 0, true);
+    drawSelOutIsoBox(s, cx, cy, 54, 40, 20, 10, '#a8a29e', 0, 0, true);
+    drawSelOutIsoBox(s, cx, cy, 58, 4, 23, 11, '#c67d38');
+    drawSelOutRect(s, cx - 10, cy - 34, 20, 22, '#1c1917', '#44403c', '#09090b');
+    const h = 8 + (frame % 3) * 3;
+    px(s, cx - 7, cy - 16, 14, 4, '#78350f');
+    px(s, cx - 5, cy - 16 - h, 10, h, '#ea580c');
+    px(s, cx - 3, cy - 15 - Math.max(4, h - 3), 6, Math.max(4, h - 3), '#facc15');
+  } else if (furniId === 'jukebox') {
+    // True 3D isometric Wurlitzer Jukebox with glowing neon rainbow arch
+    drawSelOutIsoBox(s, cx, cy, 10, 9, 20, 10, '#451a03');
+    drawSelOutIsoBox(s, cx, cy, 52, 42, 16, 8, '#92400e');
+    const neonColors = ['#ef4444', '#facc15', '#22c55e', '#38bdf8', '#c084fc'];
+    const cShift = animTick % neonColors.length;
+    drawSelOutRect(s, cx - 11, cy - 50, 22, 20, neonColors[cShift], '#ffffff', '#78350f');
+    drawSelOutRect(s, cx - 7, cy - 46, 14, 13, '#0f172a', '#334155', '#020617');
+    px(s, cx - 4, cy - 42, 8, 5, '#fef08a');
+    for (let y = -26; y <= -14; y += 3) {
+      px(s, cx - 9, cy + y, 18, 1, '#facc15');
     }
-    // Brushed steel armrests
-    outlinedRect(ctx, cx - 25, cy - 22, 6, 15, '#94a3b8', '#f1f5f9', '#475569');
-    outlinedRect(ctx, cx + 19, cy - 22, 6, 15, '#94a3b8', '#f1f5f9', '#475569');
-  } else if (furniId === 'pod_chair') {
-    // Glossy 2000s Aqua Pod Chair
-    drawIsoBox(8, 8, 15, 8, '#0284c7', '#0369a1', '#0ea5e9');
-    outlinedRect(ctx, cx - 15, cy - 34, 30, 24, '#38bdf8', '#bae6fd', '#0284c7');
-    outlinedRect(ctx, cx - 11, cy - 28, 22, 14, '#7dd3fc', '#e0f2fe', '#0ea5e9');
-    // Glossy white plastic highlight
-    px(ctx, cx - 12, cy - 31, 6, 3, '#ffffff');
-  } else if (furniId === 'lodge_bench') {
-    // Hand-carved Lodge Pine Bench
-    outlinedRect(ctx, cx - 18, cy - 12, 4, 12, '#78350f');
-    outlinedRect(ctx, cx + 14, cy - 12, 4, 12, '#78350f');
-    drawIsoBox(14, 6, 24, 12, '#b45309', '#78350f', '#92400e');
-    // Cozy tartan/checkered cushion
-    drawIsoBox(17, 3, 18, 9, '#b91c1c', '#7f1d1d', '#991b1b');
-    px(ctx, cx - 4, cy - 17, 8, 2, '#fde047');
-  } else if (furniId === 'area_table') {
-    // Chunky Area Coffee Table with fruit bowl
-    outlinedRect(ctx, cx - 20, cy - 16, 5, 16, '#92400e', '#d97706');
-    outlinedRect(ctx, cx + 15, cy - 16, 5, 16, '#92400e', '#d97706');
-    drawIsoBox(18, 6, 24, 12, '#d97706', '#78350f', '#b45309');
-    // Pixel fruit bowl
-    outlinedRect(ctx, cx - 7, cy - 24, 14, 6, '#334155', '#64748b');
-    px(ctx, cx - 5, cy - 28, 4, 4, '#ef4444');
-    px(ctx, cx, cy - 29, 4, 5, '#facc15');
-    px(ctx, cx + 3, cy - 27, 4, 3, '#22c55e');
-  } else if (furniId === 'mini_fridge') {
-    // Iced Mini Fridge (state === 1 shows door ajar with sodas!)
-    drawIsoBox(34, 34, 18, 9, '#e0f2fe', '#7dd3fc', '#bae6fd');
-    outlinedRect(ctx, cx - 15, cy - 42, 30, 38, '#f0f9ff', '#ffffff', '#7dd3fc');
     if (state === 1) {
-      // Open door revealing icy blue interior & soda cans
-      outlinedRect(ctx, cx - 11, cy - 38, 16, 30, '#0284c7', '#38bdf8');
-      px(ctx, cx - 9, cy - 32, 4, 6, '#ef4444');
-      px(ctx, cx - 3, cy - 32, 4, 6, '#22c55e');
-      px(ctx, cx - 9, cy - 20, 4, 6, '#facc15');
-      px(ctx, cx - 3, cy - 20, 4, 6, '#38bdf8');
-      // Swung-open door flap
-      outlinedRect(ctx, cx + 6, cy - 40, 10, 34, '#bae6fd', '#ffffff', '#0ea5e9');
+      const ny = cy - 64 - frame * 3;
+      px(s, cx + 6, ny, 2, 6, '#38bdf8');
+      px(s, cx + 4, ny + 4, 3, 3, '#38bdf8');
+    }
+  } else if (furniId === 'palm_tree') {
+    // Terracotta isometric planter + curved ringed trunk + organic multi-layered pixel palm fronds
+    drawSelOutIsoBox(s, cx, cy, 12, 11, 13, 6, '#c2410c');
+    drawSelOutIsoBox(s, cx, cy, 15, 3, 15, 7, '#ea580c');
+    fillIsoDiamond(s, cx, cy - 15, 11, 5, '#451a03');
+    for (let i = 0; i < 6; i++) {
+      const shiftX = Math.round(Math.sin(i * 0.5) * 2);
+      drawSelOutRect(
+        s,
+        cx - 3 + shiftX,
+        cy - 21 - i * 6,
+        6,
+        6,
+        i % 2 === 0 ? '#92400e' : '#78350f',
+        '#b45309',
+        '#451a03'
+      );
+    }
+    const frondY = cy - 58;
+    fillIsoDiamond(s, cx - 13, frondY + 4, 13, 6, '#15803d', '#22c55e', '#14532d');
+    fillIsoDiamond(s, cx + 13, frondY + 4, 13, 6, '#15803d', '#22c55e', '#14532d');
+    fillIsoDiamond(s, cx - 9, frondY - 2, 12, 6, '#16a34a', '#4ade80', '#15803d');
+    fillIsoDiamond(s, cx + 9, frondY - 2, 12, 6, '#16a34a', '#4ade80', '#15803d');
+    fillIsoDiamond(s, cx, frondY - 7, 11, 5, '#22c55e', '#86efac', '#16a34a');
+  } else if (furniId === 'bonsai') {
+    // Glazed cobalt-blue ceramic isometric pot + twisted bark trunk + 3 organic foliage clouds
+    drawSelOutIsoBox(s, cx, cy, 9, 8, 14, 7, '#1d4ed8');
+    fillIsoDiamond(s, cx, cy - 9, 11, 5, '#451a03');
+    drawSelOutRect(s, cx - 3, cy - 26, 6, 17, '#78350f', '#a16207', '#451a03');
+    drawSelOutRect(s, cx - 6, cy - 30, 5, 6, '#78350f', '#a16207', '#451a03');
+    fillIsoDiamond(s, cx - 8, cy - 33, 12, 6, '#15803d', '#4ade80', '#14532d', '#16a34a');
+    fillIsoDiamond(s, cx + 6, cy - 38, 12, 6, '#16a34a', '#86efac', '#15803d', '#22c55e');
+    fillIsoDiamond(s, cx - 1, cy - 44, 10, 5, '#22c55e', '#bbf7d0', '#16a34a', '#4ade80');
+  } else if (furniId === 'holo_dice') {
+    drawSelOutIsoBox(s, cx, cy, 10, 9, 16, 8, '#334155');
+    const glow = frame === 1 ? '#67e8f9' : '#22d3ee';
+    drawSelOutIsoBox(s, cx, cy, 28, 16, 12, 6, glow);
+    // Pixel pip dots on cube faces instead of vector text
+    const val = Math.max(1, Math.min(6, state || 1));
+    const pipOffsets: Record<number, [number, number][]> = {
+      1: [[0, -28]],
+      2: [[-4, -29], [4, -27]],
+      3: [[-5, -29], [0, -28], [5, -27]],
+      4: [[-5, -28], [5, -28], [0, -31], [0, -25]],
+      5: [[-5, -28], [5, -28], [0, -28], [0, -31], [0, -25]],
+      6: [[-6, -29], [-2, -27], [2, -29], [6, -27], [-2, -31], [2, -25]],
+    };
+    for (const [pxOff, pyOff] of pipOffsets[val] ?? pipOffsets[1]) {
+      px(s, cx + pxOff - 1, cy + pyOff - 1, 2, 2, '#0f172a');
+    }
+  } else if (furniId === 'persian_rug') {
+    fillIsoDiamond(s, cx, cy, 29, 14, '#991b1b', '#facc15', '#7f1d1d', '#b91c1c');
+    fillIsoDiamond(s, cx, cy, 19, 9, '#dc2626', '#fef08a', '#991b1b');
+    fillIsoDiamond(s, cx, cy, 8, 4, '#f59e0b', '#ffffff', '#b45309');
+  } else if (furniId === 'petal_patch') {
+    // Lush multi-shade dithered grass carpet studded with yellow/white pixel daisies
+    fillIsoDiamond(s, cx, cy, 30, 15, '#228b22', '#4ade80', '#14532d', '#2ea82e');
+    fillIsoDiamond(s, cx, cy, 25, 12, '#34a832', '#86efac', '#166534', '#228b22');
+    const daisies: [number, number][] = [
+      [-12, -1],
+      [3, -6],
+      [13, 1],
+      [-3, 5],
+      [-5, -4],
+      [7, 4],
+    ];
+    for (const [dx, dy] of daisies) {
+      px(s, cx + dx - 1, cy + dy - 1, 4, 4, '#ffffff');
+      px(s, cx + dx, cy + dy, 2, 2, '#facc15');
+    }
+  } else if (furniId === 'pod_chair') {
+    // Glossy molded Aqua Pod Chair on central pedestal
+    fillIsoDiamond(s, cx, cy, 11, 5, '#0284c7', '#7dd3fc', '#0369a1');
+    drawSelOutIsoBox(s, cx, cy, 18, 14, 18, 9, '#0ea5e9');
+    fillIsoDiamond(s, cx, cy - 18, 14, 7, '#0369a1', '#bae6fd', '#0c4a6e');
+    px(s, cx - 12, cy - 15, 5, 3, '#ffffff');
+  } else if (furniId === 'lodge_bench') {
+    drawSelOutRect(s, cx - 19, cy - 12, 4, 12, '#78350f', '#b45309', '#451a03');
+    drawSelOutRect(s, cx + 15, cy - 12, 4, 12, '#78350f', '#b45309', '#451a03');
+    drawSelOutIsoBox(s, cx, cy, 14, 6, 24, 12, '#b45309', 0, 0, true);
+    drawSelOutIsoBox(s, cx, cy, 17, 3, 18, 9, '#b91c1c', 0, 0, true);
+  } else if (furniId === 'area_table') {
+    // Warm honey oak (#c67d38) Area Coffee Table with wood grain & fruit bowl
+    drawSelOutRect(s, cx - 20, cy - 15, 5, 15, '#92400e', '#c67d38', '#451a03');
+    drawSelOutRect(s, cx + 15, cy - 15, 5, 15, '#92400e', '#c67d38', '#451a03');
+    drawSelOutIsoBox(s, cx, cy, 18, 6, 24, 12, '#c67d38', 0, 0, true);
+    fillIsoDiamond(s, cx, cy - 20, 8, 4, '#475569', '#94a3b8', '#1e293b');
+    px(s, cx - 4, cy - 24, 4, 4, '#ef4444');
+    px(s, cx, cy - 25, 4, 4, '#facc15');
+    px(s, cx + 3, cy - 23, 3, 3, '#22c55e');
+  } else if (furniId === 'mini_fridge') {
+    drawSelOutIsoBox(s, cx, cy, 38, 36, 18, 9, '#e0f2fe');
+    if (state === 1) {
+      drawSelOutRect(s, cx - 10, cy - 32, 14, 24, '#0284c7', '#38bdf8', '#0369a1');
+      px(s, cx - 8, cy - 28, 4, 5, '#ef4444');
+      px(s, cx - 2, cy - 28, 4, 5, '#22c55e');
+      px(s, cx - 8, cy - 18, 4, 5, '#facc15');
+      drawSelOutRect(s, cx + 5, cy - 34, 9, 28, '#bae6fd', '#ffffff', '#0ea5e9');
     } else {
-      // Chrome handle + Habbo Cola magnet
-      outlinedRect(ctx, cx + 7, cy - 28, 3, 10, '#64748b', '#f8fafc');
-      px(ctx, cx - 7, cy - 34, 5, 5, '#dc2626');
+      drawSelOutRect(s, cx + 6, cy - 26, 2, 9, '#64748b', '#f8fafc', '#334155');
+      px(s, cx - 6, cy - 30, 5, 5, '#dc2626');
     }
   } else if (furniId === 'arcade_cabinet') {
-    // Retro Habbo Coin-Op Arcade Cabinet
-    drawIsoBox(10, 10, 18, 9, '#1e1b4b', '#0f172a', '#312e81');
-    outlinedRect(ctx, cx - 15, cy - 62, 30, 52, '#3730a3', '#6366f1', '#1e1b4b');
-    // Glowing Marquee Sign
-    outlinedRect(ctx, cx - 13, cy - 60, 26, 8, '#facc15', '#fef08a', '#ca8a04');
-    px(ctx, cx - 9, cy - 57, 18, 2, '#dc2626');
-    // Animated CRT Game Screen
-    outlinedRect(ctx, cx - 11, cy - 49, 22, 18, '#020617');
-    const alienX = cx - 6 + frame * 4;
-    px(ctx, alienX, cy - 44, 4, 4, '#4ade80');
-    px(ctx, cx - 5, cy - 36, 10, 2, '#38bdf8');
-    px(ctx, cx - 1, cy - 40 + (frame % 2) * 2, 2, 3, '#facc15');
-    // Control deck & joystick
-    outlinedRect(ctx, cx - 14, cy - 29, 28, 7, '#475569', '#94a3b8');
-    px(ctx, cx - 8, cy - 32, 3, 4, '#ef4444');
-    px(ctx, cx + 3, cy - 27, 3, 2, '#facc15');
-    px(ctx, cx + 8, cy - 27, 3, 2, '#22c55e');
+    // True 3D Isometric Arcade Cabinet with slanted CRT screen & joystick deck
+    drawSelOutIsoBox(s, cx, cy, 24, 22, 18, 9, '#3730a3');
+    drawSelOutIsoBox(s, cx, cy, 56, 32, 14, 7, '#4f46e5', -3, -2);
+    // Glowing top marquee in 2:1 perspective
+    drawSelOutIsoBox(s, cx, cy, 62, 6, 16, 8, '#facc15', -2, -1);
+    // Slanted CRT screen
+    drawSelOutRect(s, cx - 9, cy - 48, 18, 15, '#020617', '#38bdf8', '#1e1b4b');
+    const alienX = cx - 5 + frame * 3;
+    px(s, alienX, cy - 44, 4, 4, '#4ade80');
+    px(s, cx - 4, cy - 37, 8, 2, '#38bdf8');
+    // Control deck joystick & buttons
+    px(s, cx - 6, cy - 28, 2, 4, '#ef4444');
+    px(s, cx + 2, cy - 26, 2, 2, '#facc15');
+    px(s, cx + 6, cy - 27, 2, 2, '#22c55e');
   } else if (furniId === 'plasma_tv') {
-    // Wide Habbo Plasma TV on metallic stand
-    drawIsoBox(8, 8, 16, 8, '#334155', '#0f172a', '#1e293b');
-    outlinedRect(ctx, cx - 3, cy - 20, 6, 12, '#64748b', '#cbd5e1');
-    outlinedRect(ctx, cx - 23, cy - 52, 46, 32, '#18181b', '#52525b', '#09090b');
-    // Animated screen broadcast
+    // Sleek Silver Widescreen Plasma TV angled in 2:1 isometric perspective (dy = dx / 2)
+    drawSelOutIsoBox(s, cx, cy, 7, 6, 16, 8, '#64748b');
+    drawSelOutRect(s, cx - 3, cy - 18, 6, 11, '#94a3b8', '#f8fafc', '#475569');
     const channels = ['#0284c7', '#7c3aed', '#059669'];
-    const bgScreen = state === 1 ? channels[frame % channels.length] : '#09090b';
-    outlinedRect(ctx, cx - 19, cy - 48, 38, 24, bgScreen);
-    if (state === 1) {
-      px(ctx, cx - 14 + frame * 4, cy - 42, 8, 10, '#fde047');
-      px(ctx, cx - 17, cy - 29, 34, 3, '#ffffff');
-      px(ctx, cx - 15, cy - 28, 14, 1, '#dc2626');
+    const bgScreen = state === 1 ? channels[frame % channels.length] : '#0f172a';
+    for (let dx = -22; dx <= 22; dx++) {
+      const yIso = Math.round(dx * 0.5);
+      // 3D back thickness of panel
+      px(s, cx + dx - 2, cy - 48 + yIso - 1, 2, 26, '#334155');
+      // Silver bezel front
+      px(s, cx + dx, cy - 48 + yIso, 1, 26, dx < 0 ? '#e2e8f0' : '#94a3b8');
+      if (dx >= -19 && dx <= 19) {
+        px(s, cx + dx, cy - 45 + yIso, 1, 20, bgScreen);
+        if (state === 1 && dx >= -19 && dx <= 19) {
+          // Live pixel beach / sun broadcast scene
+          if (dx >= -6 && dx <= 2) {
+            px(s, cx + dx, cy - 41 + yIso, 1, 6, '#fde047');
+          }
+          px(s, cx + dx, cy - 31 + yIso, 1, 5, '#facc15');
+        }
+      }
     }
-    px(ctx, cx + 16, cy - 22, 2, 2, state === 1 ? '#22c55e' : '#ef4444');
+    px(s, cx + 18, cy - 14, 2, 2, state === 1 ? '#22c55e' : '#ef4444');
   } else if (furniId === 'lava_lamp') {
-    // Groovy Magenta & Cyan Lava Lamp
-    drawIsoBox(6, 6, 12, 6, '#334155', '#0f172a', '#1e293b');
-    outlinedRect(ctx, cx - 7, cy - 20, 14, 14, '#475569', '#94a3b8');
-    outlinedRect(ctx, cx - 6, cy - 48, 12, 28, state === 1 ? '#312e81' : '#1e293b', '#6366f1');
-    if (state === 1) {
-      // Floating wax blobs
-      const b1Y = cy - 28 - frame * 5;
-      const b2Y = cy - 42 + frame * 4;
-      px(ctx, cx - 3, b1Y, 6, 6, '#f472b6');
-      px(ctx, cx - 2, b2Y, 5, 5, '#22d3ee');
-    }
-    outlinedRect(ctx, cx - 4, cy - 54, 8, 6, '#64748b', '#cbd5e1');
-  } else if (furniId === 'disco_floor') {
-    // Walkable Color-Cycling Pixel Disco Tile
-    const palette = [
-      ['#ec4899', '#38bdf8', '#facc15', '#a855f7'],
-      ['#38bdf8', '#facc15', '#a855f7', '#ec4899'],
-      ['#facc15', '#a855f7', '#ec4899', '#38bdf8'],
-    ][frame % 3];
-    drawIsoPoly(
-      ctx,
-      [
-        [cx, cy - 15],
-        [cx + 30, cy],
-        [cx, cy + 15],
-        [cx - 30, cy],
-      ],
-      '#0f172a',
-      '#94a3b8'
+    drawSelOutIsoBox(s, cx, cy, 7, 6, 12, 6, '#64748b');
+    drawSelOutRect(s, cx - 5, cy - 18, 10, 11, '#94a3b8', '#f8fafc', '#475569');
+    drawSelOutRect(
+      s,
+      cx - 6,
+      cy - 46,
+      12,
+      28,
+      state === 1 ? '#312e81' : '#1e293b',
+      '#818cf8',
+      '#0f172a'
     );
-    // 4 glowing colored sub-diamonds
-    drawIsoPoly(ctx, [[cx, cy - 12], [cx + 12, cy - 6], [cx, cy], [cx - 12, cy - 6]], palette[0]);
-    drawIsoPoly(ctx, [[cx + 13, cy - 5], [cx + 25, cy], [cx + 13, cy + 6], [cx + 1, cy]], palette[1]);
-    drawIsoPoly(ctx, [[cx - 13, cy - 5], [cx - 1, cy], [cx - 13, cy + 6], [cx - 25, cy]], palette[2]);
-    drawIsoPoly(ctx, [[cx, cy + 1], [cx + 12, cy + 7], [cx, cy + 13], [cx - 12, cy + 7]], palette[3]);
+    if (state === 1) {
+      const b1Y = cy - 26 - frame * 5;
+      const b2Y = cy - 40 + frame * 4;
+      px(s, cx - 3, b1Y, 6, 6, '#f472b6');
+      px(s, cx - 2, b2Y, 5, 5, '#22d3ee');
+    }
+    drawSelOutRect(s, cx - 4, cy - 52, 8, 6, '#94a3b8', '#f8fafc', '#475569');
   } else if (furniId === 'hc_minibar') {
-    // Classic Habbo Club Mahogany & Gold Bar Fridge / Cabinet
-    drawIsoBox(26, 26, 22, 11, '#78350f', '#451a03', '#5c2d0c');
-    drawIsoBox(28, 3, 24, 12, '#eab308', '#a16207', '#ca8a04');
-    // Bottled drinks & glasses on counter
-    outlinedRect(ctx, cx - 10, cy - 42, 6, 13, '#16a34a', '#4ade80', '#14532d');
-    outlinedRect(ctx, cx - 2, cy - 39, 5, 10, '#38bdf8', '#e0f2fe', '#0284c7');
-    outlinedRect(ctx, cx + 6, cy - 36, 5, 7, '#f8fafc', '#ffffff');
-    // Brass bar handle on cabinet
-    px(ctx, cx - 6, cy - 16, 4, 2, '#facc15');
+    drawSelOutIsoBox(s, cx, cy, 26, 24, 22, 11, '#78350f', 0, 0, true);
+    drawSelOutIsoBox(s, cx, cy, 29, 3, 24, 12, '#eab308');
+    drawSelOutRect(s, cx - 9, cy - 41, 5, 12, '#16a34a', '#4ade80', '#14532d');
+    drawSelOutRect(s, cx - 2, cy - 38, 5, 9, '#38bdf8', '#e0f2fe', '#0284c7');
+    drawSelOutRect(s, cx + 5, cy - 36, 4, 7, '#f8fafc', '#ffffff', '#94a3b8');
+    px(s, cx - 6, cy - 15, 4, 2, '#facc15');
   } else if (furniId === 'hc_study_desk') {
-    outlinedRect(ctx, cx - 20, cy - 16, 5, 16, '#451a03');
-    outlinedRect(ctx, cx + 15, cy - 16, 5, 16, '#451a03');
-    drawIsoBox(20, 6, 26, 13, '#92400e', '#451a03', '#78350f');
-    // Green leather blotter + brass study lamp
-    drawIsoPoly(ctx, [[cx, cy - 26], [cx + 14, cy - 19], [cx, cy - 12], [cx - 14, cy - 19]], '#166534', '#14532d');
-    outlinedRect(ctx, cx + 7, cy - 38, 4, 14, '#ca8a04', '#fef08a');
-    outlinedRect(ctx, cx + 2, cy - 44, 14, 7, '#16a34a', '#4ade80', '#14532d');
+    drawSelOutRect(s, cx - 20, cy - 16, 5, 16, '#451a03', '#78350f', '#270e02');
+    drawSelOutRect(s, cx + 15, cy - 16, 5, 16, '#451a03', '#78350f', '#270e02');
+    drawSelOutIsoBox(s, cx, cy, 20, 6, 26, 13, '#92400e', 0, 0, true);
+    fillIsoDiamond(s, cx, cy - 20, 14, 7, '#166534', '#4ade80', '#14532d');
+    drawSelOutRect(s, cx + 7, cy - 36, 3, 13, '#eab308', '#fef08a', '#854d0e');
+    fillIsoDiamond(s, cx + 8, cy - 38, 8, 4, '#16a34a', '#86efac', '#14532d');
   } else if (furniId === 'hc_lantern') {
-    drawIsoBox(8, 8, 12, 6, '#78350f', '#451a03', '#5c2d0c');
-    outlinedRect(ctx, cx - 3, cy - 38, 6, 30, '#a16207', '#facc15', '#78350f');
+    drawSelOutIsoBox(s, cx, cy, 8, 7, 12, 6, '#78350f');
+    drawSelOutRect(s, cx - 2, cy - 38, 4, 30, '#ca8a04', '#fef08a', '#78350f');
     const glow = state === 1 ? '#fef08a' : '#d97706';
-    outlinedRect(ctx, cx - 9, cy - 58, 18, 20, glow, '#ffffff', '#b45309');
-    outlinedRect(ctx, cx - 11, cy - 62, 22, 5, '#451a03', '#92400e');
+    drawSelOutIsoBox(s, cx, cy, 56, 18, 11, 5, glow);
+    drawSelOutIsoBox(s, cx, cy, 60, 4, 13, 6, '#78350f');
   } else if (furniId === 'hc_rug') {
-    drawIsoPoly(ctx, [[cx, cy - 15], [cx + 30, cy], [cx, cy + 15], [cx - 30, cy]], '#14532d', '#eab308');
-    drawIsoPoly(ctx, [[cx, cy - 10], [cx + 20, cy], [cx, cy + 10], [cx - 20, cy]], '#166534', '#fef08a');
-    drawIsoPoly(ctx, [[cx, cy - 4], [cx + 8, cy], [cx, cy + 4], [cx - 8, cy]], '#ca8a04');
-  } else if (furniId === 'jade_dragon') {
-    drawIsoBox(12, 12, 18, 9, '#1e293b', '#0f172a', '#334155');
-    outlinedRect(ctx, cx - 10, cy - 38, 20, 26, '#15803d', '#4ade80', '#14532d');
-    outlinedRect(ctx, cx - 12, cy - 52, 24, 16, '#16a34a', '#86efac', '#14532d');
-    px(ctx, cx - 11, cy - 58, 3, 6, '#bef264');
-    px(ctx, cx + 8, cy - 58, 3, 6, '#bef264');
-    px(ctx, cx - 5, cy - 46, 3, 2, '#facc15');
-    px(ctx, cx + 3, cy - 46, 3, 2, '#facc15');
-    if (state === 1) {
-      const fx = dir === 1 ? cx - 22 : cx + 10;
-      px(ctx, fx, cy - 42 + (frame - 1), 12, 8, '#22c55e');
-      px(ctx, fx + 3, cy - 40 + (frame - 1), 6, 4, '#bbf7d0');
-    }
-  } else if (furniId === 'silver_dragon') {
-    drawIsoBox(12, 12, 18, 9, '#334155', '#1e293b', '#475569');
-    outlinedRect(ctx, cx - 10, cy - 38, 20, 26, '#94a3b8', '#f1f5f9', '#475569');
-    outlinedRect(ctx, cx - 12, cy - 52, 24, 16, '#cbd5e1', '#ffffff', '#64748b');
-    px(ctx, cx - 11, cy - 58, 3, 6, '#e2e8f0');
-    px(ctx, cx + 8, cy - 58, 3, 6, '#e2e8f0');
-    px(ctx, cx - 5, cy - 46, 3, 2, '#38bdf8');
-    px(ctx, cx + 3, cy - 46, 3, 2, '#38bdf8');
-    if (state === 1) {
-      const fx = dir === 1 ? cx - 22 : cx + 10;
-      px(ctx, fx, cy - 42 + (frame - 1), 12, 8, '#38bdf8');
-      px(ctx, fx + 3, cy - 40 + (frame - 1), 6, 4, '#e0f2fe');
-    }
-  } else if (furniId === 'ice_throne') {
-    drawIsoBox(10, 10, 22, 11, '#38bdf8', '#0284c7', '#0ea5e9');
-    drawIsoBox(16, 5, 16, 8, '#e0f2fe', '#7dd3fc', '#bae6fd');
-    const backShiftX = dir === 1 || dir === 2 ? 10 : -10;
-    outlinedRect(ctx, cx + backShiftX - 11, cy - 58, 22, 42, '#7dd3fc', '#f0f9ff', '#0284c7');
-    outlinedRect(ctx, cx + backShiftX - 7, cy - 52, 14, 30, '#0ea5e9', '#bae6fd', '#0369a1');
-    outlinedRect(ctx, cx + backShiftX - 5, cy - 64, 10, 6, '#e0f2fe', '#ffffff');
-    px(ctx, cx + backShiftX - 1, cy - 62, 2, 2, '#22d3ee');
-    outlinedRect(ctx, cx - 20, cy - 25, 6, 14, '#7dd3fc', '#e0f2fe', '#0284c7');
-    outlinedRect(ctx, cx + 14, cy - 25, 6, 14, '#7dd3fc', '#e0f2fe', '#0284c7');
+    fillIsoDiamond(s, cx, cy, 29, 14, '#14532d', '#eab308', '#052e16', '#166534');
+    fillIsoDiamond(s, cx, cy, 19, 9, '#166534', '#fef08a', '#14532d');
+    fillIsoDiamond(s, cx, cy, 8, 4, '#eab308', '#ffffff', '#a16207');
   } else if (furniId === 'gold_typewriter') {
-    drawIsoBox(10, 10, 18, 9, '#eab308', '#854d0e', '#ca8a04');
-    // Paper sheet sticking out top
-    outlinedRect(ctx, cx - 9, cy - 38, 18, 18, '#f8fafc', '#ffffff', '#cbd5e1');
-    px(ctx, cx - 6, cy - 34, 12, 1, '#64748b');
-    px(ctx, cx - 6, cy - 30, 10, 1, '#64748b');
-    // Roller & golden keyboard
-    outlinedRect(ctx, cx - 13, cy - 23, 26, 6, '#ca8a04', '#fef08a', '#78350f');
-    outlinedRect(ctx, cx - 14, cy - 16, 28, 10, '#facc15', '#fef9c3', '#a16207');
-    for (let kx = -10; kx <= 8; kx += 4) {
-      px(ctx, cx + kx, cy - 14, 2, 2, '#1e293b');
-      px(ctx, cx + kx + 1, cy - 10, 2, 2, '#1e293b');
-    }
+    drawSelOutIsoBox(s, cx, cy, 11, 9, 18, 9, '#eab308');
+    drawSelOutRect(s, cx - 8, cy - 34, 16, 16, '#f8fafc', '#ffffff', '#cbd5e1');
+    px(s, cx - 5, cy - 30, 10, 1, '#64748b');
+    px(s, cx - 5, cy - 26, 8, 1, '#64748b');
+    drawSelOutIsoBox(s, cx, cy, 17, 6, 14, 7, '#ca8a04', -2, -1);
   } else if (furniId === 'purple_pillow') {
-    drawIsoBox(10, 8, 20, 10, '#a855f7', '#6b21a8', '#7e22ce');
-    drawIsoPoly(ctx, [[cx, cy - 18], [cx + 16, cy - 10], [cx, cy - 2], [cx - 16, cy - 10]], '#c084fc', '#581c87');
-    px(ctx, cx - 18, cy - 8, 3, 3, '#facc15');
-    px(ctx, cx + 15, cy - 8, 3, 3, '#facc15');
-    px(ctx, cx - 2, cy - 11, 4, 2, '#f3e8ff');
+    drawSelOutIsoBox(s, cx, cy, 9, 7, 22, 11, '#9333ea', 0, 0, true);
+    fillIsoDiamond(s, cx, cy - 10, 16, 8, '#c084fc', '#f3e8ff', '#6b21a8');
+    px(s, cx - 22, cy - 7, 3, 4, '#facc15');
+    px(s, cx + 19, cy - 7, 3, 4, '#facc15');
+    px(s, cx - 1, cy + 2, 3, 4, '#facc15');
   } else if (furniId === 'pura_sofa') {
-    drawIsoBox(11, 9, 24, 12, '#f1f5f9', '#94a3b8', '#cbd5e1');
-    drawIsoBox(15, 4, 20, 10, '#38bdf8', '#0284c7', '#0ea5e9');
-    if (dir === 0 || dir === 3) {
-      drawIsoBox(29, 15, 11, 6, '#e0f2fe', '#94a3b8', '#cbd5e1', -11, -6);
-    } else {
-      drawIsoBox(29, 15, 11, 6, '#e0f2fe', '#cbd5e1', '#94a3b8', 11, -6);
-    }
-    outlinedRect(ctx, cx - 25, cy - 22, 6, 15, '#ffffff', '#ffffff', '#cbd5e1');
-    outlinedRect(ctx, cx + 19, cy - 22, 6, 15, '#ffffff', '#ffffff', '#cbd5e1');
+    drawSelOutIsoBox(s, cx, cy, 10, 8, 25, 12, '#f1f5f9');
+    drawSelOutIsoBox(s, cx, cy, 15, 5, 11, 5, '#38bdf8', -6, 3, true);
+    drawSelOutIsoBox(s, cx, cy, 15, 5, 11, 5, '#38bdf8', 6, -3, true);
+    drawSelOutIsoBox(s, cx, cy, 29, 14, 21, 10, '#e0f2fe', -6, -3);
+    drawSelOutIsoBox(s, cx, cy, 18, 9, 5, 3, '#ffffff', -17, 6);
+    drawSelOutIsoBox(s, cx, cy, 18, 9, 5, 3, '#ffffff', 17, -6);
   } else if (furniId === 'pura_lamp') {
-    drawIsoBox(8, 8, 12, 6, '#cbd5e1', '#64748b', '#94a3b8');
-    outlinedRect(ctx, cx - 2, cy - 42, 4, 34, '#e2e8f0', '#ffffff', '#94a3b8');
-    const shade = state === 1 ? '#fef08a' : '#bae6fd';
-    outlinedRect(ctx, cx - 11, cy - 58, 22, 18, shade, '#ffffff', '#0284c7');
+    drawSelOutIsoBox(s, cx, cy, 8, 7, 12, 6, '#cbd5e1');
+    drawSelOutRect(s, cx - 2, cy - 42, 4, 34, '#e2e8f0', '#ffffff', '#94a3b8');
+    const shade = state === 1 ? '#fef08a' : '#38bdf8';
+    drawSelOutIsoBox(s, cx, cy, 56, 16, 13, 6, shade);
   } else if (furniId === 'lido_lounger') {
-    // Sunlit white & turquoise Lido pool deck sunbed
-    drawIsoBox(8, 6, 25, 12, '#f8fafc', '#94a3b8', '#cbd5e1');
-    drawIsoBox(11, 3, 22, 10, '#0ea5e9', '#0369a1', '#0284c7');
-    // Raised headrest pillow
-    const headX = dir === 1 || dir === 2 ? 10 : -10;
-    drawIsoBox(17, 6, 10, 5, '#38bdf8', '#0284c7', '#0ea5e9', headX, -5);
-    px(ctx, cx + headX - 4, cy - 22, 8, 3, '#ffffff');
+    drawSelOutIsoBox(s, cx, cy, 8, 6, 26, 13, '#f8fafc');
+    drawSelOutIsoBox(s, cx, cy, 11, 3, 22, 11, '#0ea5e9', 0, 0, true);
+    drawSelOutIsoBox(s, cx, cy, 17, 6, 10, 5, '#38bdf8', -10, -5);
+    px(s, cx - 14, cy - 21, 8, 3, '#ffffff');
   } else if (furniId === 'beach_umbrella') {
-    // Cast base + tall pole + red/white striped beach parasol
-    drawIsoBox(6, 5, 12, 6, '#94a3b8', '#475569', '#64748b');
-    outlinedRect(ctx, cx - 2, cy - 54, 4, 48, '#f1f5f9', '#ffffff', '#94a3b8');
-    drawIsoPoly(
-      ctx,
-      [
-        [cx, cy - 72],
-        [cx + 28, cy - 52],
-        [cx, cy - 40],
-        [cx - 28, cy - 52],
-      ],
-      '#ef4444',
-      OUTLINE
-    );
-    drawIsoPoly(ctx, [[cx, cy - 72], [cx + 12, cy - 55], [cx - 12, cy - 55]], '#ffffff');
-    drawIsoPoly(ctx, [[cx, cy - 72], [cx + 4, cy - 42], [cx - 4, cy - 42]], '#fef08a');
+    drawSelOutIsoBox(s, cx, cy, 6, 5, 12, 6, '#94a3b8');
+    drawSelOutRect(s, cx - 2, cy - 54, 4, 48, '#f1f5f9', '#ffffff', '#94a3b8');
+    fillIsoDiamond(s, cx, cy - 54, 28, 14, '#ef4444', '#fca5a5', '#991b1b');
+    fillIsoDiamond(s, cx, cy - 58, 16, 8, '#ffffff', '#ffffff', '#cbd5e1');
+    px(s, cx - 2, cy - 66, 4, 4, '#facc15');
   } else if (furniId === 'pool_ring_duck') {
-    // Classic Habbo Giant Yellow Rubber Duck Float
-    drawIsoBox(7, 6, 18, 9, '#facc15', '#ca8a04', '#eab308');
-    outlinedRect(ctx, cx - 10, cy - 22, 18, 13, '#fef08a', '#ffffff', '#ca8a04');
-    // Duck head + orange bill
-    outlinedRect(ctx, cx + 4, cy - 34, 11, 12, '#facc15', '#fef9c3', '#ca8a04');
-    px(ctx, cx + 14, cy - 29, 6, 4, '#f97316');
-    px(ctx, cx + 10, cy - 31, 2, 2, '#141414');
+    drawSelOutIsoBox(s, cx, cy, 8, 6, 18, 9, '#facc15');
+    drawSelOutIsoBox(s, cx, cy, 18, 10, 12, 6, '#fef08a');
+    drawSelOutRect(s, cx + 4, cy - 30, 10, 11, '#facc15', '#fef9c3', '#ca8a04');
+    px(s, cx + 13, cy - 26, 5, 4, '#f97316');
+    px(s, cx + 10, cy - 28, 2, 2, '#141414');
   } else if (furniId === 'tiki_torch') {
-    drawIsoBox(6, 6, 11, 5, '#78350f', '#451a03', '#5c2d0c');
-    outlinedRect(ctx, cx - 3, cy - 46, 6, 40, '#92400e', '#d97706', '#451a03');
-    outlinedRect(ctx, cx - 6, cy - 52, 12, 8, '#78350f', '#b45309');
+    drawSelOutIsoBox(s, cx, cy, 6, 5, 11, 5, '#78350f');
+    drawSelOutRect(s, cx - 3, cy - 46, 6, 40, '#92400e', '#d97706', '#451a03');
+    drawSelOutIsoBox(s, cx, cy, 52, 7, 8, 4, '#b45309');
     if (state === 1) {
       const f = frame % 3;
-      px(ctx, cx - 4, cy - 64 - f, 8, 12 + f, '#ea580c');
-      px(ctx, cx - 2, cy - 61 - f, 4, 8, '#facc15');
-      px(ctx, cx - 1, cy - 59 - f, 2, 4, '#fef9c3');
+      px(s, cx - 4, cy - 64 - f, 8, 12 + f, '#ea580c');
+      px(s, cx - 2, cy - 61 - f, 4, 8, '#facc15');
+      px(s, cx - 1, cy - 59 - f, 2, 4, '#fef9c3');
     }
   } else if (furniId === 'pine_tree') {
-    outlinedRect(ctx, cx - 5, cy - 20, 10, 20, '#78350f', '#92400e', '#451a03');
-    drawIsoPoly(ctx, [[cx, cy - 50], [cx + 22, cy - 18], [cx - 22, cy - 18]], '#14532d', OUTLINE);
-    drawIsoPoly(ctx, [[cx, cy - 64], [cx + 18, cy - 34], [cx - 18, cy - 34]], '#15803d', OUTLINE);
-    drawIsoPoly(ctx, [[cx, cy - 76], [cx + 13, cy - 50], [cx - 13, cy - 50]], '#22c55e', OUTLINE);
-    px(ctx, cx - 3, cy - 60, 4, 3, '#86efac');
+    // Organic layered evergreen pine needles (no black internal triangle strokes)
+    drawSelOutIsoBox(s, cx, cy, 12, 11, 10, 5, '#78350f');
+    fillIsoDiamond(s, cx, cy - 18, 22, 11, '#14532d', '#22c55e', '#052e16', '#166534');
+    fillIsoDiamond(s, cx, cy - 28, 19, 9, '#15803d', '#4ade80', '#14532d', '#16a34a');
+    fillIsoDiamond(s, cx, cy - 38, 15, 7, '#16a34a', '#86efac', '#15803d', '#22c55e');
+    fillIsoDiamond(s, cx, cy - 48, 11, 5, '#22c55e', '#bbf7d0', '#16a34a');
+    fillIsoDiamond(s, cx, cy - 56, 6, 3, '#4ade80', '#ffffff', '#22c55e');
   } else if (furniId === 'flower_bed') {
-    drawIsoPoly(ctx, [[cx, cy - 14], [cx + 28, cy], [cx, cy + 14], [cx - 28, cy]], '#78350f', '#451a03');
-    drawIsoPoly(ctx, [[cx, cy - 12], [cx + 24, cy], [cx, cy + 12], [cx - 24, cy]], '#15803d', '#14532d');
+    drawSelOutIsoBox(s, cx, cy, 5, 4, 28, 14, '#78350f');
+    fillIsoDiamond(s, cx, cy - 5, 24, 12, '#15803d', '#4ade80', '#14532d', '#16a34a');
     const blooms: [number, number, string][] = [
-      [-12, -1, '#f43f5e'],
-      [-3, -5, '#facc15'],
-      [7, -3, '#ec4899'],
-      [14, 1, '#38bdf8'],
-      [0, 5, '#f43f5e'],
-      [-8, 3, '#facc15'],
+      [-12, -6, '#f43f5e'],
+      [-3, -10, '#facc15'],
+      [7, -8, '#ec4899'],
+      [14, -4, '#38bdf8'],
+      [0, 0, '#f43f5e'],
+      [-8, -2, '#facc15'],
     ];
     for (const [bx, by, bcol] of blooms) {
-      px(ctx, cx + bx - 2, cy + by - 3, 5, 5, bcol);
-      px(ctx, cx + bx, cy + by - 1, 2, 2, '#ffffff');
+      px(s, cx + bx - 2, cy + by - 2, 5, 4, bcol);
+      px(s, cx + bx, cy + by - 1, 2, 2, '#ffffff');
     }
   } else if (furniId === 'disco_ball') {
-    drawIsoBox(6, 6, 12, 6, '#1e293b', '#0f172a', '#334155');
-    // Thin suspension stand/glitter sphere
-    outlinedRect(ctx, cx - 1, cy - 72, 2, 20, '#94a3b8');
-    outlinedRect(ctx, cx - 13, cy - 54, 26, 26, '#cbd5e1', '#ffffff', '#64748b');
+    drawSelOutIsoBox(s, cx, cy, 6, 5, 12, 6, '#334155');
+    drawSelOutRect(s, cx - 1, cy - 72, 2, 20, '#94a3b8', '#f8fafc', '#475569');
+    drawSelOutRect(s, cx - 12, cy - 53, 24, 24, '#cbd5e1', '#ffffff', '#64748b');
     const glint = frame === 0 ? '#38bdf8' : frame === 1 ? '#f472b6' : '#fef08a';
-    for (let yy = -50; yy <= -34; yy += 4) {
-      for (let xx = -9; xx <= 7; xx += 4) {
-        px(ctx, cx + xx, cy + yy, 2, 2, (xx + yy + frame) % 3 === 0 ? glint : '#ffffff');
+    for (let yy = -49; yy <= -33; yy += 4) {
+      for (let xx = -8; xx <= 6; xx += 4) {
+        px(s, cx + xx, cy + yy, 2, 2, (xx + yy + frame) % 3 === 0 ? glint : '#ffffff');
       }
     }
   } else if (furniId === 'dj_booth') {
-    drawIsoBox(22, 22, 28, 14, '#0f172a', '#020617', '#1e293b');
-    drawIsoBox(24, 4, 26, 13, '#334155', '#1e293b', '#475569');
-    // Dual vinyl turntables + glowing equalizer bar
-    outlinedRect(ctx, cx - 16, cy - 32, 11, 8, '#020617', '#38bdf8');
-    outlinedRect(ctx, cx + 5, cy - 32, 11, 8, '#020617', '#ec4899');
+    // True 3D Isometric DJ Booth with dual vinyl platters, crossfader & LED spectrum
+    drawSelOutIsoBox(s, cx, cy, 22, 20, 28, 14, '#1e293b');
+    drawSelOutIsoBox(s, cx, cy, 25, 3, 29, 14, '#475569');
+    // Dual isometric vinyl turntables on top deck
+    fillIsoDiamond(s, cx - 10, cy - 23, 8, 4, '#09090b', '#38bdf8', '#334155');
+    px(s, cx - 11, cy - 24, 2, 2, '#38bdf8');
+    fillIsoDiamond(s, cx + 10, cy - 23, 8, 4, '#09090b', '#ec4899', '#334155');
+    px(s, cx + 9, cy - 24, 2, 2, '#ec4899');
+    // Center mixer crossfader
+    fillIsoDiamond(s, cx, cy - 25, 5, 3, '#cbd5e1', '#ffffff', '#64748b');
+    // Animated LED equalizer bars on front panel
     const eqColors = ['#22c55e', '#facc15', '#ec4899', '#38bdf8'];
     for (let i = 0; i < 4; i++) {
-      px(ctx, cx - 14 + i * 7, cy - 16, 4, 6, eqColors[(i + frame) % eqColors.length]);
+      px(s, cx - 14 + i * 7, cy - 14, 4, 7, eqColors[(i + frame) % eqColors.length]);
     }
   } else if (furniId === 'pet_bowl') {
-    drawIsoBox(8, 7, 16, 8, '#dc2626', '#7f1d1d', '#991b1b');
-    drawIsoPoly(ctx, [[cx, cy - 12], [cx + 10, cy - 7], [cx, cy - 2], [cx - 10, cy - 7]], '#92400e', '#451a03');
-    px(ctx, cx - 3, cy - 9, 4, 2, '#facc15');
-    px(ctx, cx + 1, cy - 7, 3, 2, '#fde047');
+    drawSelOutIsoBox(s, cx, cy, 8, 7, 15, 7, '#dc2626');
+    fillIsoDiamond(s, cx, cy - 8, 10, 5, '#92400e', '#facc15', '#451a03');
+    px(s, cx - 3, cy - 9, 4, 2, '#facc15');
+    px(s, cx + 1, cy - 8, 3, 2, '#fde047');
   } else if (furniId === 'pet_cushion') {
-    drawIsoPoly(ctx, [[cx, cy - 12], [cx + 22, cy], [cx, cy + 12], [cx - 22, cy]], '#0284c7', '#0369a1');
-    drawIsoPoly(ctx, [[cx, cy - 8], [cx + 16, cy], [cx, cy + 8], [cx - 16, cy]], '#38bdf8', '#e0f2fe');
-    px(ctx, cx - 3, cy - 1, 6, 2, '#ffffff');
+    drawSelOutIsoBox(s, cx, cy, 5, 4, 22, 11, '#0284c7');
+    fillIsoDiamond(s, cx, cy - 5, 16, 8, '#38bdf8', '#e0f2fe', '#0369a1', '#0ea5e9');
   } else if (furniId === 'velvet_rope') {
-    // Two gold brass stanchions + draped crimson velvet rope
-    drawIsoBox(5, 4, 8, 4, '#eab308', '#854d0e', '#ca8a04', -14, 4);
-    drawIsoBox(5, 4, 8, 4, '#eab308', '#854d0e', '#ca8a04', 14, -4);
-    outlinedRect(ctx, cx - 16, cy - 32, 4, 30, '#facc15', '#fef9c3', '#854d0e');
-    outlinedRect(ctx, cx + 12, cy - 38, 4, 30, '#facc15', '#fef9c3', '#854d0e');
-    // Draped crimson velvet rope
-    ctx.strokeStyle = '#991b1b';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(cx - 13, cy - 26);
-    ctx.quadraticCurveTo(cx, cy - 16, cx + 13, cy - 32);
-    ctx.stroke();
-    ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
+    drawSelOutIsoBox(s, cx, cy, 5, 4, 8, 4, '#eab308', -14, 5);
+    drawSelOutIsoBox(s, cx, cy, 5, 4, 8, 4, '#eab308', 14, -5);
+    drawSelOutRect(s, cx - 16, cy - 30, 4, 28, '#facc15', '#fef9c3', '#854d0e');
+    drawSelOutRect(s, cx + 12, cy - 38, 4, 28, '#facc15', '#fef9c3', '#854d0e');
+    // Pixel-stepped crimson velvet rope curve
+    for (let dx = -12; dx <= 12; dx++) {
+      const sag = Math.round(6 * (1 - (dx / 12) * (dx / 12)));
+      const ry = cy - 28 - Math.round(dx * 0.35) + sag;
+      px(s, cx + dx, ry, 2, 4, '#991b1b');
+      px(s, cx + dx, ry, 2, 1, '#ef4444');
+    }
   } else if (furniId === 'frank_bust') {
-    // Marble column + Iconic Bellhop Frank Pixel Bust
-    drawIsoBox(20, 20, 14, 7, '#e2e8f0', '#64748b', '#94a3b8');
-    outlinedRect(ctx, cx - 9, cy - 42, 18, 20, '#94a3b8', '#ffffff', '#475569');
-    outlinedRect(ctx, cx - 8, cy - 58, 16, 16, '#cbd5e1', '#f8fafc', '#64748b');
-    // Frank bellhop cap + mustache
-    outlinedRect(ctx, cx - 6, cy - 64, 12, 6, '#7f1d1d', '#ef4444');
-    px(ctx, cx - 4, cy - 46, 8, 2, '#334155');
+    drawSelOutIsoBox(s, cx, cy, 20, 18, 14, 7, '#e2e8f0');
+    drawSelOutIsoBox(s, cx, cy, 36, 16, 12, 6, '#cbd5e1');
+    drawSelOutRect(s, cx - 7, cy - 52, 14, 15, '#f1f5f9', '#ffffff', '#64748b');
+    drawSelOutRect(s, cx - 6, cy - 58, 12, 6, '#991b1b', '#ef4444', '#450a0a');
+    px(s, cx - 4, cy - 42, 8, 2, '#334155');
   } else if (furniId === 'sticky_note') {
     const palette =
       state === 1
@@ -1460,28 +1378,47 @@ export function getFurniSprite(
         : state === 3
         ? { fill: '#86efac', hi: '#dcfce7', sh: '#16a34a' }
         : { fill: '#fef08a', hi: '#fef9c3', sh: '#ca8a04' };
-    // Crisp retro Post-It square with shadow & ruled pixel notes
-    px(ctx, cx - 10, cy - 34, 22, 22, 'rgba(0,0,0,0.28)');
-    outlinedRect(ctx, cx - 12, cy - 36, 22, 22, palette.fill, palette.hi, palette.sh);
-    px(ctx, cx - 11, cy - 35, 20, 3, palette.sh);
-    px(ctx, cx - 9, cy - 29, 14, 1, '#334155');
-    px(ctx, cx - 9, cy - 25, 11, 1, '#334155');
-    px(ctx, cx - 9, cy - 21, 13, 1, '#475569');
-    // Folded bottom-right corner
-    px(ctx, cx + 5, cy - 19, 4, 4, palette.hi);
-  } else if (!drawExtendedFurniSprite(ctx, furniId, dir, state, frame, cx, cy, drawIsoBox)) {
-    drawIsoBox(16, 16, 20, 10, '#cbd5e1', '#64748b', '#94a3b8');
+    drawSelOutRect(s, cx - 11, cy - 36, 22, 22, palette.fill, palette.hi, palette.sh);
+    px(s, cx - 10, cy - 35, 20, 3, palette.sh);
+    px(s, cx - 8, cy - 29, 14, 1, '#334155');
+    px(s, cx - 8, cy - 25, 11, 1, '#334155');
+    px(s, cx - 8, cy - 21, 13, 1, '#475569');
+  } else if (!drawExtendedFurniSprite(s, furniId, dir, state, frame, cx, cy, drawIsoBox)) {
+    drawSelOutIsoBox(s, cx, cy, 16, 14, 20, 10, '#cbd5e1');
   }
+
+  // Apply 4-direction rotation (dir === 1 || dir === 2 mirrors horizontally around cx = 36)
+  const oriented = makeOffscreen(W, H);
+  if (dir === 1 || dir === 2) {
+    oriented.ctx.translate(W, 0);
+    oriented.ctx.scale(-1, 1);
+  }
+  oriented.ctx.drawImage(scratch, 0, 0);
+
+  // Grounded contact shadow ellipse under 3D floor furniture
+  if (!isFlatFloorRugOrTile && !isWallItem) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 2, 22, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Final 1px solid #141414 outer silhouette pass
+  applyPixelOutline(oriented.canvas, ctx, W, H, [0x14, 0x14, 0x14]);
 
   spriteCache.set(key, canvas);
   return canvas;
 }
 
 /**
- * Generates & caches crisp base64 PNG preview URLs for Catalogue, Inventory, Trading, and Housekeeping.
+ * Generates & caches crisp, centered 2x zoomed base64 PNG preview URLs for Catalogue, Inventory, Trading, and Housekeeping
+ * so thumbnails match the placed room pixel-art sprites 100%.
  */
 export function getItemPreviewImage(itemType: string, state = '1'): string {
-  const key = `preview|${itemType}|${state}`;
+  const resolved = resolveFurniSpriteId(itemType);
+  const isDragon = isDragonLampId(resolved);
+  const effectiveState = isDragon ? '1' : state;
+  const key = `preview2008v3|${resolved}|${effectiveState}`;
   const cached = previewDataUrlCache.get(key);
   if (cached) return cached;
 
@@ -1493,12 +1430,50 @@ export function getItemPreviewImage(itemType: string, state = '1'): string {
   } else if (itemType === 'pet_dragon') {
     sourceCanvas = getPetSprite('baby_dragon', 0, 'stand', 0);
   } else {
-    const resolved = resolveFurniSpriteId(itemType);
-    const numState = Number(state);
+    const numState = isDragon ? 1 : Number(effectiveState);
     sourceCanvas = getFurniSprite(resolved, 0, Number.isFinite(numState) ? numState : 1, 0);
   }
 
-  const url = sourceCanvas.toDataURL('image/png');
+  // Find non-transparent bounding box and render a centered crisp pixel-art preview
+  const sw = sourceCanvas.width;
+  const sh = sourceCanvas.height;
+  const sCtx = sourceCanvas.getContext('2d', { willReadFrequently: true })!;
+  const imgData = sCtx.getImageData(0, 0, sw, sh).data;
+  let minX = sw;
+  let minY = sh;
+  let maxX = 0;
+  let maxY = 0;
+  for (let y = 0; y < sh; y++) {
+    for (let x = 0; x < sw; x++) {
+      if (imgData[(y * sw + x) * 4 + 3] > 16) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  if (minX > maxX || minY > maxY) {
+    const fallbackUrl = sourceCanvas.toDataURL('image/png');
+    previewDataUrlCache.set(key, fallbackUrl);
+    return fallbackUrl;
+  }
+
+  const bw = maxX - minX + 1;
+  const bh = maxY - minY + 1;
+  const outW = 128;
+  const outH = 128;
+  const { canvas: previewCanvas, ctx: pCtx } = makeOffscreen(outW, outH);
+  pCtx.imageSmoothingEnabled = false;
+  const scale = bw <= 56 && bh <= 56 ? 2 : Math.min(2, (outW - 8) / Math.max(bw, bh));
+  const dw = Math.round(bw * scale);
+  const dh = Math.round(bh * scale);
+  const dx = Math.round((outW - dw) / 2);
+  const dy = Math.round((outH - dh) / 2);
+  pCtx.drawImage(sourceCanvas, minX, minY, bw, bh, dx, dy, dw, dh);
+
+  const url = previewCanvas.toDataURL('image/png');
   previewDataUrlCache.set(key, url);
   return url;
 }
@@ -1637,7 +1612,7 @@ export function drawIsoFloorTile(
     border = 'rgba(56, 189, 248, 0.25)';
   }
 
-  // Top diamond
+  // Top diamond (zero heavy dark grid outline; uses subtle 1px inner bevels below)
   drawIsoPoly(
     ctx,
     [
@@ -1646,22 +1621,30 @@ export function drawIsoFloorTile(
       [sx, sy + hh * 2],
       [sx - hw, sy + hh],
     ],
-    topColor,
-    border
+    topColor
   );
 
-  // Subtle top-left bevel highlight so every tile pops crisply
+  // Subtle 1px inner bevel highlight (+12% brightness on top-left edges)
   ctx.strokeStyle =
     tileChar === 'w'
-      ? 'rgba(224,242,254,0.72)'
-      : theme === 'rooftop'
-      ? 'rgba(255,255,255,0.16)'
-      : 'rgba(255,255,255,0.35)';
+      ? 'rgba(224,242,254,0.68)'
+      : shadeHex(topColor, 16);
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(sx - hw + 2, sy + hh);
+  ctx.moveTo(sx - hw + 1, sy + hh);
   ctx.lineTo(sx, sy + 1);
-  ctx.lineTo(sx + hw - 2, sy + hh);
+  ctx.lineTo(sx + hw - 1, sy + hh);
+  ctx.stroke();
+
+  // Subtle 1px inner bevel shadow (-12% brightness on bottom-right edges)
+  ctx.strokeStyle =
+    tileChar === 'w'
+      ? 'rgba(1,87,155,0.55)'
+      : shadeHex(topColor, -16);
+  ctx.beginPath();
+  ctx.moveTo(sx - hw + 1, sy + hh);
+  ctx.lineTo(sx, sy + hh * 2 - 1);
+  ctx.lineTo(sx + hw - 1, sy + hh);
   ctx.stroke();
 
   // Left thickness edge
@@ -1733,17 +1716,29 @@ export function drawIsoFloorTile(
     px(ctx, sx + 1, sy + hh - 1, 7, 3, '#e2e8f0');
     px(ctx, sx - 4, sy + hh + 4, 6, 3, '#94a3b8');
   } else if (tileChar === 's') {
-    // Stair step lines
-    ctx.strokeStyle = 'rgba(0,0,0,0.34)';
-    ctx.beginPath();
-    ctx.moveTo(sx - 16, sy + hh - 6);
-    ctx.lineTo(sx + 16, sy + hh + 10);
-    ctx.moveTo(sx - 16, sy + hh);
-    ctx.lineTo(sx + 16, sy + hh + 16);
-    ctx.stroke();
+    // Crisp 3D isometric staircase steps between split-level floor heights
+    const treadHi = shadeHex(topColor, 18);
+    const riserLo = shadeHex(leftEdge, -14);
+    for (let st = 0; st < 3; st++) {
+      const yOff = -4 + st * 5;
+      // Vertical step riser
+      ctx.strokeStyle = riserLo;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(sx - 18 + st * 2, sy + hh + yOff - 5);
+      ctx.lineTo(sx + 18 - st * 2, sy + hh + yOff + 11);
+      ctx.stroke();
+      // Sunlit step nose highlight
+      ctx.strokeStyle = treadHi;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(sx - 18 + st * 2, sy + hh + yOff - 6);
+      ctx.lineTo(sx + 18 - st * 2, sy + hh + yOff + 10);
+      ctx.stroke();
+    }
   } else if (theme === 'wood_deck') {
     // Wooden deck planks along isometric lines
-    ctx.strokeStyle = 'rgba(72, 34, 8, 0.34)';
+    ctx.strokeStyle = 'rgba(72, 34, 8, 0.26)';
     ctx.beginPath();
     ctx.moveTo(sx - 20, sy + hh - 5);
     ctx.lineTo(sx + 12, sy + hh + 11);
@@ -1752,7 +1747,7 @@ export function drawIsoFloorTile(
     ctx.stroke();
     px(ctx, sx - 6, sy + hh + 1, 4, 1, 'rgba(255, 224, 178, 0.4)');
   } else if (theme === 'parquet') {
-    ctx.strokeStyle = 'rgba(72, 34, 8, 0.22)';
+    ctx.strokeStyle = 'rgba(72, 34, 8, 0.18)';
     ctx.beginPath();
     ctx.moveTo(sx - 16, sy + hh - 3);
     ctx.lineTo(sx + 10, sy + hh + 9);
@@ -1761,7 +1756,7 @@ export function drawIsoFloorTile(
     ctx.stroke();
     px(ctx, sx - 8, sy + hh + 1, 3, 1, 'rgba(255, 224, 178, 0.35)');
   } else if (theme === 'marble') {
-    ctx.strokeStyle = isEven ? 'rgba(148, 140, 124, 0.22)' : 'rgba(255, 255, 255, 0.32)';
+    ctx.strokeStyle = isEven ? 'rgba(148, 140, 124, 0.18)' : 'rgba(255, 255, 255, 0.28)';
     ctx.beginPath();
     ctx.moveTo(sx - 12, sy + hh + 2);
     ctx.lineTo(sx - 2, sy + hh - 3);
@@ -1783,18 +1778,22 @@ export function drawIsoFloorTile(
     }
   }
 
+  // Authentic 2008 Habbo crisp white isometric diamond tile cursor (2px white pixel border)
   if (isHovered) {
-    drawIsoPoly(
-      ctx,
-      [
-        [sx, sy + 1],
-        [sx + hw - 2, sy + hh],
-        [sx, sy + hh * 2 - 1],
-        [sx - hw + 2, sy + hh],
-      ],
-      'rgba(255, 255, 255, 0.25)',
-      '#fef08a'
-    );
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(sx, sy + 2);
+    ctx.lineTo(sx + hw - 3, sy + hh);
+    ctx.lineTo(sx, sy + hh * 2 - 2);
+    ctx.lineTo(sx - hw + 3, sy + hh);
+    ctx.closePath();
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
   }
 }
 
@@ -2223,6 +2222,9 @@ export function drawRoomWallsOrParapets(
     stripeColor = 'rgba(120, 53, 15, 0.08)';
   }
 
+  // Determine the entrance doorway wall tile on the upper-left wall (y === room.spawn.y)
+  const spawnY = room.spawn?.y ?? 2;
+
   for (let y = 0; y < layout.length; y++) {
     for (let x = 0; x < layout[y].length; x++) {
       const ch = layout[y][x];
@@ -2235,6 +2237,9 @@ export function drawRoomWallsOrParapets(
       const topVoid = getLayoutChar(layout, x, y - 1) === 'x';
 
       if (leftVoid) {
+        const isDoorwayTile = y === spawnY;
+
+        // Main left wall panel
         drawIsoPoly(
           ctx,
           [
@@ -2244,38 +2249,107 @@ export function drawRoomWallsOrParapets(
             [sx - hw, sy + hh - wallH],
           ],
           leftWall,
-          'rgba(0,0,0,0.12)'
+          'rgba(0,0,0,0.14)'
         );
+
+        // 7px thick 3D isometric top rim/cap (sunlit top bevel + shaded inner edge)
         drawIsoPoly(
           ctx,
           [
             [sx - hw, sy + hh - wallH],
             [sx, sy - wallH],
-            [sx - 5, sy - wallH - 3],
-            [sx - hw - 5, sy + hh - wallH - 3],
+            [sx - 7, sy - wallH - 4],
+            [sx - hw - 7, sy + hh - wallH - 4],
           ],
           capColor,
-          '#1b1922'
+          '#141414'
         );
+        // Left outer thickness drop of the 7px wall cap
+        drawIsoPoly(
+          ctx,
+          [
+            [sx - hw - 7, sy + hh - wallH - 4],
+            [sx - hw, sy + hh - wallH],
+            [sx - hw, sy + hh],
+            [sx - hw - 7, sy + hh - 4],
+          ],
+          shadeHex(leftWall, -22),
+          '#141414'
+        );
+
         ctx.strokeStyle = stripeColor;
         ctx.beginPath();
         ctx.moveTo(sx - hw / 2, sy + hh / 2 - 12);
         ctx.lineTo(sx - hw / 2, sy + hh / 2 - wallH + 6);
         ctx.stroke();
 
+        // 3px dark baseboard trim where wall meets the floor
         drawIsoPoly(
           ctx,
           [
             [sx - hw, sy + hh],
             [sx, sy],
-            [sx, sy - 11],
-            [sx - hw, sy + hh - 11],
+            [sx, sy - 4],
+            [sx - hw, sy + hh - 4],
           ],
           trimColor
         );
 
-        // Arched / Skyline Windows on left wall segments
-        if (y === 3 || y === 6) {
+        if (isDoorwayTile) {
+          // Authentic 2008 Habbo 3D Recessed Isometric Entrance Doorway
+          const doorH = 68;
+          // Beveled wooden/steel outer doorframe
+          drawIsoPoly(
+            ctx,
+            [
+              [sx - hw + 4, sy + hh - 2],
+              [sx - 4, sy - 2],
+              [sx - 4, sy - doorH - 4],
+              [sx - hw + 4, sy + hh - doorH - 4],
+            ],
+            '#5c4033',
+            '#141414'
+          );
+          // Dark shaded 3D doorway recess (#1a1a1a)
+          drawIsoPoly(
+            ctx,
+            [
+              [sx - hw + 7, sy + hh - 3],
+              [sx - 7, sy - 3],
+              [sx - 7, sy - doorH],
+              [sx - hw + 7, sy + hh - doorH],
+            ],
+            '#141414',
+            '#000000'
+          );
+          // 3D recessed inner jamb thickness on the right side of the doorway
+          drawIsoPoly(
+            ctx,
+            [
+              [sx - 12, sy - 1],
+              [sx - 7, sy - 3],
+              [sx - 7, sy - doorH],
+              [sx - 12, sy - doorH + 2],
+            ],
+            shadeHex(leftWall, -36),
+            '#000000'
+          );
+          // Inner recessed door panel slightly ajar with brass handle
+          drawIsoPoly(
+            ctx,
+            [
+              [sx - hw + 9, sy + hh - 4],
+              [sx - 13, sy - 2],
+              [sx - 13, sy - doorH + 3],
+              [sx - hw + 9, sy + hh - doorH + 1],
+            ],
+            '#292524'
+          );
+          // Golden/brass door handle pixel glint
+          px(ctx, sx - 16, sy - 32, 3, 2, '#facc15');
+          px(ctx, sx - 16, sy - 33, 2, 1, '#fef9c3');
+        } else if (y === 3 || y === 6) {
+          // Arched / Skyline Windows on non-door left wall segments
           const skyColor = theme === 'nightsky' ? '#0f172a' : '#7dd3fc';
           drawIsoPoly(
             ctx,
@@ -2313,18 +2387,19 @@ export function drawRoomWallsOrParapets(
             [sx, sy - wallH],
           ],
           rightWall,
-          'rgba(0,0,0,0.12)'
+          'rgba(0,0,0,0.14)'
         );
+        // 7px thick 3D isometric top rim/cap
         drawIsoPoly(
           ctx,
           [
             [sx, sy - wallH],
             [sx + hw, sy + hh - wallH],
-            [sx + hw + 5, sy + hh - wallH - 3],
-            [sx + 5, sy - wallH - 3],
+            [sx + hw + 7, sy + hh - wallH - 4],
+            [sx + 7, sy - wallH - 4],
           ],
           capColor,
-          '#1b1922'
+          '#141414'
         );
         ctx.strokeStyle = stripeColor;
         ctx.beginPath();
@@ -2332,13 +2407,14 @@ export function drawRoomWallsOrParapets(
         ctx.lineTo(sx + hw / 2, sy + hh / 2 - wallH + 6);
         ctx.stroke();
 
+        // 3px dark baseboard trim where wall meets the floor
         drawIsoPoly(
           ctx,
           [
             [sx, sy],
             [sx + hw, sy + hh],
-            [sx + hw, sy + hh - 11],
-            [sx, sy - 11],
+            [sx + hw, sy + hh - 4],
+            [sx, sy - 4],
           ],
           trimColor
         );
@@ -2386,6 +2462,79 @@ export function drawRoomWallsOrParapets(
       }
     }
   }
+}
+
+/**
+ * Draws the crimson & gold patterned Habbo entrance doormat on the doorstep tile in front of the 3D doorway,
+ * plus the floating golden-yellow downward destination arrow when walking.
+ */
+export function drawRoomDoorMat(
+  ctx: CanvasRenderingContext2D,
+  room: RoomDef,
+  originX: number,
+  originY: number
+) {
+  if (room.outdoor) return;
+  const hw = 32;
+  const hh = 16;
+  const spawnY = room.spawn?.y ?? 2;
+  const row = room.layout[spawnY];
+  if (!row) return;
+  let doorX = room.spawn?.x ?? 1;
+  for (let x = 0; x < row.length; x++) {
+    if (row[x] !== 'x') {
+      doorX = x;
+      break;
+    }
+  }
+  const z = getHeightForChar(row[doorX] ?? '0');
+  const sx = originX + (doorX - spawnY) * hw;
+  const sy = originY + (doorX + spawnY) * hh - z * 16;
+
+  // Crimson & gold trimmed isometric doormat on the doorstep tile
+  drawIsoPoly(
+    ctx,
+    [
+      [sx, sy + 4],
+      [sx + 20, sy + 14],
+      [sx, sy + 24],
+      [sx - 20, sy + 14],
+    ],
+    '#991b1b',
+    '#450a0a'
+  );
+  drawIsoPoly(
+    ctx,
+    [
+      [sx, sy + 6],
+      [sx + 15, sy + 14],
+      [sx, sy + 22],
+      [sx - 15, sy + 14],
+    ],
+    '#dc2626',
+    '#facc15'
+  );
+}
+
+export function drawDestinationArrow(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  animTick: number
+) {
+  const bob = (animTick % 4 < 2 ? 0 : -3);
+  const ax = Math.round(sx);
+  const ay = Math.round(sy + 6 + bob);
+  // Crisp 1px #000000 outline + golden-yellow downward arrow
+  px(ctx, ax - 3, ay - 10, 6, 6, '#000000');
+  px(ctx, ax - 6, ay - 5, 12, 3, '#000000');
+  px(ctx, ax - 4, ay - 2, 8, 2, '#000000');
+  px(ctx, ax - 2, ay, 4, 2, '#000000');
+  px(ctx, ax - 2, ay - 9, 4, 5, '#facc15');
+  px(ctx, ax - 1, ay - 9, 2, 4, '#fef08a');
+  px(ctx, ax - 5, ay - 4, 10, 2, '#facc15');
+  px(ctx, ax - 3, ay - 2, 6, 2, '#eab308');
+  px(ctx, ax - 1, ay, 2, 1, '#ca8a04');
 }
 
 export function drawRoomWalls(
@@ -2703,7 +2852,7 @@ export function getBadgeSprite(
     px(s, 15, 24, 10, 3, GOLD_3);
     px(s, 16, 13, 2, 3, '#ffffff');
   } else if (normalizedId === 'badge_hc') {
-    // Ornate Gold & Orange HC Clover/Crown Shield with embossed pixel HC lettering
+    // Ornate Gold & Orange PIXL Club Clover/Crown Shield with embossed pixel PC lettering
     // Crown/Clover crest lobes on top
     px(s, 15, 4, 10, 5, GOLD_1);
     px(s, 16, 4, 8, 2, GOLD_HI);
@@ -2723,17 +2872,21 @@ export function getBadgeSprite(
     // Shiny bevel rim & corner glints
     px(s, 9, 11, 22, 2, GOLD_HI);
     px(s, 10, 14, 2, 2, '#ffffff');
-    // Bold embossed pixel HC
-    px(s, 12, 15, 3, 11, GOLD_3);
-    px(s, 18, 15, 3, 11, GOLD_3);
-    px(s, 15, 19, 3, 3, GOLD_3);
-    px(s, 22, 15, 7, 11, GOLD_3);
+    // Bold embossed pixel PC
+    px(s, 12, 15, 3, 10, GOLD_3);
+    px(s, 15, 15, 4, 2, GOLD_3);
+    px(s, 17, 17, 2, 2, GOLD_3);
+    px(s, 15, 19, 4, 2, GOLD_3);
+    px(s, 21, 15, 7, 10, GOLD_3);
+    // Letter P highlight
     px(s, 12, 14, 3, 10, GOLD_HI);
-    px(s, 18, 14, 3, 10, GOLD_HI);
-    px(s, 15, 18, 3, 3, GOLD_1);
-    px(s, 22, 14, 7, 3, GOLD_HI);
-    px(s, 22, 17, 3, 5, GOLD_1);
-    px(s, 22, 21, 7, 3, GOLD_1);
+    px(s, 15, 14, 4, 2, GOLD_HI);
+    px(s, 17, 16, 2, 2, GOLD_1);
+    px(s, 15, 18, 4, 2, GOLD_1);
+    // Letter C highlight
+    px(s, 21, 14, 7, 2, GOLD_HI);
+    px(s, 21, 16, 3, 6, GOLD_1);
+    px(s, 21, 22, 7, 2, GOLD_1);
   } else if (normalizedId === 'badge_vip') {
     // Purple & Gold Jeweled Royal Crown with red/cyan pixel gems
     // Crown base velvet & gold band

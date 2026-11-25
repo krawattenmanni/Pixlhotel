@@ -131,10 +131,18 @@ export function registerUser(
 }
 
 export function syncBadgesWithPlayer(player: PlayerState, extraBadgeId?: string): PlayerState {
-  const badges = new Set(player.unlockedBadges);
+  const mapLegacyClubId = (id: string): string => {
+    const upper = id.trim().toUpperCase();
+    if (upper === 'HC' || upper === 'HC1' || upper === 'PC' || upper === 'PC1') return 'badge_hc';
+    if (upper === 'HC2' || upper === 'PC2') return 'PC2';
+    return id;
+  };
+
+  const badges = new Set(player.unlockedBadges.map(mapLegacyClubId));
   badges.add('badge_checkin');
 
   if (player.hcDays > 0) badges.add('badge_hc');
+  if (player.hcDays >= 30) badges.add('PC2');
   if (player.rank >= 2) badges.add('badge_vip');
   if (player.rank >= 4) badges.add('badge_mod');
   if (player.rank === 5 || player.role === 'admin') badges.add('badge_admin');
@@ -151,17 +159,18 @@ export function syncBadgesWithPlayer(player: PlayerState, extraBadgeId?: string)
   ) {
     badges.add('badge_throne');
   }
-  if (extraBadgeId) badges.add(extraBadgeId);
+  if (extraBadgeId) badges.add(mapLegacyClubId(extraBadgeId));
 
   const nextList = Array.from(badges);
+  const normalizedEquippedId = player.equippedBadgeId ? mapLegacyClubId(player.equippedBadgeId) : '';
   const currentEquipped =
     Array.isArray(player.equippedBadges) && player.equippedBadges.length > 0
-      ? player.equippedBadges.filter((id) => nextList.includes(id)).slice(0, 5)
-      : player.equippedBadgeId && nextList.includes(player.equippedBadgeId)
-      ? [player.equippedBadgeId]
+      ? player.equippedBadges.map(mapLegacyClubId).filter((id) => nextList.includes(id)).slice(0, 5)
+      : normalizedEquippedId && nextList.includes(normalizedEquippedId)
+      ? [normalizedEquippedId]
       : [nextList[0] ?? 'badge_checkin'];
 
-  const primaryEquipped = currentEquipped[0] ?? player.equippedBadgeId ?? 'badge_checkin';
+  const primaryEquipped = currentEquipped[0] ?? (normalizedEquippedId || 'badge_checkin');
 
   const sameUnlocked =
     nextList.length === player.unlockedBadges.length &&

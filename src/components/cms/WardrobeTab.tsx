@@ -73,7 +73,16 @@ export function WardrobeTab({ currentLook, onSaveLook }: WardrobeTabProps) {
                   key={g}
                   type="button"
                   data-testid={`cms-wardrobe-gender-${g.toLowerCase()}`}
-                  onClick={() => setDraft((prev) => ({ ...prev, gender: g }))}
+                  onClick={() =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      gender: g,
+                      accessory:
+                        g === 'F' && (prev.accessory as string) === 'beard'
+                          ? 'none'
+                          : prev.accessory,
+                    }))
+                  }
                   className={`flex-1 rounded-[2px] border py-1.5 text-[11px] font-bold cursor-pointer ${
                     (draft.gender ?? 'M') === g
                       ? g === 'F'

@@ -52,6 +52,10 @@ const TRANSLATIONS: Record<LanguageCode, Record<string, string>> = {
     badgeUnlockedHint: 'Official PIXL Hotel collector badge.',
     wearNow: 'Wear Now',
     okBtn: 'OK',
+    delete_room: 'Delete Room',
+    delete_btn: 'Delete',
+    confirm_prompt: 'Confirm?',
+    room_deleted: 'Room was deleted.',
   },
   de: {
     nav_me: 'Ich',
@@ -93,6 +97,10 @@ const TRANSLATIONS: Record<LanguageCode, Record<string, string>> = {
     badgeUnlockedHint: 'Offizielles PIXL Hotel Sammler-Badge.',
     wearNow: 'Anlegen',
     okBtn: 'OK',
+    delete_room: 'Raum löschen',
+    delete_btn: 'Löschen',
+    confirm_prompt: 'Sicher?',
+    room_deleted: 'Der Raum wurde gelöscht.',
   },
 };
 
@@ -176,8 +184,13 @@ const DE_BADGE_OVERRIDES: Record<
   },
   badge_hc: {
     name: 'PIXL Club Mitglied',
-    description: 'Klassisches goldenes HC-Wappen für aktive PIXL Club VIP-Mitglieder.',
-    unlockHint: 'Werde Mitglied im PIXL Club (HC-Tage im Shop oder per Code einlösen).',
+    description: 'Offizielles Mitglied im exklusiven PIXL Club (PC)!',
+    unlockHint: 'Werde Mitglied im PIXL Club (PC-Tage im Shop oder per Code einlösen).',
+  },
+  PC2: {
+    name: 'PIXL Club Gold-Veteran',
+    description: 'Langjähriger VIP-Veteran der exklusiven PIXL Club-Mitgliedschaft!',
+    unlockHint: 'Sammle mindestens 30 Tage aktive PIXL Club (PC) Mitgliedschaft.',
   },
   badge_checkin: {
     name: 'Erster Check-In',

@@ -178,7 +178,7 @@ export function CommunityTab({
                           {acc.playerState.credits.toLocaleString()}c
                         </span>
                         <p className="font-mono-num text-[10px] font-bold text-[#64748b]">
-                          {acc.playerState.hcDays}d HC
+                          {acc.playerState.hcDays}d PC
                         </p>
                       </div>
                     </div>

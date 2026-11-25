@@ -12,20 +12,31 @@ export function LoadingScreen({ roomName, onComplete }: LoadingScreenProps) {
     const start = performance.now();
     const duration = 780;
     let raf = 0;
+    let completed = false;
 
-    const tick = (now: number) => {
+    const advance = (now: number) => {
+      if (completed) return;
       const elapsed = now - start;
       const pct = Math.min(100, Math.round(14 + (elapsed / duration) * 86));
       setProgress(pct);
       if (elapsed < duration) {
-        raf = requestAnimationFrame(tick);
+        raf = requestAnimationFrame(advance);
       } else {
+        completed = true;
         onComplete();
       }
     };
 
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(advance);
+    const interval = window.setInterval(() => {
+      advance(performance.now());
+    }, 50);
+
+    return () => {
+      completed = true;
+      cancelAnimationFrame(raf);
+      window.clearInterval(interval);
+    };
   }, [onComplete]);
 
   return (

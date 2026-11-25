@@ -22,23 +22,23 @@ export const WARDROBE_HAIR_STYLES: WardrobeStyleOption<HairStyle>[] = [
   { id: 'bob', label: 'Sleek Bob', genderHint: 'F' },
   { id: 'side_fringe', label: 'Side-Swept Fringe', genderHint: 'F' },
   { id: 'curls', label: 'Curly Afro Puff' },
-  { id: 'braided_crown', label: 'Braided Crown', genderHint: 'F', hcOnly: true },
-  { id: 'princess_bun', label: 'Princess Bun', genderHint: 'F', hcOnly: true },
+  { id: 'braided_crown', label: 'Braided Crown (PC)', genderHint: 'F', hcOnly: true },
+  { id: 'princess_bun', label: 'Princess Bun (PC)', genderHint: 'F', hcOnly: true },
   // Men's / Short Styles
   { id: 'quiff', label: 'Classic Quiff', genderHint: 'M' },
   { id: 'spiky', label: 'Spiky Punk', genderHint: 'M' },
   { id: 'messy', label: 'Messy Fringe', genderHint: 'M' },
   { id: 'buzzcut', label: 'Fade Buzzcut', genderHint: 'M' },
   { id: 'side_part', label: 'Side Part', genderHint: 'M' },
-  { id: 'mohawk', label: 'Punk Mohawk', hcOnly: true },
-  { id: 'pompadour', label: 'Retro Pompadour', genderHint: 'M', hcOnly: true },
+  { id: 'mohawk', label: 'Punk Mohawk (PC)', hcOnly: true },
+  { id: 'pompadour', label: 'Retro Pompadour (PC)', genderHint: 'M', hcOnly: true },
 ];
 
 export const WARDROBE_EXPRESSIONS: WardrobeStyleOption<ExpressionStyle>[] = [
   { id: 'happy', label: 'Happy Grin' },
   { id: 'cool', label: 'Cool Focus' },
   { id: 'cheeky', label: 'Cheeky Smile' },
-  { id: 'serene', label: 'Chill Calm', hcOnly: true },
+  { id: 'serene', label: 'Chill Calm (PC)', hcOnly: true },
   { id: 'wink', label: 'Playful Wink' },
   { id: 'surprised', label: 'Surprised O!' },
 ];
@@ -53,30 +53,30 @@ export const WARDROBE_SHIRT_STYLES: WardrobeStyleOption<ShirtStyle>[] = [
   { id: 'tank', label: 'Ribbed Tank Top' },
   // Men's / Unisex Tops & Jackets
   { id: 'tee', label: 'Classic Crew Tee' },
-  { id: 'hoodie', label: 'Streetwear Hoodie' },
-  { id: 'suit', label: 'VIP Tuxedo', hcOnly: true },
+  { id: 'hoodie', label: 'PIXL Club Hoodie' },
+  { id: 'suit', label: 'PIXL Club Tuxedo (PC)', hcOnly: true },
   { id: 'stripes', label: 'Retro Rugby Stripes' },
   { id: 'varsity', label: 'Varsity Jacket', genderHint: 'M' },
-  { id: 'leather_jacket', label: 'Biker Jacket', hcOnly: true },
+  { id: 'leather_jacket', label: 'Biker Jacket (PC)', hcOnly: true },
   { id: 'track_jacket', label: 'Sport Track Jacket' },
   { id: 'turtleneck', label: 'Cozy Turtleneck' },
 ];
 
 export const WARDROBE_ACCESSORIES: WardrobeStyleOption<AccessoryStyle>[] = [
   { id: 'none', label: 'None' },
-  { id: 'crown', label: 'Gold Royal Crown', hcOnly: true },
-  { id: 'tiara', label: 'Diamond Tiara', genderHint: 'F', hcOnly: true },
+  { id: 'crown', label: 'Gold Royal Crown (PC)', hcOnly: true },
+  { id: 'tiara', label: 'Diamond Tiara (PC)', genderHint: 'F', hcOnly: true },
   { id: 'cap', label: 'Snapback Cap' },
   { id: 'beanie', label: 'Winter Beanie' },
   { id: 'beret', label: 'French Beret', genderHint: 'F' },
-  { id: 'top_hat', label: 'VIP Top Hat', hcOnly: true },
-  { id: 'devil_horns', label: 'Crimson Devil Horns', hcOnly: true },
-  { id: 'angel_halo', label: 'Glowing Angel Halo', hcOnly: true },
+  { id: 'top_hat', label: 'PIXL Club Top Hat (PC)', hcOnly: true },
+  { id: 'devil_horns', label: 'Crimson Devil Horns (PC)', hcOnly: true },
+  { id: 'angel_halo', label: 'Glowing Angel Halo (PC)', hcOnly: true },
   { id: 'cat_ears', label: 'Pixel Cat Ears', genderHint: 'F' },
   { id: 'flower_clip', label: 'Hibiscus Hair Flower', genderHint: 'F' },
   { id: 'sunglasses', label: 'Aviator Shades' },
-  { id: 'headphones', label: 'DJ Headphones', hcOnly: true },
-  { id: 'gold_chain', label: 'Gold Bling Chain', hcOnly: true },
+  { id: 'headphones', label: 'DJ Headphones (PC)', hcOnly: true },
+  { id: 'gold_chain', label: 'Gold Bling Chain (PC)', hcOnly: true },
   { id: 'scarf', label: 'Cozy Knit Scarf' },
 ];
 
@@ -144,7 +144,7 @@ export const FEMALE_STARTER_PRESETS: LookConfig[] = [
     shirtColor: '#eb6fa8',
     pantsColor: '#c83232',
     shoesColor: '#eb6fa8',
-    accessory: 'flower_clip',
+    accessory: 'none',
   },
   {
     gender: 'F',
@@ -168,6 +168,6 @@ export const FEMALE_STARTER_PRESETS: LookConfig[] = [
     shirtColor: '#0ea5e9',
     pantsColor: '#343a40',
     shoesColor: '#c83232',
-    accessory: 'cat_ears',
+    accessory: 'none',
   },
 ];

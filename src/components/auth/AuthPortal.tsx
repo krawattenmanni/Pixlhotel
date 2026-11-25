@@ -86,6 +86,7 @@ export function AuthPortal({
     setRegLook({
       ...presets[0],
       gender: nextGender,
+      accessory: nextGender === 'F' ? 'none' : presets[0].accessory,
     });
   };
 
@@ -93,9 +94,18 @@ export function AuthPortal({
     const presets = regGender === 'F' ? FEMALE_STARTER_PRESETS : MALE_STARTER_PRESETS;
     const nextIdx = (presetIdx + 1) % presets.length;
     setPresetIdx(nextIdx);
+    const chosen = presets[nextIdx];
     setRegLook({
-      ...presets[nextIdx],
+      ...chosen,
       gender: regGender,
+      accessory:
+        regGender === 'F' &&
+        chosen.accessory !== 'none' &&
+        chosen.accessory !== 'tiara' &&
+        chosen.accessory !== 'sunglasses' &&
+        chosen.accessory !== 'flower_clip'
+          ? 'none'
+          : chosen.accessory,
     });
   };
 
@@ -134,7 +144,7 @@ export function AuthPortal({
   };
 
   return (
-    <div className="min-h-screen w-full max-w-full overflow-x-hidden habbo-bg-sky flex flex-col">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden habbo-bg-sky flex flex-col justify-between">
       {/* Classic HoloCMS Frontpage Sky Header + Skyline Silhouette */}
       <header className="relative overflow-hidden border-b border-[#000000] bg-gradient-to-b from-[#6ec2f7] via-[#9bd6fb] to-[#bce0fd] pt-4 pb-8">
         <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-90" aria-hidden="true">
@@ -556,38 +566,168 @@ export function AuthPortal({
           </section>
         </div>
 
-        {/* WELCOME SHOWCASE */}
-        <section className="habbo-box">
-          <div className="habbo-box-header habbo-header-orange">Inside PIXL Hotel</div>
-          <div className="flex flex-col items-center justify-between gap-5 p-4 sm:flex-row">
-            <div className="flex items-center gap-4">
-              <div className="flex h-24 w-20 items-end justify-center rounded-[2px] border border-[#000000] bg-gradient-to-b from-[#9fd9fc] to-[#e2f2fe] pb-1.5 shrink-0">
-                <PixelAvatarCanvas look={ADMIN_PLAYER_STATE.look} dir={0} pose="wave" scale={1} />
-              </div>
-              <div>
-                <h2 className="text-[14px] font-bold text-[#111827]">
-                  Welcome to PIXL Hotel
-                </h2>
-                <p className="mt-1 text-[11px] leading-relaxed text-[#475569] max-w-md">
-                  Register your own persistent PIXL account, dive off The Lido diving board, browse 108 retro Catalogue furnis, collect 64 shaped badges, and check into the Isometric Client!
-                </p>
-              </div>
-            </div>
+        {/* PANORAMIC HABBO PIXEL-ART HOTEL SCENE SHOWCASE BANNER */}
+        <section className="habbo-box overflow-hidden" data-testid="auth-panoramic-showcase">
+          <div className="habbo-box-header habbo-header-orange flex items-center justify-between">
+            <span>Inside PIXL Hotel — Live Isometric Rooms, Lido Pool &amp; Rare Trading</span>
+            <span className="font-mono-num text-[10px] text-amber-100">2008 Shockwave Edition</span>
+          </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              {BADGE_CATALOGUE.slice(0, 5).map((b) => (
-                <div
-                  key={b.id}
-                  title={b.name}
-                  className="rounded-[2px] border border-[#000000] bg-[#f8fafc] p-1"
-                >
-                  <PixelBadgeSprite badgeId={b.id} unlocked size={32} />
+          <div className="relative min-h-[220px] flex flex-col justify-between overflow-hidden bg-gradient-to-b from-[#3b82f6] via-[#7dd3fc] to-[#bae6fd] p-4 sm:p-5">
+            {/* Pixel-Art Isometric Hotel Terrace & Pool Panorama SVG Background */}
+            <svg
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-90"
+              viewBox="0 0 960 240"
+              preserveAspectRatio="xMidYMax slice"
+              shapeRendering="crispEdges"
+              aria-hidden="true"
+            >
+              {/* Distant Pixel Clouds */}
+              <rect x="48" y="18" width="64" height="10" fill="#ffffff" opacity="0.85" />
+              <rect x="36" y="24" width="88" height="8" fill="#ffffff" opacity="0.85" />
+              <rect x="420" y="14" width="76" height="10" fill="#ffffff" opacity="0.8" />
+              <rect x="404" y="20" width="108" height="8" fill="#ffffff" opacity="0.8" />
+              <rect x="760" y="22" width="56" height="10" fill="#ffffff" opacity="0.85" />
+
+              {/* Classic Orange Habbo Hotel Tower Facade on Left */}
+              <rect x="24" y="42" width="168" height="148" fill="#d97706" />
+              <rect x="28" y="46" width="160" height="140" fill="#f59e0b" />
+              <rect x="20" y="36" width="176" height="8" fill="#92400e" />
+              {/* Hotel Windows Grid */}
+              {[58, 86, 114, 142].map((wy) =>
+                [42, 74, 106, 138, 162].map((wx) => (
+                  <g key={`${wx}-${wy}`}>
+                    <rect x={wx} y={wy} width="18" height="18" fill="#1e293b" />
+                    <rect x={wx + 2} y={wy + 2} width="14" height="14" fill="#fef08a" />
+                  </g>
+                ))
+              )}
+
+              {/* Checkered Marble Terrace Deck */}
+              <rect x="0" y="168" width="960" height="72" fill="#d6d3d1" />
+              <rect x="0" y="168" width="960" height="6" fill="#78716c" />
+              {/* Turquoise Lido Swimming Pool Basin */}
+              <rect x="230" y="176" width="460" height="56" fill="#0284c7" />
+              <rect x="236" y="180" width="448" height="48" fill="#38bdf8" />
+              {/* White Pool Water Sparkles */}
+              <rect x="280" y="192" width="28" height="4" fill="#e0f2fe" />
+              <rect x="390" y="204" width="36" height="4" fill="#e0f2fe" />
+              <rect x="520" y="190" width="32" height="4" fill="#e0f2fe" />
+              <rect x="610" y="208" width="24" height="4" fill="#e0f2fe" />
+
+              {/* Pixel Palm Trees */}
+              <rect x="208" y="106" width="10" height="64" fill="#92400e" />
+              <rect x="186" y="94" width="54" height="14" fill="#16a34a" />
+              <rect x="194" y="84" width="38" height="12" fill="#22c55e" />
+
+              <rect x="708" y="102" width="10" height="68" fill="#92400e" />
+              <rect x="686" y="90" width="54" height="14" fill="#16a34a" />
+              <rect x="694" y="80" width="38" height="12" fill="#22c55e" />
+            </svg>
+
+            {/* Foreground Interactive Showcase Overlay */}
+            <div className="relative z-10 flex flex-col items-center justify-between gap-4 lg:flex-row">
+              {/* Animated Pixel Citizens & Speech Bubbles */}
+              <div className="flex flex-wrap items-end justify-center gap-3 sm:gap-5">
+                <div className="flex flex-col items-center">
+                  <div className="mb-1 rounded-[3px] border border-[#000000] bg-white px-2 py-0.5 text-[10px] font-bold text-[#111827] shadow-[0_1px_0_#000]">
+                    <span className="font-extrabold">Krawattenmanni:</span> Welcome to PIXL Hotel!
+                  </div>
+                  <div className="flex h-24 w-20 items-end justify-center rounded-[2px] border border-[#000000] bg-white/85 pb-1 shadow-[0_2px_0_rgba(0,0,0,0.3)]">
+                    <PixelAvatarCanvas look={ADMIN_PLAYER_STATE.look} dir={0} pose="wave" scale={1} />
+                  </div>
                 </div>
-              ))}
+
+                <div className="flex flex-col items-center">
+                  <div className="mb-1 rounded-[3px] border border-[#000000] bg-[#fef08a] px-2 py-0.5 text-[10px] font-bold text-[#111827] shadow-[0_1px_0_#000]">
+                    <span className="font-extrabold">Pixie:</span> Meet us at The Lido Deck!
+                  </div>
+                  <div className="flex h-24 w-20 items-end justify-center rounded-[2px] border border-[#000000] bg-white/85 pb-1 shadow-[0_2px_0_rgba(0,0,0,0.3)]">
+                    <PixelAvatarCanvas
+                      look={{ ...FEMALE_STARTER_PRESETS[0], gender: 'F', accessory: 'none' }}
+                      dir={1}
+                      pose="stand"
+                      scale={1}
+                    />
+                  </div>
+                </div>
+
+                <div className="hidden sm:flex flex-col items-center">
+                  <div className="mb-1 rounded-[3px] border border-[#000000] bg-white px-2 py-0.5 text-[10px] font-bold text-[#111827] shadow-[0_1px_0_#000]">
+                    <span className="font-extrabold">Marco:</span> Trading Thrones &amp; Dragons!
+                  </div>
+                  <div className="flex h-24 w-20 items-end justify-center rounded-[2px] border border-[#000000] bg-white/85 pb-1 shadow-[0_2px_0_rgba(0,0,0,0.3)]">
+                    <PixelAvatarCanvas
+                      look={{ ...MALE_STARTER_PRESETS[1], gender: 'M' }}
+                      dir={0}
+                      pose="wave"
+                      scale={1}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Callout Card + Official Shaped Badges Strip */}
+              <div className="w-full max-w-md rounded-[3px] border border-[#000000] bg-white/95 p-3.5 shadow-[0_3px_0_rgba(0,0,0,0.28)] space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="font-pixel text-xs text-[#0f3454]">
+                    Check In to the 2008 Shockwave World
+                  </h2>
+                  <span className="rounded-[2px] border border-[#000000] bg-[#16a34a] px-1.5 py-0.5 font-pixel text-[8px] text-white">
+                    FREE TO PLAY
+                  </span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-[#334155]">
+                  Create your volumetric pixel citizen, dive off The Lido high board, collect 108+ isometric furni &amp; rares, earn 64 shaped pixel badges, and chat live in Realtime rooms!
+                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[#cbd5e1]">
+                  <div className="flex items-center gap-1.5">
+                    {BADGE_CATALOGUE.slice(0, 6).map((b) => (
+                      <div
+                        key={b.id}
+                        title={b.name}
+                        className="rounded-[2px] border border-[#000000] bg-[#f8fafc] p-1"
+                      >
+                        <PixelBadgeSprite badgeId={b.id} unlocked size={28} />
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onContinueAsGuest}
+                    className="habbo-btn-green px-3 py-1.5 text-[11px] font-bold cursor-pointer"
+                  >
+                    Instant Check-In &rsaquo;
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </section>
       </main>
+
+      {/* CLASSIC HABBO FOOTER ANCHORED TO BOTTOM */}
+      <footer className="border-t border-[#000000] bg-[#0f3454] py-3 px-4 text-white">
+        <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-2 sm:flex-row text-[11px]">
+          <div className="flex items-center gap-2">
+            <span className="rounded-[2px] border border-[#000000] bg-[#f5b400] px-1.5 py-0.5 font-pixel text-[9px] font-bold text-[#111827]">
+              PIXL HOTEL
+            </span>
+            <span className="text-[#bae6fd] font-semibold">
+              &copy; 2008–2026 PIXL Hotel Retro Community · Isometric Shockwave Client &amp; HoloCMS
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-[#93c5fd]">
+            <span>The PIXL Way</span>
+            <span>&middot;</span>
+            <span>64 Shaped Badges</span>
+            <span>&middot;</span>
+            <span>108+ Pixel Furni</span>
+            <span>&middot;</span>
+            <span>Live Realtime Sync</span>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

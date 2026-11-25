@@ -49,6 +49,7 @@ import {
 } from './game/economy';
 import {
   banUserFromRoom,
+  canDeleteRoom,
   createInitialModerationState,
   kickUserFromRoom,
   unbanUserFromRoom,
@@ -76,6 +77,7 @@ import {
   decrementVoucherUsesInSupabase,
   deleteBanInSupabase,
   deleteCatalogItemInSupabase,
+  deleteRoomInSupabase,
   fetchAllRetroStateFromSupabase,
   insertBanInSupabase,
   insertCatalogueItemsInSupabase,
@@ -206,6 +208,9 @@ export default function App() {
     accepted: boolean;
     ts: number;
   } | null>(null);
+  const [clientToastMessage, setClientToastMessage] = useState<string | null>(null);
+  const langRef = useRef(lang);
+  langRef.current = lang;
 
   const handleChangeLang = useCallback((nextLang: LanguageCode) => {
     setLang(nextLang);
@@ -244,6 +249,7 @@ export default function App() {
   screenRef.current = screen;
   const restoredSessionRef = useRef(false);
   const [presenceUsernames, setPresenceUsernames] = useState<string[]>([]);
+  const [presenceRoomSessions, setPresenceRoomSessions] = useState<Record<string, string[]>>({});
   const presenceSessionIdRef = useRef<string>(
     `sess-${Math.random().toString(36).slice(2, 10)}-${Date.now()}`
   );
@@ -255,16 +261,38 @@ export default function App() {
   const syncGlobalPresenceState = useCallback(() => {
     const ch = syncChannelRef.current;
     if (!ch) return;
-    const rawState = ch.presenceState<{ username?: string }>();
+    const rawState = ch.presenceState<{
+      username?: string;
+      sessionId?: string;
+      currentRoomId?: string;
+      screen?: string;
+      online?: boolean;
+    }>();
     const names: string[] = [];
-    for (const metas of Object.values(rawState)) {
+    const byRoom: Record<string, Set<string>> = {};
+    for (const [key, metas] of Object.entries(rawState)) {
       for (const meta of metas) {
         if (meta && typeof meta.username === 'string' && meta.username.trim()) {
-          names.push(meta.username.trim());
+          const cleanName = meta.username.trim();
+          names.push(cleanName);
+          const roomId = typeof meta.currentRoomId === 'string' ? meta.currentRoomId.trim() : '';
+          if (roomId && meta.online !== false) {
+            if (!byRoom[roomId]) byRoom[roomId] = new Set();
+            const sessionKey =
+              (typeof meta.sessionId === 'string' && meta.sessionId.trim()) ||
+              key ||
+              cleanName.toLowerCase();
+            byRoom[roomId].add(sessionKey);
+          }
         }
       }
     }
+    const nextRoomSessions: Record<string, string[]> = {};
+    for (const [rid, set] of Object.entries(byRoom)) {
+      nextRoomSessions[rid] = Array.from(set);
+    }
     setPresenceUsernames(names);
+    setPresenceRoomSessions(nextRoomSessions);
   }, []);
 
   useEffect(() => {
@@ -405,8 +433,70 @@ export default function App() {
       .on('presence', { event: 'leave' }, () => {
         if (active) syncGlobalPresenceState();
       })
-      .on('broadcast', { event: 'retro:sync' }, () => {
-        if (active) scheduleRefresh();
+      .on('broadcast', { event: 'retro:sync' }, ({ payload }) => {
+        if (!active) return;
+        const p = payload as { type?: string; roomId?: string } | null;
+        if (p?.type === 'room:deleted' && p.roomId) {
+          const deletedId = String(p.roomId);
+          const nextRooms = roomsRef.current.filter((r) => r.id !== deletedId);
+          if (nextRooms.length > 0) {
+            roomsRef.current = nextRooms;
+            setRooms(nextRooms);
+          }
+          setRoomFurniMap((prev) => {
+            const copy = { ...prev };
+            delete copy[deletedId];
+            return copy;
+          });
+          if (playerRef.current.currentRoomId === deletedId) {
+            const fallback =
+              nextRooms.find(
+                (r) =>
+                  r.id === 'welcome_lounge' ||
+                  r.modelName === 'model_a' ||
+                  r.category === 'public'
+              ) ??
+              nextRooms[0] ??
+              INITIAL_ROOMS[0];
+            playerRef.current = { ...playerRef.current, currentRoomId: fallback.id };
+            setPlayer((prev) => ({ ...prev, currentRoomId: fallback.id }));
+            setClientToastMessage(t(langRef.current, 'room_deleted'));
+            habboAudio.playError();
+          }
+        }
+        scheduleRefresh();
+      })
+      .on('broadcast', { event: 'room:deleted' }, ({ payload }) => {
+        if (!active) return;
+        const p = payload as { roomId?: string } | null;
+        if (!p?.roomId) return;
+        const deletedId = String(p.roomId);
+        const nextRooms = roomsRef.current.filter((r) => r.id !== deletedId);
+        if (nextRooms.length > 0) {
+          roomsRef.current = nextRooms;
+          setRooms(nextRooms);
+        }
+        setRoomFurniMap((prev) => {
+          const copy = { ...prev };
+          delete copy[deletedId];
+          return copy;
+        });
+        if (playerRef.current.currentRoomId === deletedId) {
+          const fallback =
+            nextRooms.find(
+              (r) =>
+                r.id === 'welcome_lounge' ||
+                r.modelName === 'model_a' ||
+                r.category === 'public'
+            ) ??
+            nextRooms[0] ??
+            INITIAL_ROOMS[0];
+          playerRef.current = { ...playerRef.current, currentRoomId: fallback.id };
+          setPlayer((prev) => ({ ...prev, currentRoomId: fallback.id }));
+          setClientToastMessage(t(langRef.current, 'room_deleted'));
+          habboAudio.playError();
+        }
+        scheduleRefresh();
       })
       .on('broadcast', { event: 'hotel:alert' }, ({ payload }) => {
         if (active && payload) {
@@ -506,7 +596,10 @@ export default function App() {
             .track({
               username: playerRef.current.username,
               sessionId: presenceSessionIdRef.current,
+              currentRoomId:
+                screenRef.current === 'hotel' ? playerRef.current.currentRoomId : '',
               screen: screenRef.current,
+              online: true,
             })
             .catch(() => {});
         }
@@ -535,11 +628,13 @@ export default function App() {
         .track({
           username: player.username,
           sessionId: presenceSessionIdRef.current,
+          currentRoomId: screen === 'hotel' ? player.currentRoomId : '',
           screen,
+          online: true,
         })
         .catch(() => {});
     }
-  }, [screen, player.username]);
+  }, [screen, player.username, player.currentRoomId]);
 
   // Keep current player changes persisted into accounts list and PostgreSQL `users`
   const updatePlayer = useCallback(
@@ -1166,6 +1261,104 @@ export default function App() {
       updatePlayer((prev) => ({ ...prev, currentRoomId: created.id }));
       broadcastSyncEvent({ type: 'room:create', roomId: created.id });
       return { ok: true, message: `Created "${created.name}"!` };
+    },
+    [broadcastSyncEvent, updatePlayer]
+  );
+
+  const handleDeleteRoom = useCallback(
+    async (roomId: string): Promise<{ ok: boolean; message: string }> => {
+      const targetRoom = roomsRef.current.find((r) => r.id === roomId);
+      const currentPlayer = playerRef.current;
+      if (!targetRoom || !canDeleteRoom(targetRoom, currentPlayer)) {
+        habboAudio.playError();
+        return { ok: false, message: 'You do not have permission to delete this room.' };
+      }
+
+      // Return any furniture placed in this room owned by the current player back to their inventory
+      const placedInRoom = roomFurniMapRef.current[roomId] ?? [];
+      let nextInv = [...currentPlayer.inventory];
+      let nextEngravings = { ...(currentPlayer.pendingEngravings ?? {}) };
+      let remaining = [...placedInRoom];
+      let returnedAny = false;
+
+      for (const item of placedInRoom) {
+        const isMine =
+          !item.owner ||
+          item.owner.toLowerCase() === currentPlayer.username.toLowerCase() ||
+          (item.userId !== undefined && item.userId === currentPlayer.numericId);
+        if (isMine) {
+          const res = pickupFurniToInventory(nextInv, remaining, item.uid, nextEngravings);
+          if (res.ok) {
+            nextInv = res.inventory;
+            remaining = res.placedFurni;
+            nextEngravings = res.pendingEngravings;
+            returnedAny = true;
+          }
+        }
+      }
+
+      const nextRooms = roomsRef.current.filter((r) => r.id !== roomId);
+      const safeRooms = nextRooms.length > 0 ? nextRooms : INITIAL_ROOMS;
+      roomsRef.current = safeRooms;
+      setRooms(safeRooms);
+
+      setRoomFurniMap((prev) => {
+        const copy = { ...prev };
+        delete copy[roomId];
+        return copy;
+      });
+
+      const fallbackRoom =
+        safeRooms.find(
+          (r) =>
+            r.id === 'welcome_lounge' ||
+            r.modelName === 'model_a' ||
+            r.category === 'public'
+        ) ?? safeRooms[0];
+
+      const wasInsideDeletedRoom = currentPlayer.currentRoomId === roomId;
+      if (wasInsideDeletedRoom || returnedAny) {
+        updatePlayer((prev) => ({
+          ...prev,
+          currentRoomId: wasInsideDeletedRoom ? fallbackRoom.id : prev.currentRoomId,
+          inventory: returnedAny ? nextInv : prev.inventory,
+          pendingEngravings: returnedAny ? nextEngravings : prev.pendingEngravings,
+        }));
+      }
+
+      const msg = t(langRef.current, 'room_deleted');
+      setClientToastMessage(msg);
+      habboAudio.playFurniPickup();
+
+      // Persist deletion to Supabase and broadcast room:deleted on global and room channels
+      const dbId = targetRoom.numericId ? String(targetRoom.numericId) : roomId;
+      void deleteRoomInSupabase(dbId).then(() => {
+        broadcastSyncEvent({ type: 'room:deleted', roomId });
+        const ch = syncChannelRef.current;
+        if (ch && syncChannelSubscribedRef.current) {
+          ch.send({
+            type: 'broadcast',
+            event: 'room:deleted',
+            payload: { type: 'room:deleted', roomId },
+          }).catch(() => {});
+        }
+        const roomCh = supabase.channel(`pixl-room:${roomId}`);
+        roomCh.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            roomCh
+              .send({
+                type: 'broadcast',
+                event: 'room:deleted',
+                payload: { type: 'room:deleted', roomId },
+              })
+              .finally(() => {
+                void supabase.removeChannel(roomCh);
+              });
+          }
+        });
+      });
+
+      return { ok: true, message: msg };
     },
     [broadcastSyncEvent, updatePlayer]
   );
@@ -2081,6 +2274,18 @@ export default function App() {
     [accounts, presenceUsernames, screen, player.username]
   );
 
+  const roomOccupancyMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const r of rooms) {
+      const uniqueSessions = new Set<string>(presenceRoomSessions[r.id] ?? []);
+      if (screen === 'hotel' && player.currentRoomId === r.id) {
+        uniqueSessions.add(presenceSessionIdRef.current);
+      }
+      map[r.id] = Math.min(r.usersMax || 25, uniqueSessions.size);
+    }
+    return map;
+  }, [rooms, presenceRoomSessions, screen, player.currentRoomId]);
+
   if (screen === 'auth') {
     return (
       <AuthPortal
@@ -2101,6 +2306,7 @@ export default function App() {
       <HotelClient
         player={player}
         rooms={rooms}
+        roomOccupancyMap={roomOccupancyMap}
         roomFurniMap={roomFurniMap}
         npcs={INITIAL_NPCS}
         customBadges={customBadges}
@@ -2114,6 +2320,9 @@ export default function App() {
         onBackToCms={handleBackToCms}
         onSwitchRoom={(roomId) => updatePlayer((prev) => ({ ...prev, currentRoomId: roomId }))}
         onCreateRoom={handleCreateRoom}
+        onDeleteRoom={handleDeleteRoom}
+        clientToastMessage={clientToastMessage}
+        onClearClientToast={() => setClientToastMessage(null)}
         onBuyCatalogueItem={handleBuyCatalogueItem}
         onBuyPet={handleBuyPet}
         onSummonPetsToRoom={handleSummonPetsToRoom}
@@ -2183,6 +2392,7 @@ export default function App() {
           <MeDashboard
             player={player}
             rooms={rooms}
+            roomOccupancyMap={roomOccupancyMap}
             friends={friendProfiles}
             news={news}
             customBadges={customBadges}

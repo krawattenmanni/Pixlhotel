@@ -55,7 +55,7 @@ export const DEFAULT_LOOK: LookConfig = {
 };
 
 export const CATALOG_PAGES_SEED: CatalogPageRow[] = [
-  { id: 1, parent_id: -1, caption: 'HC Classics', icon_image: 1, visible: true, min_rank: 1, order_num: 1 },
+  { id: 1, parent_id: -1, caption: 'PIXL Club', icon_image: 1, visible: true, min_rank: 1, order_num: 1 },
   { id: 2, parent_id: -1, caption: 'Rares & Dragons', icon_image: 2, visible: true, min_rank: 1, order_num: 2 },
   { id: 3, parent_id: -1, caption: 'Mode & Industrial', icon_image: 3, visible: true, min_rank: 1, order_num: 3 },
   { id: 4, parent_id: -1, caption: 'Pura & Modern', icon_image: 4, visible: true, min_rank: 1, order_num: 4 },
@@ -68,13 +68,13 @@ export const CATALOG_PAGES_SEED: CatalogPageRow[] = [
 ];
 
 export const FURNI_CATALOGUE: FurniItemDef[] = [
-  // === SECTION 1: HC Classics (7 items) ===
+  // === SECTION 1: PIXL Club (7 items) ===
   {
     id: 'hc_sofa',
-    name: 'HC Club Sofa',
+    name: 'PIXL Club Sofa',
     description: 'Plush scarlet velvet lounge sofa exclusive to PIXL Club connoisseurs.',
     category: 'seating',
-    catalogSection: 'HC Classics',
+    catalogSection: 'PIXL Club',
     costCredits: 25,
     costDuckets: 0,
     walkable: false,
@@ -89,7 +89,7 @@ export const FURNI_CATALOGUE: FurniItemDef[] = [
     name: 'Majestic Chair',
     description: 'Carved walnut armchair upholstered in gold damask fabric.',
     category: 'seating',
-    catalogSection: 'HC Classics',
+    catalogSection: 'PIXL Club',
     costCredits: 35,
     costDuckets: 0,
     walkable: false,
@@ -104,7 +104,7 @@ export const FURNI_CATALOGUE: FurniItemDef[] = [
     name: 'Imperial Teleporter',
     description: 'Ornate mahogany & crimson velvet PIXL teleport booth. Click to shimmer!',
     category: 'rares',
-    catalogSection: 'HC Classics',
+    catalogSection: 'PIXL Club',
     costCredits: 55,
     costDuckets: 0,
     hcOnly: true,
@@ -117,10 +117,10 @@ export const FURNI_CATALOGUE: FurniItemDef[] = [
   },
   {
     id: 'hc_minibar',
-    name: 'HC Butler Minibar',
-    description: 'Polished walnut & brass HC Club drinks cabinet with chilled crystal glasses.',
+    name: 'PIXL Club Butler Minibar',
+    description: 'Polished walnut & brass PIXL Club drinks cabinet with chilled crystal glasses.',
     category: 'tables',
-    catalogSection: 'HC Classics',
+    catalogSection: 'PIXL Club',
     costCredits: 22,
     costDuckets: 0,
     hcOnly: true,
@@ -134,10 +134,10 @@ export const FURNI_CATALOGUE: FurniItemDef[] = [
   },
   {
     id: 'hc_study_desk',
-    name: 'HC Mahogany Desk',
-    description: 'Gold-trimmed HC architect writing desk with green banker lamp.',
+    name: 'PIXL Club Mahogany Desk',
+    description: 'Gold-trimmed PIXL Club architect writing desk with green banker lamp.',
     category: 'tables',
-    catalogSection: 'HC Classics',
+    catalogSection: 'PIXL Club',
     costCredits: 20,
     costDuckets: 0,
     hcOnly: true,
@@ -150,10 +150,10 @@ export const FURNI_CATALOGUE: FurniItemDef[] = [
   },
   {
     id: 'hc_lantern',
-    name: 'HC Oil Lamp',
-    description: 'Glowing brass parlor lantern from the original 2008 Club gift series.',
+    name: 'PIXL Club Oil Lamp',
+    description: 'Glowing brass parlor lantern from the original 2008 PIXL Club gift series.',
     category: 'lighting',
-    catalogSection: 'HC Classics',
+    catalogSection: 'PIXL Club',
     costCredits: 18,
     costDuckets: 0,
     hcOnly: true,
@@ -166,10 +166,10 @@ export const FURNI_CATALOGUE: FurniItemDef[] = [
   },
   {
     id: 'hc_rug',
-    name: 'HC Royal Carpet',
-    description: 'Deep burgundy & gold HC crest woven carpet tile. Fully walkable!',
+    name: 'PIXL Club Royal Carpet',
+    description: 'Deep burgundy & gold PIXL Club crest woven carpet tile. Fully walkable!',
     category: 'decor',
-    catalogSection: 'HC Classics',
+    catalogSection: 'PIXL Club',
     costCredits: 12,
     costDuckets: 60,
     walkable: true,
@@ -855,13 +855,13 @@ export const FURNI_CATALOGUE: FurniItemDef[] = [
     isRare: true,
     isLtd: true,
   },
-  // HC Classics additions (6)
-  { id: 'hc_nordic_table', name: 'HC Nordic Table', description: 'Carved mahogany table with brass inlay.', category: 'tables', catalogSection: 'HC Classics', costCredits: 18, costDuckets: 0, walkable: false, sittable: false, isSurface: true, stackHeight: 1.0, width: 1, depth: 1, hcOnly: true },
-  { id: 'hc_butler_statue', name: 'HC Butler Statue', description: 'Mustachioed butler holding a silver champagne tray.', category: 'decor', catalogSection: 'HC Classics', costCredits: 28, costDuckets: 0, walkable: false, sittable: false, width: 1, depth: 1, hcOnly: true },
-  { id: 'hc_fireplace', name: 'HC Victorian Fireplace', description: 'Regal marble hearth with toggleable roaring fire.', category: 'lighting', catalogSection: 'HC Classics', costCredits: 35, costDuckets: 0, walkable: false, sittable: false, animated: true, width: 1, depth: 1, hcOnly: true },
-  { id: 'hc_grand_chandelier', name: 'HC Grand Chandelier', description: 'Gilded brass candelabrum with flickering candles.', category: 'lighting', catalogSection: 'HC Classics', costCredits: 30, costDuckets: 0, walkable: false, sittable: false, animated: true, width: 1, depth: 1, hcOnly: true },
-  { id: 'hc_globe', name: 'HC Sovereign Globe', description: 'Antique spinning world globe on walnut stand.', category: 'decor', catalogSection: 'HC Classics', costCredits: 24, costDuckets: 0, walkable: false, sittable: false, animated: true, stackable: true, width: 1, depth: 1, hcOnly: true },
-  { id: 'hc_gramophone', name: 'HC Brass Gramophone', description: 'Golden horn phonograph playing retro lounge jazz.', category: 'lighting', catalogSection: 'HC Classics', costCredits: 32, costDuckets: 0, walkable: false, sittable: false, animated: true, stackable: true, width: 1, depth: 1, hcOnly: true },
+  // PIXL Club additions (6)
+  { id: 'hc_nordic_table', name: 'PIXL Club Nordic Table', description: 'Carved mahogany PIXL Club table with brass inlay.', category: 'tables', catalogSection: 'PIXL Club', costCredits: 18, costDuckets: 0, walkable: false, sittable: false, isSurface: true, stackHeight: 1.0, width: 1, depth: 1, hcOnly: true },
+  { id: 'hc_butler_statue', name: 'PIXL Club Butler Statue', description: 'Mustachioed PIXL Club butler holding a silver champagne tray.', category: 'decor', catalogSection: 'PIXL Club', costCredits: 28, costDuckets: 0, walkable: false, sittable: false, width: 1, depth: 1, hcOnly: true },
+  { id: 'hc_fireplace', name: 'PIXL Club Fireplace', description: 'Regal marble PIXL Club hearth with toggleable roaring fire.', category: 'lighting', catalogSection: 'PIXL Club', costCredits: 35, costDuckets: 0, walkable: false, sittable: false, animated: true, width: 1, depth: 1, hcOnly: true },
+  { id: 'hc_grand_chandelier', name: 'PIXL Club Grand Chandelier', description: 'Gilded brass PIXL Club candelabrum with flickering candles.', category: 'lighting', catalogSection: 'PIXL Club', costCredits: 30, costDuckets: 0, walkable: false, sittable: false, animated: true, width: 1, depth: 1, hcOnly: true },
+  { id: 'hc_globe', name: 'PIXL Club Sovereign Globe', description: 'Antique spinning PIXL Club world globe on walnut stand.', category: 'decor', catalogSection: 'PIXL Club', costCredits: 24, costDuckets: 0, walkable: false, sittable: false, animated: true, stackable: true, width: 1, depth: 1, hcOnly: true },
+  { id: 'hc_gramophone', name: 'PIXL Club Brass Gramophone', description: 'Golden horn PIXL Club phonograph playing retro lounge jazz.', category: 'lighting', catalogSection: 'PIXL Club', costCredits: 32, costDuckets: 0, walkable: false, sittable: false, animated: true, stackable: true, width: 1, depth: 1, hcOnly: true },
   // Rares & Dragons additions (8)
   { id: 'gold_dragon', name: 'Gold Dragon Lamp', description: 'Legendary solid-gold dragon breathing solar flames.', category: 'rares', catalogSection: 'Rares & Dragons', costCredits: 185, costDuckets: 0, walkable: false, sittable: false, isRare: true, animated: true, width: 1, depth: 1 },
   { id: 'frost_dragon', name: 'Frost Dragon Lamp', description: 'Glacial dragon statue exhaling sub-zero mist.', category: 'rares', catalogSection: 'Rares & Dragons', costCredits: 165, costDuckets: 0, walkable: false, sittable: false, isRare: true, animated: true, width: 1, depth: 1 },
@@ -925,6 +925,15 @@ export const FURNI_CATALOGUE: FurniItemDef[] = [
   { id: 'rug_emerald_diamond', name: 'Emerald Diamond Rug', description: 'Plush green casino carpet with diamond border.', category: 'rugs', catalogSection: 'Rugs & Floor Mats', costCredits: 12, costDuckets: 55, walkable: true, sittable: false, width: 1, depth: 1 },
   { id: 'rug_pink_faux_fur', name: 'Pink Faux-Fur Rug', description: 'Fluffy bubblegum pink floor rug for VIP suites.', category: 'rugs', catalogSection: 'Rugs & Floor Mats', costCredits: 12, costDuckets: 55, walkable: true, sittable: false, width: 1, depth: 1 },
   { id: 'rug_neon_cyber', name: 'Cyber Grid Floor Tile', description: 'Glowing indigo & cyan grid mat for arcade rooms.', category: 'rugs', catalogSection: 'Rugs & Floor Mats', costCredits: 15, costDuckets: 70, walkable: true, sittable: false, width: 1, depth: 1 },
+  // Iconic 2008 Habbo Classics additions
+  { id: 'hc_armchair', name: 'PIXL Club Armchair', description: 'Plump emerald-green leather PIXL Club armchair with rolled wooden armrests.', category: 'seating', catalogSection: 'PIXL Club', costCredits: 18, costDuckets: 0, hcOnly: true, walkable: false, sittable: true, seatHeight: 10, width: 1, depth: 1, isRare: true },
+  { id: 'holoboy', name: 'Holoboy Projector', description: 'Classic 2008 Habbo rare cyan hologram projector statue on chrome emitter base.', category: 'rares', catalogSection: 'Rares & Dragons', costCredits: 110, costDuckets: 0, walkable: false, sittable: false, isRare: true, animated: true, width: 1, depth: 1 },
+  { id: 'hologirl', name: 'Hologirl Projector', description: 'Classic 2008 Habbo rare pink hologram projector statue on chrome emitter base.', category: 'rares', catalogSection: 'Rares & Dragons', costCredits: 110, costDuckets: 0, walkable: false, sittable: false, isRare: true, animated: true, width: 1, depth: 1 },
+  { id: 'samovar', name: 'Russian Samovar', description: 'Ornate antique brass tea urn that steams warmly when clicked.', category: 'rares', catalogSection: 'Rares & Dragons', costCredits: 75, costDuckets: 0, walkable: false, sittable: false, isRare: true, animated: true, stackable: true, width: 1, depth: 1 },
+  { id: 'yukka_plant', name: 'Yukka Plant', description: 'Classic potted Habbo Yukka tree with lush layered sword-leaf clusters.', category: 'plants', catalogSection: 'Beach, Tiki & Nature', costCredits: 6, costDuckets: 45, walkable: false, sittable: false, width: 1, depth: 1 },
+  { id: 'pineapple_plant', name: 'Pineapple Plant', description: 'Tropical spiky rosette plant in a terracotta pot.', category: 'plants', catalogSection: 'Beach, Tiki & Nature', costCredits: 6, costDuckets: 45, walkable: false, sittable: false, width: 1, depth: 1 },
+  { id: 'lodge_bear_rug', name: 'Polar Bear Rug', description: 'Fluffy white faux polar bear cabin rug. Walkable!', category: 'rugs', catalogSection: 'Area & Lodge', costCredits: 14, costDuckets: 65, walkable: true, sittable: false, width: 1, depth: 1 },
+  { id: 'plasto_table', name: 'Aqua Plasto Round Table', description: 'Glossy molded plastic round table on a central trumpet base.', category: 'tables', catalogSection: 'Iced & Plasto', costCredits: 9, costDuckets: 45, walkable: false, sittable: false, isSurface: true, stackHeight: 0.72, width: 1, depth: 1 },
 ];
 
 const FURNI_ALIASES: Record<string, string> = {
@@ -934,6 +943,9 @@ const FURNI_ALIASES: Record<string, string> = {
   sofa_hc: 'hc_sofa',
   chair_majestic: 'majestic_chair',
   tele_imperial: 'imperial_teleporter',
+  disco_tile: 'disco_floor',
+  dj_turntable: 'dj_booth',
+  plant_bonsai: 'bonsai',
 };
 
 export function findFurniDef(furniId: string): FurniItemDef | undefined {
@@ -942,6 +954,7 @@ export function findFurniDef(furniId: string): FurniItemDef | undefined {
 }
 
 const SECTION_TO_PAGE_ID: Record<string, number> = {
+  'PIXL Club': 1,
   'HC Classics': 1,
   'Rares & Dragons': 2,
   'Mode & Industrial': 3,
@@ -996,7 +1009,7 @@ export const INITIAL_ROOMS: RoomDef[] = [
       'xxxxxxxxxxxxxx',
     ],
     spawn: { x: 4, y: 5 },
-    baseOccupancy: 84,
+    baseOccupancy: 0,
     initialFurni: [
       { uid: 'lido-1', furniId: 'palm_tree', x: 1, y: 1, dir: 0, state: 0 },
       { uid: 'lido-2', furniId: 'palm_tree', x: 12, y: 3, dir: 0, state: 0 },
@@ -1042,7 +1055,7 @@ export const INITIAL_ROOMS: RoomDef[] = [
       'xxxxxxxxxxxxx',
     ],
     spawn: { x: 4, y: 6 },
-    baseOccupancy: 63,
+    baseOccupancy: 0,
     initialFurni: [
       { uid: 'rp-1', furniId: 'palm_tree', x: 1, y: 1, dir: 0, state: 0 },
       { uid: 'rp-2', furniId: 'palm_tree', x: 10, y: 7, dir: 0, state: 0 },
@@ -1083,7 +1096,7 @@ export const INITIAL_ROOMS: RoomDef[] = [
       'xxxxxxxxxxxx',
     ],
     spawn: { x: 5, y: 7 },
-    baseOccupancy: 58,
+    baseOccupancy: 0,
     initialFurni: [
       { uid: 'wl-1', furniId: 'fireplace', x: 5, y: 1, dir: 0, state: 1 },
       { uid: 'wl-2', furniId: 'palm_tree', x: 2, y: 1, dir: 0, state: 0 },
@@ -1144,7 +1157,7 @@ export const INITIAL_ROOMS: RoomDef[] = [
       'xxxxxxxxxxxx',
     ],
     spawn: { x: 5, y: 7 },
-    baseOccupancy: 52,
+    baseOccupancy: 0,
     initialFurni: [
       { uid: 'dc-1', furniId: 'dj_booth', x: 5, y: 1, dir: 0, state: 1 },
       { uid: 'dc-2', furniId: 'disco_ball', x: 6, y: 1, dir: 0, state: 1 },
@@ -1187,7 +1200,7 @@ export const INITIAL_ROOMS: RoomDef[] = [
       'xxxxxxxxxxxx',
     ],
     spawn: { x: 6, y: 7 },
-    baseOccupancy: 31,
+    baseOccupancy: 0,
     initialFurni: [
       { uid: 'pk-1', furniId: 'pine_tree', x: 3, y: 1, dir: 0, state: 0 },
       { uid: 'pk-2', furniId: 'pine_tree', x: 8, y: 1, dir: 0, state: 0 },
@@ -1227,7 +1240,7 @@ export const INITIAL_ROOMS: RoomDef[] = [
       'xxxxxxxxxxx',
     ],
     spawn: { x: 5, y: 7 },
-    baseOccupancy: 67,
+    baseOccupancy: 0,
     initialFurni: [
       { uid: 'cm-1', furniId: 'jukebox', x: 5, y: 1, dir: 0, state: 1 },
       { uid: 'cm-2', furniId: 'fire_dragon', x: 3, y: 1, dir: 0, state: 1 },
@@ -1274,7 +1287,7 @@ export const INITIAL_ROOMS: RoomDef[] = [
       'xxxxxxxxxx',
     ],
     spawn: { x: 4, y: 8 },
-    baseOccupancy: 39,
+    baseOccupancy: 0,
     initialFurni: [
       { uid: 'bb-1', furniId: 'banzai_barrier', x: 1, y: 2, dir: 0, state: 1 },
       { uid: 'bb-2', furniId: 'banzai_barrier', x: 1, y: 3, dir: 0, state: 1 },
@@ -1325,7 +1338,7 @@ export const INITIAL_ROOMS: RoomDef[] = [
       'xxxxxxxxxx',
     ],
     spawn: { x: 4, y: 6 },
-    baseOccupancy: 1,
+    baseOccupancy: 0,
     initialFurni: [
       { uid: 'mr-1', furniId: 'hc_sofa', x: 2, y: 2, dir: 0, state: 0 },
       { uid: 'mr-2', furniId: 'exec_desk', x: 2, y: 3, dir: 0, state: 0 },
@@ -1419,7 +1432,7 @@ export const INITIAL_NPCS: HabboNPC[] = [
       shoesColor: '#eb6fa8',
       accessory: 'crown',
     },
-    badge: 'HC',
+    badge: 'PC',
     badges: ['badge_checkin', 'badge_hc', 'badge_dragon', 'badge_throne'],
     chatLines: [
       'Thrones are climbing in Rare Values today!',
@@ -1494,7 +1507,7 @@ export const INITIAL_NPCS: HabboNPC[] = [
     y: 2,
     dir: 0,
     pose: 'wave',
-    badge: 'HC',
+    badge: 'PC',
     badges: ['badge_checkin', 'badge_lido', 'badge_social'],
     look: {
       skinColor: '#c68642',
@@ -1649,7 +1662,7 @@ export const INITIAL_NPCS: HabboNPC[] = [
     },
     badges: ['badge_checkin', 'badge_stylist', 'badge_architect'],
     chatLines: [
-      'Nice room layout! Love the HC Club Sofa.',
+      'Nice room layout! Love the PIXL Club Sofa.',
       'Are you adding a Fire Dragon Lamp next?',
     ],
   },
@@ -1768,10 +1781,10 @@ export const BADGE_CATALOGUE: BadgeDef[] = [
   },
   {
     id: 'badge_hc',
-    code: 'HC1',
-    name: 'PIXL Club Member I',
-    description: 'Ornate gold & orange HC clover shield worn by active PIXL Club members.',
-    unlockHint: 'Hold active PIXL Club (VIP) membership days.',
+    code: 'PC1',
+    name: 'PIXL Club Member',
+    description: 'Official member of the exclusive PIXL Club!',
+    unlockHint: 'Hold active PIXL Club (PC) membership days.',
     category: 'Staff & VIP',
     shape: 'hc_shield',
     primaryColor: '#ffd400',
@@ -1780,11 +1793,11 @@ export const BADGE_CATALOGUE: BadgeDef[] = [
     palette: { bg: '#eab308', border: '#854d0e', accent: '#fef9c3' },
   },
   {
-    id: 'HC2',
-    code: 'HC2',
-    name: 'PIXL Club Veteran II',
-    description: 'Platinum & gold winged HC crest awarded to seasoned Club connoisseurs.',
-    unlockHint: 'Accumulate 30+ days of PIXL Club (HC) membership.',
+    id: 'PC2',
+    code: 'PC2',
+    name: 'PIXL Club Gold Veteran',
+    description: 'Long-standing VIP veteran of PIXL Club!',
+    unlockHint: 'Accumulate 30+ days of PIXL Club (PC) membership.',
     category: 'Staff & VIP',
     shape: 'winged_hc',
     primaryColor: '#f8fafc',
@@ -2774,15 +2787,15 @@ export const RARE_VALUES: RareValueItem[] = [
     creditsValue: 48,
     trend: 'stable',
     changePct: '0%',
-    edition: 'HC Monthly Gift',
+    edition: 'PIXL Club Monthly Gift',
   },
   {
     furniId: 'hc_sofa',
-    name: 'HC Club Sofa',
+    name: 'PIXL Club Sofa',
     creditsValue: 30,
     trend: 'down',
     changePct: '-4%',
-    edition: 'Classic Club Staple',
+    edition: 'Classic PIXL Club Staple',
   },
 ];
 

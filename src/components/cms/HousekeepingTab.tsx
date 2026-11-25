@@ -697,7 +697,7 @@ export function HousekeepingTab({
                     className="rounded-[2px] border border-[#000000] bg-white px-1.5 py-1 text-[11px] font-bold"
                   >
                     <option value={1}>Rank 1+</option>
-                    <option value={2}>VIP/HC</option>
+                    <option value={2}>VIP/PC</option>
                     <option value={3}>Staff 3+</option>
                   </select>
                   <button
@@ -1332,7 +1332,7 @@ export function HousekeepingTab({
                 >
                   <p className="font-pixel text-[11px] text-[#0f3454]">{v.code}</p>
                   <p className="mt-1 font-bold text-[#334155]">
-                    +{v.credits}c · +{v.duckets}d · +{v.hcDays}d HC
+                    +{v.credits}c · +{v.duckets}d · +{v.hcDays}d PC
                     {v.badgeId ? ` · [${v.badgeId}]` : ''}
                   </p>
                   <p className="mt-0.5 font-mono-num text-[10px] text-[#64748b]">
@@ -1545,7 +1545,7 @@ export function HousekeepingTab({
                             </span>
                             <span className="inline-flex items-center gap-1 text-[#334155]">
                               <Crown className="h-3 w-3 text-[#ca8a04]" />
-                              <strong className="font-mono-num">{acc.playerState.hcDays}d</strong> HC
+                              <strong className="font-mono-num">{acc.playerState.hcDays}d</strong> PC
                             </span>
                             <span>Registered: {acc.createdAt}</span>
                             <span>Seen: {acc.lastSeen}</span>
@@ -1687,7 +1687,7 @@ export function HousekeepingTab({
                     </div>
                     <div>
                       <label htmlFor="edit-user-hc" className="block text-[11px] font-bold text-[#1f2937]">
-                        HC Days
+                        PC Days
                       </label>
                       <input
                         id="edit-user-hc"

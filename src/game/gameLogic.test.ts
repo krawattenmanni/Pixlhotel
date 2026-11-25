@@ -977,3 +977,107 @@ test('64 badges, expanded Female/Male wardrobe presets, and EN/DE i18n badge met
   assert.notEqual(enMeta.description, deMeta.description);
 });
 
+import { canDeleteRoom } from './moderation';
+
+test('canDeleteRoom enforces strict Owner, Moderator (Rank 4), and Admin (Rank 5) permissions across Guest and Public rooms', () => {
+  const publicRoom = INITIAL_ROOMS.find((r) => r.category === 'public')!;
+  const guestRoom = {
+    ...INITIAL_ROOMS.find((r) => r.category !== 'public')!,
+    owner: 'RoomCreator',
+    category: 'private' as const,
+  };
+
+  const regularVisitor = {
+    ...INITIAL_PLAYER_STATE,
+    username: 'RandomVisitor',
+    rank: 1 as const,
+    role: 'player' as const,
+  };
+  const roomOwner = {
+    ...INITIAL_PLAYER_STATE,
+    username: 'roomcreator',
+    rank: 1 as const,
+    role: 'player' as const,
+  };
+  const moderatorPlayer = {
+    ...INITIAL_PLAYER_STATE,
+    username: 'SafetyMod',
+    rank: 4 as const,
+    role: 'admin' as const,
+  };
+  const adminPlayer = {
+    ...INITIAL_PLAYER_STATE,
+    username: 'Krawattenmanni',
+    rank: 5 as const,
+    role: 'admin' as const,
+  };
+
+  // Regular visitor cannot delete guest room or public room
+  assert.equal(canDeleteRoom(guestRoom, regularVisitor), false);
+  assert.equal(canDeleteRoom(publicRoom, regularVisitor), false);
+
+  // Room owner can delete their own guest room, but NOT a built-in public room
+  assert.equal(canDeleteRoom(guestRoom, roomOwner), true);
+  assert.equal(canDeleteRoom(publicRoom, roomOwner), false);
+
+  // Moderator (Rank 4) can delete any guest room, but NOT a built-in public room
+  assert.equal(canDeleteRoom(guestRoom, moderatorPlayer), true);
+  assert.equal(canDeleteRoom(publicRoom, moderatorPlayer), false);
+
+  // Admin (Rank 5) can delete both guest rooms and public rooms
+  assert.equal(canDeleteRoom(guestRoom, adminPlayer), true);
+  assert.equal(canDeleteRoom(publicRoom, adminPlayer), true);
+
+  // Verify EN and DE translations for room deletion
+  assert.equal(t('en', 'delete_btn'), 'Delete');
+  assert.equal(t('de', 'delete_btn'), 'Löschen');
+  assert.equal(t('en', 'delete_room'), 'Delete Room');
+  assert.equal(t('de', 'delete_room'), 'Raum löschen');
+  assert.equal(t('en', 'confirm_prompt'), 'Confirm?');
+  assert.equal(t('de', 'confirm_prompt'), 'Sicher?');
+  assert.equal(t('en', 'room_deleted'), 'Room was deleted.');
+  assert.equal(t('de', 'room_deleted'), 'Der Raum wurde gelöscht.');
+});
+
+import { getDragonLampPalette, isDragonLampId } from './pixelSprites';
+
+test('2008 Habbo Rare Dragon Lamp engine matches all dragon variants and exact color palettes', () => {
+  assert.equal(isDragonLampId('fire_dragon'), true);
+  assert.equal(isDragonLampId('rare_dragon_fire'), true);
+  assert.equal(isDragonLampId('jade_dragon'), true);
+  assert.equal(isDragonLampId('silver_dragon'), true);
+  assert.equal(isDragonLampId('frost_dragon'), true);
+  assert.equal(isDragonLampId('gold_dragon'), true);
+  assert.equal(isDragonLampId('custom_dragon_lamp'), true);
+  assert.equal(isDragonLampId('pet_dragon'), false);
+  assert.equal(isDragonLampId('baby_dragon'), false);
+  assert.equal(isDragonLampId('hc_sofa'), false);
+
+  const firePal = getDragonLampPalette('fire_dragon');
+  assert.equal(firePal.scaleBase, '#dc2626');
+  assert.equal(firePal.scaleHi, '#f87171');
+  assert.equal(firePal.scaleLo, '#7f1d1d');
+  assert.equal(firePal.bellyBase, '#fbbf24');
+  assert.equal(firePal.flameMid, '#fb923c');
+
+  const jadePal = getDragonLampPalette('jade_dragon');
+  assert.equal(jadePal.scaleBase, '#059669');
+  assert.equal(jadePal.scaleHi, '#34d399');
+  assert.equal(jadePal.scaleLo, '#064e3b');
+  assert.equal(jadePal.bellyBase, '#f59e0b');
+  assert.equal(jadePal.flameMid, '#4ade80');
+
+  const silverPal = getDragonLampPalette('silver_dragon');
+  assert.equal(silverPal.scaleBase, '#94a3b8');
+  assert.equal(silverPal.scaleHi, '#f8fafc');
+  assert.equal(silverPal.scaleLo, '#334155');
+  assert.equal(silverPal.bellyBase, '#bae6fd');
+  assert.equal(silverPal.flameMid, '#38bdf8');
+
+  const goldPal = getDragonLampPalette('gold_dragon');
+  assert.equal(goldPal.scaleBase, '#eab308');
+  assert.equal(goldPal.scaleHi, '#fef9c3');
+  assert.equal(goldPal.scaleLo, '#854d0e');
+  assert.equal(goldPal.flameCore, '#fef08a');
+  assert.equal(goldPal.flameMid, '#f59e0b');
+});

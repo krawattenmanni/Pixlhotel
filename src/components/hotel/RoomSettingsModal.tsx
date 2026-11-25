@@ -1,9 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Bell, Check, Crown, KeyRound, Lock, Settings, Shield, Trash2, X } from 'lucide-react';
-import type { RoomAccessMode, RoomDef } from '../../game/types';
+import { t } from '../../game/i18n';
+import type { LanguageCode, RoomAccessMode, RoomDef } from '../../game/types';
 
 interface RoomSettingsModalProps {
   room: RoomDef;
+  lang?: LanguageCode;
+  canDelete?: boolean;
+  onDeleteRoom?: () => void;
   onSaveSettings: (patch: {
     name: string;
     description: string;
@@ -17,6 +21,9 @@ interface RoomSettingsModalProps {
 
 export function RoomSettingsModal({
   room,
+  lang = 'en',
+  canDelete = false,
+  onDeleteRoom,
   onSaveSettings,
   onClose,
 }: RoomSettingsModalProps) {
@@ -27,6 +34,15 @@ export function RoomSettingsModal({
   const [accessPassword, setAccessPassword] = useState(room.accessPassword ?? '');
   const [rights, setRights] = useState<string[]>(room.roomRights ?? []);
   const [newRightName, setNewRightName] = useState('');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  useEffect(() => {
+    if (!confirmingDelete) return;
+    const timer = window.setTimeout(() => {
+      setConfirmingDelete(false);
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [confirmingDelete]);
 
   const handleAddRight = () => {
     const clean = newRightName.trim();
@@ -206,6 +222,30 @@ export function RoomSettingsModal({
           >
             Save Room Settings
           </button>
+
+          {canDelete && onDeleteRoom && (
+            <div className="border-t border-[#999999] pt-2.5">
+              <button
+                type="button"
+                data-testid="room-settings-delete-btn"
+                onClick={() => {
+                  if (!confirmingDelete) {
+                    setConfirmingDelete(true);
+                  } else {
+                    setConfirmingDelete(false);
+                    onDeleteRoom();
+                    onClose();
+                  }
+                }}
+                className={`habbo-btn-red flex w-full items-center justify-center gap-1.5 py-2 text-xs font-bold tracking-wide cursor-pointer ${
+                  confirmingDelete ? 'ring-2 ring-[#fef08a]' : ''
+                }`}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {confirmingDelete ? t(lang, 'confirm_prompt') : t(lang, 'delete_room')}
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>

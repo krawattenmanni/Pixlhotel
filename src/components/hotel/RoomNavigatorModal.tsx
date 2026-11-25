@@ -1,18 +1,26 @@
-import { useState } from 'react';
-import { DoorOpen, PlusCircle, Users, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { DoorOpen, PlusCircle, Trash2, Users, X } from 'lucide-react';
+import { t } from '../../game/i18n';
+import { canDeleteRoom } from '../../game/moderation';
 import { getRoomThumbnailImage } from '../../game/pixelSprites';
-import type { RoomDef } from '../../game/types';
+import type { LanguageCode, PlayerState, RoomDef } from '../../game/types';
 
 interface RoomNavigatorModalProps {
   rooms: RoomDef[];
   currentRoomId: string;
   playerUsername: string;
+  player?: PlayerState;
+  lang?: LanguageCode;
+  roomOccupancyMap?: Record<string, number>;
   onSelectRoom: (roomId: string) => void;
   onCreateRoom?: (params: {
     caption: string;
     description: string;
     modelName: string;
   }) => Promise<{ ok: boolean; message: string }>;
+  onDeleteRoom?: (
+    roomId: string
+  ) => void | Promise<{ ok: boolean; message: string } | void>;
   onClose: () => void;
 }
 
@@ -30,8 +38,12 @@ export function RoomNavigatorModal({
   rooms,
   currentRoomId,
   playerUsername,
+  player,
+  lang = 'en',
+  roomOccupancyMap = {},
   onSelectRoom,
   onCreateRoom,
+  onDeleteRoom,
   onClose,
 }: RoomNavigatorModalProps) {
   const [activeTab, setActiveTab] = useState<'public' | 'guest'>('public');
@@ -41,6 +53,15 @@ export function RoomNavigatorModal({
   const [modelName, setModelName] = useState('model_c');
   const [creating, setCreating] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [confirmDeleteRoomId, setConfirmDeleteRoomId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!confirmDeleteRoomId) return;
+    const timer = window.setTimeout(() => {
+      setConfirmDeleteRoomId(null);
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [confirmDeleteRoomId]);
 
   const publicRooms = rooms.filter((r) => r.category === 'public');
   const guestRooms = rooms.filter((r) => r.category !== 'public');
@@ -113,7 +134,10 @@ export function RoomNavigatorModal({
             <button
               type="button"
               data-testid="nav-tab-public"
-              onClick={() => setActiveTab('public')}
+              onClick={() => {
+                setActiveTab('public');
+                setConfirmDeleteRoomId(null);
+              }}
               className={`border border-b-0 border-[#000000] px-3 py-1.5 text-[11px] font-bold cursor-pointer rounded-t-[3px] ${
                 activeTab === 'public'
                   ? 'bg-[#ececec] text-[#111827] -mb-px pb-2'
@@ -125,7 +149,10 @@ export function RoomNavigatorModal({
             <button
               type="button"
               data-testid="nav-tab-guest"
-              onClick={() => setActiveTab('guest')}
+              onClick={() => {
+                setActiveTab('guest');
+                setConfirmDeleteRoomId(null);
+              }}
               className={`border border-b-0 border-[#000000] px-3 py-1.5 text-[11px] font-bold cursor-pointer rounded-t-[3px] ${
                 activeTab === 'guest'
                   ? 'bg-[#ececec] text-[#111827] -mb-px pb-2'
@@ -221,6 +248,10 @@ export function RoomNavigatorModal({
                 const isLido = room.modelName === 'model_lido' || room.id === 'the_lido';
                 const isBanzai = room.modelName === 'model_banzai' || room.id === 'battle_banzai';
                 const thumbSrc = getRoomThumbnailImage(room);
+                const allowedToDelete =
+                  Boolean(onDeleteRoom) &&
+                  Boolean(player && canDeleteRoom(room, player));
+                const isConfirmingDelete = confirmDeleteRoomId === room.id;
 
                 return (
                   <div
@@ -268,9 +299,25 @@ export function RoomNavigatorModal({
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="inline-flex items-center gap-1 border border-[#16a34a] bg-[#dcfce7] px-1.5 py-0.5 font-mono-num text-[10px] font-bold text-[#14532d] rounded-[2px]">
-                        <Users className="h-3 w-3" /> {room.baseOccupancy}/{room.usersMax ?? 25}
-                      </span>
+                      {(() => {
+                        const maxUsers = room.usersMax || 25;
+                        const rawLiveCount = roomOccupancyMap[room.id] ?? (isCurrent ? 1 : 0);
+                        const liveCount = Math.max(isCurrent ? 1 : 0, Math.min(maxUsers, rawLiveCount));
+                        const pillStyle =
+                          liveCount === 0
+                            ? 'border-[#9ca3af] bg-[#e5e7eb] text-[#4b5563]'
+                            : liveCount >= maxUsers
+                            ? 'border-[#dc2626] bg-[#fee2e2] text-[#7f1d1d]'
+                            : 'border-[#16a34a] bg-[#dcfce7] text-[#14532d]';
+                        return (
+                          <span
+                            data-testid={`nav-room-occ-${room.id}`}
+                            className={`inline-flex items-center gap-1 border px-1.5 py-0.5 font-mono-num text-[10px] font-bold rounded-[2px] ${pillStyle}`}
+                          >
+                            <Users className="h-3 w-3" /> {liveCount}/{maxUsers}
+                          </span>
+                        );
+                      })()}
                       <button
                         type="button"
                         disabled={isCurrent}
@@ -286,6 +333,27 @@ export function RoomNavigatorModal({
                       >
                         {isCurrent ? 'Current' : 'Enter'}
                       </button>
+                      {allowedToDelete && (
+                        <button
+                          type="button"
+                          data-testid={`nav-delete-room-${room.id}`}
+                          aria-label={`${isConfirmingDelete ? t(lang, 'confirm_prompt') : t(lang, 'delete_btn')} ${room.name}`}
+                          onClick={() => {
+                            if (!isConfirmingDelete) {
+                              setConfirmDeleteRoomId(room.id);
+                            } else {
+                              setConfirmDeleteRoomId(null);
+                              void onDeleteRoom?.(room.id);
+                            }
+                          }}
+                          className={`habbo-btn-red inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold cursor-pointer ${
+                            isConfirmingDelete ? 'ring-2 ring-[#fef08a]' : ''
+                          }`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          {isConfirmingDelete ? t(lang, 'confirm_prompt') : t(lang, 'delete_btn')}
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

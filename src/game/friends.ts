@@ -37,7 +37,7 @@ export function buildHotelPlayerDirectory(
     const linkedNpcId = NPC_LINKED_ACCOUNT_MAP[key];
     const matchingNpc = linkedNpcId ? npcs.find((n) => n.id === linkedNpcId) : undefined;
     const roleBadge =
-      acc.rank >= 3 ? meta.badgeCode : acc.rank === 2 ? 'VIP' : acc.playerState.hcDays > 0 ? 'HC' : undefined;
+      acc.rank >= 3 ? meta.badgeCode : acc.rank === 2 ? 'VIP' : acc.playerState.hcDays > 0 ? 'PC' : undefined;
 
     profiles.push({
       id: linkedNpcId ?? (key === 'krawattenmanni' ? 'staff-krawattenmanni' : `acc-${acc.id}`),
